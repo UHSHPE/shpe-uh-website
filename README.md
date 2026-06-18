@@ -134,7 +134,7 @@ shpe-uh-website/
 ├── frontend/
 │   └── src/
 │       ├── api/            # Axios instance + all API call functions (api.js)
-│       ├── components/     # Header, Footer, GalleryApproved, PrivateRoute
+│       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute
 │       ├── pages/          # One file per route
 │       └── App.jsx         # Route definitions
 └── backend/

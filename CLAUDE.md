@@ -25,7 +25,7 @@ shpe-uh-website/
   frontend/
     src/
       api/api.js          # Axios instance (baseURL from VITE_API_URL env var)
-      components/         # Header, Footer, GalleryApproved, PrivateRoute
+      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute
       pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees
       App.jsx             # Routes
   backend/
@@ -98,7 +98,10 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - Tailwind v4 is used — do NOT use v3 syntax (e.g. `bg-[color]` utilities are fine, but config is in `tailwind.config.cjs`)
 
 ### Styling
-- Use Tailwind utility classes first; only add custom CSS to `styles.css` or `App.css` when Tailwind can't do it
+- The design-system tokens live in `src/styles.css` `:root` — brand colors (`--shpe-navy`, `--shpe-blue`, `--shpe-red`, `--event-*`), gradients (`--gradient-navy`, `--gradient-orange`), radii (`--radius-*`), shadows (`--shadow-card/pop/modal`), and container widths. Reference these tokens (in Tailwind arbitrary values or inline styles) rather than hardcoding hex. Legacy aliases `--blue`/`--navText`/`--muted` are kept for existing pages.
+- Work Sans (the brand typeface) is loaded via a Google Fonts `@import` at the top of `styles.css` and set as the `body` font (`--font-body`) — don't re-import it per page.
+- Use Tailwind utility classes first; only add custom CSS to `styles.css` when Tailwind can't do it (e.g. the header member-dropdown classes). `App.css` is unused Vite boilerplate — don't add to it.
+- Shared button classes: `.primaryBtn` (navy), `.accentBtn` (SHPE red), `.ghostBtn` (outline).
 - Framer Motion is available for animations — use it for page transitions and reveals
 
 ### What NOT to do

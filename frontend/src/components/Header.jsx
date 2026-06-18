@@ -1,9 +1,10 @@
 /* eslint-disable no-unused-vars */
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
+import Avatar from "./Avatar";
 
 const links = [
   { label: "Home", to: "/" },
@@ -11,7 +12,14 @@ const links = [
   { label: "MemberSHPE", to: "/membershpe" },
   { label: "Our Sponsors", to: "/sponsors" },
   { label: "Gallery", to: "/gallery" },
+];
+
+// Member-only tabs — grouped under the account dropdown once signed in.
+// Add new member features here; they land in the menu, not the top nav.
+const memberLinks = [
+  { label: "Dashboard", to: "/dashboard" },
   { label: "Calendar", to: "/calendar" },
+  { label: "Committees", to: "/committees" },
 ];
 
 function NavItem({ to, children }) {
@@ -35,11 +43,81 @@ function NavItem({ to, children }) {
   );
 }
 
+function MemberMenu({ user, open, setOpen, onSignOut, menuRef }) {
+  const location = useLocation();
+  const onMember = memberLinks.some((l) => l.to === location.pathname);
+  return (
+    <div className="memberMenu" ref={menuRef}>
+      <button
+        type="button"
+        className={`memberPill ${open ? "open" : ""} ${onMember ? "onMember" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Avatar name={user.first_name} size={26} />
+        Hi, {user.first_name}
+        <span className={`memberPillCaret ${open ? "open" : ""}`}>▾</span>
+      </button>
+
+      {open && (
+        <div className="memberMenuPanel" role="menu">
+          <div className="memberMenuLabel">Member area</div>
+          {memberLinks.map((l) => {
+            const active = location.pathname === l.to;
+            return (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                role="menuitem"
+                className={`memberMenuItem ${active ? "active" : ""}`}
+                onClick={() => setOpen(false)}
+              >
+                <span className="memberMenuDot" />
+                {l.label}
+              </NavLink>
+            );
+          })}
+          <div className="memberMenuDivider" />
+          <button
+            type="button"
+            className="memberMenuSignout"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMemberMenuOpen, setIsMemberMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const memberMenuRef = useRef(null);
+
+  // Calendar lives in the public nav when signed out; once signed in it moves
+  // into the member dropdown, so drop it from the top nav.
+  const navLinks = user ? links.filter((l) => l.to !== "/calendar") : links;
+
+  // Close the member dropdown when clicking anywhere outside of it.
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (memberMenuRef.current && !memberMenuRef.current.contains(event.target)) {
+        setIsMemberMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Close the mobile menu whenever the route changes. Render-phase reset
   // instead of an effect — see "You Might Not Need an Effect" (React docs).
@@ -47,6 +125,7 @@ export default function Header() {
   if (prevPath !== location.pathname) {
     setPrevPath(location.pathname);
     setIsMobileMenuOpen(false);
+    setIsMemberMenuOpen(false);
   }
 
   function handleSignOut() {
@@ -59,7 +138,7 @@ export default function Header() {
       <div className="headerRow">
         <div className="brand">
           <div className="brandMark">
-            <img src={shpeHoriztonalLogo} alt="SHPE LOGO" />
+            <img src={shpeHoriztonalLogo} alt="SHPE UH" onClick={() => navigate("/")} style={{ cursor: "pointer" }} />
           </div>
         </div>
 
@@ -75,26 +154,20 @@ export default function Header() {
         </button>
 
         <nav className="nav">
-          {links.map((l) => (
+          {navLinks.map((l) => (
             <NavItem key={l.to} to={l.to}>
               {l.label}
             </NavItem>
           ))}
-          {user && (
-            <>
-              <NavItem to="/dashboard">Dashboard</NavItem>
-              <NavItem to="/committees">Committees</NavItem>
-            </>
-          )}
+
           {user ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "8px" }}>
-              <span style={{ fontWeight: 600, color: "var(--blue)", fontSize: "14px" }}>
-                Hi, {user.first_name}
-              </span>
-              <button className="ghostBtn" onClick={handleSignOut} style={{ fontSize: "14px", padding: "6px 14px" }}>
-                Sign Out
-              </button>
-            </div>
+            <MemberMenu
+              user={user}
+              open={isMemberMenuOpen}
+              setOpen={setIsMemberMenuOpen}
+              onSignOut={handleSignOut}
+              menuRef={memberMenuRef}
+            />
           ) : (
             <button
               className="primaryBtn"
@@ -112,7 +185,7 @@ export default function Header() {
         className={`mobileNavPanel ${isMobileMenuOpen ? "open" : ""}`}
       >
         <div className="mobileNavGrid">
-          {links.map((l) => (
+          {navLinks.map((l) => (
             <NavLink key={l.to} to={l.to} className="mobileNavLink">
               {({ isActive }) => (
                 <span className={`mobileNavLinkInner ${isActive ? "active" : ""}`}>
@@ -121,20 +194,16 @@ export default function Header() {
               )}
             </NavLink>
           ))}
-          {user && (
-            <>
-              <NavLink to="/dashboard" className="mobileNavLink">
+          {user &&
+            memberLinks.map((l) => (
+              <NavLink key={l.to} to={l.to} className="mobileNavLink">
                 {({ isActive }) => (
-                  <span className={`mobileNavLinkInner ${isActive ? "active" : ""}`}>Dashboard</span>
+                  <span className={`mobileNavLinkInner ${isActive ? "active" : ""}`}>
+                    {l.label}
+                  </span>
                 )}
               </NavLink>
-              <NavLink to="/committees" className="mobileNavLink">
-                {({ isActive }) => (
-                  <span className={`mobileNavLinkInner ${isActive ? "active" : ""}`}>Committees</span>
-                )}
-              </NavLink>
-            </>
-          )}
+            ))}
           {user ? (
             <button
               className="mobileNavLink"
