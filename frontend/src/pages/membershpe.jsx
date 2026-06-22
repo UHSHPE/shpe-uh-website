@@ -1,7 +1,6 @@
+import { useNavigate } from "react-router-dom"
 import confetti from "../assets/membershpeImages/confettiBackground.png"
 import shpeSpirit from "../assets/images/SHPESpiritWeb.png"
-import lonestarShowdown from "../assets/images/LonestarShowdown.png"
-import auditorium from "../assets/images/Auditorium.png"
 
 export function Hero() {
   return (
@@ -75,194 +74,210 @@ export function Hero() {
   );
 }
 
-function ImageStyle() {
-  return {
-    backgroundColor: "#1A2858",
-    opacity: 1,
-    height: "100%",
-    width: "62%",
-    mixBlendMode: "multiply"
-  };
+/* ================================================================
+   WHY JOIN — two clear, readable membership tiers on a soft surface.
+   Same information as before, restructured into brand-clean cards.
+   ================================================================ */
+function Check({ color }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        flexShrink: 0,
+        marginTop: 2,
+        width: 20,
+        height: 20,
+        borderRadius: "var(--radius-pill)",
+        background: `color-mix(in srgb, ${color} 15%, #fff)`,
+        color,
+        display: "grid",
+        placeItems: "center",
+        fontSize: 12,
+        fontWeight: 800,
+        lineHeight: 1,
+      }}
+    >
+      ✓
+    </span>
+  );
+}
+
+function Benefit({ title, desc, color }) {
+  return (
+    <li style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <Check color={color} />
+      <span style={{ lineHeight: 1.45 }}>
+        <strong style={{ fontWeight: 600, color: "var(--shpe-navy)" }}>{title}</strong>
+        {desc && <span style={{ color: "var(--muted)" }}> — {desc}</span>}
+      </span>
+    </li>
+  );
+}
+
+// CTA matching the design-system Button variants used in the handoff:
+//   accent → SHPE red, radius 20px;  bright → SHPE blue-bright, pill.
+function CtaButton({ variant, children, onClick }) {
+  const accent = variant === "bright";
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        marginTop: 24,
+        width: "100%",
+        padding: "15px 24px",
+        border: "none",
+        cursor: "pointer",
+        fontFamily: "var(--font-body)",
+        fontWeight: 700,
+        fontSize: 16,
+        color: "#fff",
+        background: accent ? "var(--shpe-blue-bright)" : "var(--shpe-red)",
+        borderRadius: accent ? "var(--radius-pill)" : "var(--radius-2xl)",
+        transition: "filter 0.15s var(--ease-out), transform 0.05s var(--ease-out)",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(0.95)")}
+      onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+      onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(1px)")}
+      onMouseUp={(e) => (e.currentTarget.style.transform = "none")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TierCard({ accent, eyebrow, price, period, title, lead, children, cta, ctaVariant, onCta }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        flex: "1 1 380px",
+        maxWidth: 540,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-xl)",
+        boxShadow: "var(--shadow-card)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ height: 5, background: accent }} />
+      <div style={{ padding: "30px 30px 32px", display: "flex", flexDirection: "column", flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ textTransform: "uppercase", letterSpacing: "0.1em", fontSize: 11, fontWeight: 700, color: accent }}>
+            {eyebrow}
+          </span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 5, color: "var(--shpe-navy)" }}>
+            <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.5px" }}>{price}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--muted)" }}>/ {period}</span>
+          </span>
+        </div>
+
+        <h3 style={{ margin: "14px 0 0", color: "var(--shpe-navy)", fontSize: 24, fontWeight: 700, lineHeight: 1.15 }}>
+          {title}
+        </h3>
+        {lead && <p style={{ margin: "10px 0 0", color: "var(--ink-soft)", fontSize: 15, lineHeight: 1.55 }}>{lead}</p>}
+
+        <div style={{ flex: 1 }}>{children}</div>
+
+        <CtaButton variant={ctaVariant} onClick={onCta}>{cta}</CtaButton>
+      </div>
+    </div>
+  );
 }
 
 export function JoinSecton() {
+  const navigate = useNavigate();
+  const go = () => navigate("/signin");
+
   return (
-    <div className="relative">
-      {/* da 3 images*/}
-      <div className="relative w-full"> {/*first image */}
-        <img src={shpeSpirit} alt="shpe spirit" className="block w-full h-auto" />
-        <div className="absolute inset-0" style={ImageStyle()} />
-      </div>
-      <div className="relative w-full"> {/*second image */}
-        <img src={lonestarShowdown} alt="lonestar" className="block w-full h-auto" />
-        <div className="absolute inset-0" style={ImageStyle()} />
-      </div>
-
-      {/* text box for first two images */}
-      <div className="absolute top-0 bottom-0 left-0 w-[60%] z-10 flex flex-col items-start justify-start px-4 sm:px-8 lg:px-12 py-6 lg:py-10 overflow-y-auto">
-        <h1 style={{
-          color: "white",
-          fontFamily: "Work Sans, sans-serif",
-          fontSize: "150px",
-          fontWeight: 600,
-          letterSpacing: "1.5px",
-          lineHeight: 1.08,
-          textAlign: "left"
-        }}>
-          Why Join SHPE?
-        </h1>
-
-        <p style={{
-          color: "#FD652F",
-          fontFamily: "Work Sans, sans-serif",
-          fontSize: "36px",
-          fontWeight: "700",
-          letterSpacing: "0.8px",
-          lineHeight: 1.25,
-          marginTop: "12px"
-        }}>
-          MemberSHPE/T-Shirt Dues ($20/ <br />academic year)
-          <br />
-        </p>
-
-        <p style={{
-          color: "white",
-          fontFamily: "Work Sans, sans-serif",
-          fontSize: "36px",
-          fontWeight: "200",
-          letterSpacing: "0.6px",
-          marginTop: "10px"
-        }}>
-          Benefits Include:
-        </p>
-
-        <div style={{
-          color: "white",
-          fontFamily: "Work Sans, sans-serif",
-          fontSize: "36px",
-          fontWeight: "200",
-          letterSpacing: "0.5px",
-          paddingLeft: 20,
-          marginTop: "6px",
-          lineHeight: 1.35
-        }}>
-          <ul className="list-disc pl-7 space-y-1">
-            <li> An opportunity to join our Slack
-              <ul className="list-disc pl-7">
-                <li>Our messaging platform where announcements are first made and opportunities are shared with our members!</li>
-              </ul>
-            </li>
-            <li>Eligibility for MemberSHPE Awards
-              <ul className="list-disc pl-7">
-                <li>Around $10,000 is awarded every year</li>
-              </ul>
-            </li>
-            <li>Internship/Co-Op Database</li>
-            <li> Professional Development
-              <ul className="list-disc pl-7">
-                <li>Including but not limited to resume critiques, mock interviews, and networking events</li>
-              </ul>
-            </li>
-            <li>MentorSHPE Program</li>
-            <li> Resume Book
-              <ul className="list-disc pl-7">
-                <li>You'll have the opportunity to give us your resume to be shared with our corporate sponsors</li>
-              </ul>
-            </li>
-            <li>SHPE Graduation Stole</li>
-            <li>Chapter Shirt</li>
-          </ul>
+    <section
+      style={{
+        background: "var(--surface-muted)",
+        borderTop: "1px solid var(--border)",
+        borderBottom: "1px solid var(--border)",
+        padding: "clamp(56px, 8vw, 100px) 24px",
+        fontFamily: "var(--font-body)",
+      }}
+    >
+      <div style={{ maxWidth: "var(--container-xl)", margin: "0 auto" }}>
+        {/* header */}
+        <div style={{ textAlign: "center", maxWidth: 760, margin: "0 auto 48px" }}>
+          <p style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: 13, fontWeight: 700, color: "var(--shpe-red)" }}>
+            Membership
+          </p>
+          <h2 style={{ margin: "12px 0 0", color: "var(--shpe-navy)", fontWeight: 700, fontSize: "clamp(34px, 5vw, 56px)", lineHeight: 1.04, letterSpacing: "-0.5px" }}>
+            Why Join SHPE?
+          </h2>
+          <p style={{ margin: "18px 0 0", color: "var(--ink-soft)", fontSize: 18, lineHeight: 1.55 }}>
+            Two ways to belong — and they stack. Join the chapter for the day-to-day familia,
+            then go national to unlock SHPE-wide resources, scholarships, and conferences.
+          </p>
         </div>
 
-        <button style={{
-          backgroundColor: "white",
-          color: "#1A2858",
-          fontWeight: 600,
-          fontSize: "36px",
-          letterSpacing: "0px",
-          padding: "14px 26px",
-          marginTop: "14px",
-          alignSelf: "center"
-        }}>
-          Join Now
-        </button>
-      </div>
-
-      <div className="relative w-full"> {/*third image */}
-        <img src={auditorium} alt="auditorium" className="block w-full h-auto" />
-        <div className="absolute inset-0" style={ImageStyle()} />
-        <div className="absolute top-0 bottom-0 left-0 w-[62%] z-10 flex flex-col items-start justify-start px-4 sm:px-8 lg:px-12 py-6 lg:py-10 overflow-y-auto"> {/* text box for last image */}
-          <p style={{
-            color: "#FD652F",
-            fontFamily: "Work Sans, sans-serif",
-            fontSize: "36px",
-            fontWeight: "700",
-            letterSpacing: "0.8px",
-            lineHeight: 1.25,
-            marginTop: "8px"
-          }}>
-            National Membershpe ($10/year)
-          </p>
-
-          <p style={{
-            color: "white",
-            fontFamily: "Work Sans, sans-serif",
-            fontSize: "36px",
-            fontWeight: "200",
-            letterSpacing: "0.6px",
-            marginTop: "10px"
-          }}>
-            National membership makes you an official member under SHPE National, giving you access to various resources, scholarships, and the ability to attend various conferences such as RLDC (Regional Leadership Development Conference) as well as National Convention.
-            <br />
-            To become a nationally paid member of SHPE click the button below.
-            <br />
-            
-          </p>
-
-          <p style={{
-            color: "white",
-            fontFamily: "Work Sans, sans-serif",
-            fontSize: "36px",
-            fontWeight: "200",
-            letterSpacing: "0.6px",
-            marginTop: "10px"
-          }}>
-            You will be asked a few questions pertaining to the chapter:
-          </p>
-
-          <div style={{
-            color: "white",
-            fontFamily: "Work Sans, sans-serif",
-            fontSize: "36px",
-            fontWeight: "200",
-            letterSpacing: "0.5px",
-            paddingLeft: 20,
-            marginTop: "6px",
-            lineHeight: 1.35
-          }}>
-            <ul className="list-disc pl-7 space-y-1">
-              <li>Region: 5</li>
-              <li>Chapter Affiliation: University of Houston Student Chapter</li>
+        {/* tiers */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 28, justifyContent: "center", alignItems: "stretch" }}>
+          <TierCard
+            accent="var(--shpe-orange)"
+            eyebrow="Chapter"
+            price="$20"
+            period="academic year"
+            title="MemberSHPE + T-Shirt Dues"
+            lead="Your home base at UH — everything you need to plug in, grow, and get hired."
+            cta="Join Now"
+            ctaVariant="accent"
+            onCta={go}
+          >
+            <ul style={{ listStyle: "none", margin: "22px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 14, fontSize: 15 }}>
+              <Benefit color="var(--shpe-orange)" title="Access to our Slack" desc="where announcements drop first and opportunities are shared with members" />
+              <Benefit color="var(--shpe-orange)" title="Eligibility for MemberSHPE Awards" desc="around $10,000 is awarded every year" />
+              <Benefit color="var(--shpe-orange)" title="Internship / Co-Op Database" />
+              <Benefit color="var(--shpe-orange)" title="Professional Development" desc="resume critiques, mock interviews, and networking events" />
+              <Benefit color="var(--shpe-orange)" title="MentorSHPE Program" />
+              <Benefit color="var(--shpe-orange)" title="Resume Book" desc="shared directly with our corporate sponsors" />
+              <Benefit color="var(--shpe-orange)" title="SHPE Graduation Stole" />
+              <Benefit color="var(--shpe-orange)" title="Chapter Shirt" />
             </ul>
-            
-          </div>
+          </TierCard>
 
-          <button style={{
-            backgroundColor: "white",
-            color: "#1A2858",
-            fontWeight: 600,
-            fontSize: "36px",
-            letterSpacing: "0px",
-            padding: "14px 24px",
-            marginTop: "14px",
-            alignSelf: "center"
-          }}>
-            National MemberSHPE
-          </button>
+          <TierCard
+            accent="var(--shpe-blue-bright)"
+            eyebrow="SHPE National"
+            price="$10"
+            period="year"
+            title="National MemberSHPE"
+            lead="Become an official member under SHPE National and represent UH beyond campus."
+            cta="Become a National Member"
+            ctaVariant="bright"
+            onCta={go}
+          >
+            <ul style={{ listStyle: "none", margin: "22px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 14, fontSize: 15 }}>
+              <Benefit color="var(--shpe-blue-bright)" title="National resources & scholarships" desc="member-only support across the SHPE network" />
+              <Benefit color="var(--shpe-blue-bright)" title="Conference access" desc="attend RLDC (Regional Leadership Development Conference) and National Convention" />
+              <Benefit color="var(--shpe-blue-bright)" title="Official SHPE National standing" desc="recognized membership that follows you after graduation" />
+            </ul>
 
+            <div
+              style={{
+                marginTop: 22,
+                padding: "16px 18px",
+                background: "var(--surface-tint)",
+                border: "1px solid color-mix(in srgb, var(--shpe-blue-bright) 24%, #fff)",
+                borderRadius: "var(--radius-md)",
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "var(--shpe-blue)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                When you register, you'll be asked:
+              </p>
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5, fontSize: 14, color: "var(--ink-soft)" }}>
+                <span><strong style={{ color: "var(--shpe-navy)" }}>Region:</strong> 5</span>
+                <span><strong style={{ color: "var(--shpe-navy)" }}>Chapter Affiliation:</strong> University of Houston Student Chapter</span>
+              </div>
+            </div>
+          </TierCard>
         </div>
       </div>
-    </div >
+    </section>
   );
 }
 
