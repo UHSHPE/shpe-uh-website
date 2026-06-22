@@ -105,9 +105,8 @@ export default function Header() {
   const { user, logout } = useAuth();
   const memberMenuRef = useRef(null);
 
-  // Calendar lives in the public nav when signed out; once signed in it moves
-  // into the member dropdown, so drop it from the top nav.
-  const navLinks = user ? links.filter((l) => l.to !== "/calendar") : links;
+  // The calendar is public — it stays in the top nav whether signed in or not.
+  const navLinks = links;
 
   // Close the member dropdown when clicking anywhere outside of it.
   useEffect(() => {
