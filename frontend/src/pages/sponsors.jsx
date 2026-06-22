@@ -3,25 +3,63 @@ import { motion } from 'framer-motion';
 import { useInView } from 'framer-motion';
 import { useRef, useState } from 'react';
 import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
-import BASF      from '../assets/images/sponsors/basf.png';
-import CONOCO    from '../assets/images/sponsors/conocophillips.png';
-import BP        from '../assets/images/sponsors/bp.png';
-import CAT       from '../assets/images/sponsors/cat.png';
-import ABB       from '../assets/images/sponsors/abb.png';
-import WILLIAMS  from '../assets/images/sponsors/williams.png';
-import BURNS     from '../assets/images/sponsors/burns.png';
-import FRITOLAY  from '../assets/images/sponsors/fritolay.png';
-import SHPE_LOGO from '../assets/images/sponsors/shpe-logo.png';
+import LYB         from '../assets/images/sponsors/lyondellbasell.png';
+import WILLIAMS    from '../assets/images/sponsors/williams.png';
+import ABB         from '../assets/images/sponsors/abb.png';
+import HEB         from '../assets/images/sponsors/heb.png';
+import ENTERPRISE  from '../assets/images/sponsors/enterprise-products.png';
+import CHEVRON     from '../assets/images/sponsors/chevron.png';
+import MARATHON    from '../assets/images/sponsors/marathon-petroleum.png';
+import SHELL       from '../assets/images/sponsors/shell.png';
+import EXXON       from '../assets/images/sponsors/exxonmobil.png';
+import DOW         from '../assets/images/sponsors/dow.png';
+import MICROSOFT   from '../assets/images/sponsors/microsoft.png';
+import GOOGLE      from '../assets/images/sponsors/google.png';
+import AMAZON      from '../assets/images/sponsors/amazon.png';
+import DELL        from '../assets/images/sponsors/dell.png';
+import HPE         from '../assets/images/sponsors/hpe.png';
+import BOFA        from '../assets/images/sponsors/bank-of-america.png';
+import BASF        from '../assets/images/sponsors/basf.png';
+import TENARIS     from '../assets/images/sponsors/tenaris.png';
+import BECHTEL     from '../assets/images/sponsors/bechtel.png';
+import ANHEUSER    from '../assets/images/sponsors/anheuser-busch.png';
+import CDM_SMITH   from '../assets/images/sponsors/cdm-smith.png';
+import SOLAR       from '../assets/images/sponsors/solar-turbines.png';
+import CAT         from '../assets/images/sponsors/cat.png';
+import BLACK_VEATCH from '../assets/images/sponsors/black-veatch.png';
+import CHEVRON_PHILLIPS from '../assets/images/sponsors/chevron-phillips.png';
+import PHILLIPS66  from '../assets/images/sponsors/phillips66.png';
+import FLUOR       from '../assets/images/sponsors/fluor.png';
+import SHPE_LOGO   from '../assets/images/sponsors/shpe-logo.png';
 
 const sponsors = [
-  { name: 'BASF',           logo: BASF },
-  { name: 'ConocoPhillips', logo: CONOCO },
-  { name: 'BP',             logo: BP },
-  { name: 'Caterpillar',    logo: CAT },
-  { name: 'ABB',            logo: ABB },
-  { name: 'Williams',       logo: WILLIAMS },
-  { name: 'Burns McDonnell',logo: BURNS },
-  { name: 'Frito Lay',      logo: FRITOLAY },
+  { name: 'LyondellBasell',             logo: LYB },
+  { name: 'Williams',                   logo: WILLIAMS },
+  { name: 'ABB',                        logo: ABB },
+  { name: 'H-E-B',                      logo: HEB },
+  { name: 'Enterprise Products',        logo: ENTERPRISE },
+  { name: 'Chevron',                    logo: CHEVRON },
+  { name: 'Marathon Petroleum',         logo: MARATHON },
+  { name: 'Shell',                      logo: SHELL },
+  { name: 'ExxonMobil',                 logo: EXXON },
+  { name: 'Dow',                        logo: DOW },
+  { name: 'Microsoft',                  logo: MICROSOFT },
+  { name: 'Google',                     logo: GOOGLE },
+  { name: 'Amazon',                     logo: AMAZON },
+  { name: 'Dell Technologies',          logo: DELL },
+  { name: 'Hewlett Packard Enterprise', logo: HPE },
+  { name: 'Bank of America',            logo: BOFA },
+  { name: 'BASF',                       logo: BASF },
+  { name: 'Tenaris',                    logo: TENARIS },
+  { name: 'Bechtel',                    logo: BECHTEL },
+  { name: 'Anheuser-Busch',             logo: ANHEUSER },
+  { name: 'CDM Smith',                  logo: CDM_SMITH },
+  { name: 'Solar Turbines',             logo: SOLAR },
+  { name: 'Caterpillar',                logo: CAT },
+  { name: 'Black & Veatch',             logo: BLACK_VEATCH },
+  { name: 'Chevron Phillips',           logo: CHEVRON_PHILLIPS },
+  { name: 'Phillips 66',                logo: PHILLIPS66 },
+  { name: 'Fluor',                      logo: FLUOR },
 ];
 
 function HeroSection() {
