@@ -12,13 +12,13 @@ const links = [
   { label: "MemberSHPE", to: "/membershpe" },
   { label: "Our Sponsors", to: "/sponsors" },
   { label: "Gallery", to: "/gallery" },
+  { label: "Calendar", to: "/calendar" },
 ];
 
 // Member-only tabs — grouped under the account dropdown once signed in.
 // Add new member features here; they land in the menu, not the top nav.
 const memberLinks = [
   { label: "Dashboard", to: "/dashboard" },
-  { label: "Calendar", to: "/calendar" },
   { label: "Committees", to: "/committees" },
   { label: "Profile", to: "/profile" },
 ];
