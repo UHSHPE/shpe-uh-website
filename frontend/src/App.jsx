@@ -14,6 +14,7 @@ import SignUp from './pages/signup';
 import Dashboard from './pages/dashboard';
 import Committees from './pages/committees';
 import Calendar from './pages/calendar';
+import Profile from './pages/profile';
 
 export default function App() {
 	return (
@@ -43,6 +44,14 @@ export default function App() {
 						element={
 							<PrivateRoute>
 								<Committees />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/profile"
+						element={
+							<PrivateRoute>
+								<Profile />
 							</PrivateRoute>
 						}
 					/>

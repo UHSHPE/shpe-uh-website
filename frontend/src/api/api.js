@@ -76,6 +76,23 @@ export function getNotifications() {
   return api.get("/notifications", { headers: authHeaders() });
 }
 
+// Resume — let axios set the multipart boundary; don't set Content-Type by hand.
+export function uploadResume(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.post("/me/resume", formData, { headers: authHeaders() });
+}
+
+// The bearer token can't ride on an <iframe>/<a href>, so fetch the PDF as a
+// blob and open it via URL.createObjectURL on the page.
+export function getResumeBlob() {
+  return api.get("/me/resume", { headers: authHeaders(), responseType: "blob" });
+}
+
+export function deleteResume() {
+  return api.delete("/me/resume", { headers: authHeaders() });
+}
+
 export function markNotificationRead(notificationId) {
   return api.post(`/notifications/${notificationId}/read`, {}, { headers: authHeaders() });
 }

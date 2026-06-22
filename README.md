@@ -8,6 +8,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
+- **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Gallery** — Photo gallery with an approval workflow
@@ -141,7 +142,8 @@ shpe-uh-website/
     ├── main.py             # FastAPI app: routers + background reminder-email loop
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
-    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications
+    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, resume
+    ├── uploads/            # Uploaded resume PDFs (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
     ├── services/           # DB session deps, user/committee/reminder/email services
@@ -163,6 +165,7 @@ shpe-uh-website/
 | `/signup` | Sign up | No |
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
+| `/profile` | View your profile info and upload a PDF resume | Yes |
 
 ## API Reference
 
@@ -170,7 +173,10 @@ shpe-uh-website/
 |---|---|---|---|
 | POST | `/login` | No | Authenticate and receive a JWT token |
 | POST | `/signup` | No | Register a new account |
-| GET | `/me` | Yes | Current user profile (includes points) |
+| GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
+| POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤5 MB) |
+| GET | `/me/resume` | Yes | Download the current user's resume |
+| DELETE | `/me/resume` | Yes | Remove the current user's resume |
 | GET | `/events` | No | All events (powers the public calendar) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |

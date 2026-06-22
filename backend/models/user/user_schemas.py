@@ -162,4 +162,4 @@ class UserCreate(UserBase, UserMultiSelectedFields):
 
 class UserOut(UserBase, UserMultiSelectedFields):
     id: int
-    
+    resume_filename: str | None = None

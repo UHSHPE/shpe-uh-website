@@ -20,6 +20,7 @@ const memberLinks = [
   { label: "Dashboard", to: "/dashboard" },
   { label: "Calendar", to: "/calendar" },
   { label: "Committees", to: "/committees" },
+  { label: "Profile", to: "/profile" },
 ];
 
 function NavItem({ to, children }) {

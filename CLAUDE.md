@@ -26,13 +26,14 @@ shpe-uh-website/
     src/
       api/api.js          # Axios instance (baseURL from VITE_API_URL env var)
       components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute
-      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees
+      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile
       App.jsx             # Routes
   backend/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
     database.py           # SQLite engine + session factory
     seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), and sample events — run once: python seed.py
-    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes
+    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, resume_routes
+    uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
     models/               # SQLModel table definitions (user/, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
     services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py
@@ -122,6 +123,7 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 | `/get-involved` | `pages/get-involved.jsx` (commented out) | No |
 | `/dashboard` | `pages/dashboard.jsx` | Yes (PrivateRoute) |
 | `/committees` | `pages/committees.jsx` | Yes (PrivateRoute) |
+| `/profile` | `pages/profile.jsx` | Yes (PrivateRoute) |
 
 ## Protected Routes
 `components/PrivateRoute.jsx` wraps any route that requires authentication. If `token` is null it redirects to `/signin` preserving the intended destination in `location.state.from`. After sign-in the user is forwarded to that destination (or `/dashboard` by default).
@@ -142,6 +144,9 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 | GET | `/committees/{id}/messages` | Yes (member or chair) | Committee messages, newest first; 403 otherwise |
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark one notification read |
+| POST | `/me/resume` | Yes | Upload a PDF resume (multipart `file`); validates PDF type, ext, `%PDF` magic bytes, and ≤5 MB (400/413 otherwise). Sets `User.resume_filename` |
+| GET | `/me/resume` | Yes | Download the current user's resume PDF (`FileResponse`); 404 if none |
+| DELETE | `/me/resume` | Yes | Remove the current user's resume (204) |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event (404 unknown event, 409 already set, 400 already started) |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder (404 if none active) |
 | GET | `/events/reminders/me` | Yes | Current user's active (unsent) reminders |
@@ -162,6 +167,13 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - `services/email_services.py` — `send_email(to, subject, body)`: SMTP via `SMTP_*` env vars; with no `SMTP_HOST` it prints to the console and returns True (dev mode). SMTP failure returns False (no raise).
 - Frontend: the public `/calendar` page shows a "Remind me by email" button on future events (toggles to cancel). Signed-out users are sent to `/signin` with `location.state.from`, same as PrivateRoute. Reminder state comes from `getMyReminders()`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
+
+## Profile page & resume uploads
+- `pages/profile.jsx` (route `/profile`, in the member dropdown under Committees) shows the signed-in user's info **read-only** (no editing) plus a resume section. It reads everything from `useAuth().user` (the `/me` payload) and tracks resume state locally.
+- Resumes are **PDF only** and **private to the owner** (no chair/other-user access). `User.resume_filename` (nullable, on the `User` table model — NOT `UserBase`, so signup is untouched) stores the original name; `UserOut` exposes it so the frontend knows whether a resume exists. The PDF lives on disk at `backend/uploads/resumes/user_<id>.pdf` (deterministic → re-upload overwrites).
+- `routes/resume_routes.py` validates uploads (PDF content-type + `.pdf` ext + `%PDF` magic bytes, ≤5 MB) and serves the file via `FileResponse`. Storage dir is `RESUME_DIR` (a module constant) — tests monkeypatch it to a `tmp_path` to stay hermetic.
+- Frontend: viewing fetches the PDF as a **blob** (`getResumeBlob`, `responseType: "blob"`) and opens it with `URL.createObjectURL` — a bearer token can't ride on an `<iframe>`/`<a href>`. `api.js` functions: `uploadResume` (don't set `Content-Type` — let axios add the multipart boundary), `getResumeBlob`, `deleteResume`.
+- **Adding the `resume_filename` column requires recreating `database.db`** — `create_all()` does not `ALTER` existing tables (delete the db, re-run `seed.py`, restart the backend).
 
 ## SQLite / datetime note
 SQLite stores datetimes as plain text. Store and compare using naive UTC datetimes (`utcnow()` from `services/time_services.py`), not timezone-aware ones. The `Event.start_time` field uses naive UTC. On the frontend, append `'Z'` when constructing a `Date` object so the browser interprets it as UTC: `new Date(event.start_time + 'Z')`.

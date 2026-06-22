@@ -10,7 +10,7 @@ from sqlmodel import Session
 from database import create_db, engine
 from services.reminder_services import send_due_reminders
 
-from routes import auth_routes, committee_routes, event_routes, notification_routes
+from routes import auth_routes, committee_routes, event_routes, notification_routes, resume_routes
 
 REMINDER_CHECK_SECONDS = 60
 
@@ -48,6 +48,7 @@ app.include_router(auth_routes.router)
 app.include_router(committee_routes.router)
 app.include_router(event_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(resume_routes.router)
 
 if __name__ == "__main__":
     import uvicorn
