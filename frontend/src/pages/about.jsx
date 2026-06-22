@@ -254,9 +254,9 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-function MemberCard({ name, position, email, img }) {
+function MemberCard({ name, position, email, img, className = '' }) {
   return (
-    <div className="flex flex-col items-center">
+    <div className={`flex flex-col items-center ${className}`}>
       <div className="relative w-40 h-40 rounded-full overflow-hidden mb-4 border-4 border-[#c2410c] bg-[#1a2858] flex items-center justify-center">
         {img ? (
           <img src={img} alt={name} className="w-full h-full object-cover" />
@@ -306,7 +306,12 @@ export function ChairsSection() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
           {chairs.map((chair, index) => (
-            <MemberCard key={index} {...chair} />
+            <MemberCard
+              key={index}
+              {...chair}
+              // Elvin is the lone trailing card on the 3-col grid — center it.
+              className={index === chairs.length - 1 ? 'md:col-start-2' : ''}
+            />
           ))}
         </div>
       </div>
