@@ -188,7 +188,13 @@ function TierCard({ accent, eyebrow, price, period, title, lead, children, cta, 
 
 export function JoinSecton() {
   const navigate = useNavigate();
-  const go = () => navigate("/signin");
+  const goSignup = () => navigate("/signup");
+  const goNational = () =>
+    window.open(
+      "https://www.shpeconnect.org/eweb/DynamicPage.aspx?WebCode=LoginRequired&expires=yes&Site=shpe",
+      "_blank",
+      "noopener,noreferrer"
+    );
 
   return (
     <section
@@ -226,7 +232,7 @@ export function JoinSecton() {
             lead="Your home base at UH — everything you need to plug in, grow, and get hired."
             cta="Join Now"
             ctaVariant="accent"
-            onCta={go}
+            onCta={goSignup}
           >
             <ul style={{ listStyle: "none", margin: "22px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 14, fontSize: 15 }}>
               <Benefit color="var(--shpe-orange)" title="Access to our Slack" desc="where announcements drop first and opportunities are shared with members" />
@@ -249,7 +255,7 @@ export function JoinSecton() {
             lead="Become an official member under SHPE National and represent UH beyond campus."
             cta="Become a National Member"
             ctaVariant="bright"
-            onCta={go}
+            onCta={goNational}
           >
             <ul style={{ listStyle: "none", margin: "22px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 14, fontSize: 15 }}>
               <Benefit color="var(--shpe-blue-bright)" title="National resources & scholarships" desc="member-only support across the SHPE network" />
