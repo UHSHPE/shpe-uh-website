@@ -223,7 +223,7 @@ function CommitteeCard({ committee, onToggle }) {
             <div style={{ margin: '6px 0 0' }}>
               {committee.chairs.map(chair => (
                 <p
-                  key={chair.personal_email}
+                  key={`${chair.first_name} ${chair.last_name}`}
                   style={{ margin: '2px 0 0', color: '#374151', fontSize: '13px' }}
                 >
                   👤 {chair.first_name} {chair.last_name} · {chair.personal_email}

@@ -137,7 +137,7 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 | GET | `/me` | Yes | Returns current user (includes `points`) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | GET | `/events` | No | All events ordered by start_time (public, powers the calendar) |
-| GET | `/committees` | Yes | All committees with `is_member`, `is_chair`, and `chairs` (list of name + email) |
+| GET | `/committees` | Yes | All committees with `is_member`, `is_chair`, and `chairs` (list of name + role-based contact email) |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies the member + every chair) |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |
 | GET | `/committees/{id}/members` | Yes (chair only) | Roster with name, email, phone; 403 if not the chair |
@@ -156,6 +156,7 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - Committees support **co-chairs**: a committee's chairs are the users with a `CommitteeMembership` row where `is_chair=True` (one row per co-chair). `CommitteeOut.chairs` is a **list** of `ChairOut` (name + email) and `CommitteeOut.is_chair` reflects the current user's membership row.
 - `Committee.chair_role` (a `Role` enum value, nullable) still maps each committee to one chair role (1:1). Co-chairs of the same committee **share the same Role** (e.g. both MentorSHPE co-chairs have `Role.mentorshpe_chair`). Chair-only endpoints are gated by `require_chair`, which checks `user.role == committee.chair_role` — so seed both the role on the user AND the `is_chair` membership row, or chairs will display but lack permissions (or vice versa).
 - The real chair roster lives in `seed.py` (`COMMITTEE_ROSTER`): 14 committees, 22 chairs. Seeded chair logins are `<first>.<last>@cougarnet.uh.edu` / `password123`.
+- **Chair contact email shown in `ChairOut` is role-based, not the user's own email.** `chair_contact_email()` in `services/committee_services.py` maps each `chair_role` to a shared committee address (`CHAIR_EMAILS`, e.g. `academics@shpeuhchair.org`) so co-chairs display the same contact (matches the public About page). Roles with no published address (currently just Member Relations) fall back to the chair's `personal_email`. The frontend Committees card therefore keys chairs by name, **not** email, since co-chairs share one. Changing this is a code edit (no re-seed needed) — just restart the backend.
 - `models/notification.py` — `Notification` rows are per-user (`user_id`), with optional `committee_id`, `is_read`, and a `body` string. Joining a committee creates a welcome notification for the joiner AND a "X joined" notification for **every** chair. Sending a committee message creates one notification per active member (sender excluded).
 - `models/committee_message.py` — `CommitteeMessage` is a chair→committee broadcast. `CommitteeMessageOut` includes a resolved `sender_name`.
 - Frontend: the Committees page lists **every** chair (name + email) as a contact line on each card; chairs get a **Manage committee** panel (roster with phone + message composer), members get a read-only **View messages** panel. The Dashboard shows a **Notifications** panel (unread highlighted; click to mark read).

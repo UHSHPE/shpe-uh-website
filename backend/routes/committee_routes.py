@@ -1,4 +1,4 @@
-from services.committee_services import get_chair_users_from_committee_id, is_active_member
+from services.committee_services import chair_contact_email, get_chair_users_from_committee_id, is_active_member
 from models.committee import ChairOut, CommitteeMembership, CommitteeOut, MemberOut
 from models.committee_message import CommitteeMessage, CommitteeMessageCreate, CommitteeMessageOut
 from models.notification import Notification
@@ -38,7 +38,7 @@ async def get_committees(
             ChairOut(
                 first_name=chair_user.first_name,
                 last_name=chair_user.last_name,
-                personal_email=chair_user.personal_email
+                personal_email=chair_contact_email(committee, chair_user)
             )
             for chair_user in chair_users
         ]

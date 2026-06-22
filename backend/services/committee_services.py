@@ -3,6 +3,36 @@ from fastapi import HTTPException
 
 from models.committee import Committee, CommitteeMembership
 from models.user.user import User
+from models.user.user_enums import Role
+
+
+# Committee role-based contact emails (shared by every co-chair of that role).
+# Committees with no published role address fall back to the chair's own email.
+CHAIR_EMAILS: dict[Role, str] = {
+    Role.academic_chair: "academics@shpeuhchair.org",
+    Role.athletic_chair: "Athletic.and.Wellness@shpeuhchair.org",
+    Role.career_fair_chair: "Career.Fair@shpeuhchair.org",
+    Role.eec_chair: "Engineering.Events.Coordinator@shpeuhchair.org",
+    Role.marketing_chair: "Marketing@shpeuhchair.org",
+    Role.mentorshpe_chair: "MentorSHPE@shpeuhchair.org",
+    Role.projects_chair: "projects@shpeuhchair.org",
+    Role.outreach_chair: "Outreach@shpeuhchair.org",
+    Role.professional_chair: "Professional@shpeuhchair.org",
+    Role.shpe_jr_chair: "SHPE.Jr@shpeuhchair.org",
+    Role.social_chair: "Social@shpeuhchair.org",
+    Role.shpetina_chair: "shpetina@shpeuhchair.org",
+    Role.web_dev_chair: "Tech.Affairs@shpeuhchair.org",
+}
+
+
+def chair_contact_email(committee: Committee, chair_user: User) -> str:
+    """Public contact email for a committee's chairs.
+
+    Co-chairs share one role-based address (see CHAIR_EMAILS). Committees with no
+    published role address (currently just Member Relations) fall back to the
+    chair's own personal email so members still have a way to reach them.
+    """
+    return CHAIR_EMAILS.get(committee.chair_role) or chair_user.personal_email
 
 
 def get_committee_or_404(session, committee_id: int) -> Committee:

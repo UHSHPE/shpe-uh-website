@@ -219,7 +219,7 @@ const boardMembers = [
 // 2026-2027 chair roster. Emails are the committee role-based addresses
 // (@shpeuhchair.org), which stay constant regardless of who holds the role.
 // Photos are not yet available — cards fall back to an initials placeholder.
-// Marketing, Member Relations, and Projects chairs have no published role email.
+// The Member Relations chair has no published role email yet.
 const chairs = [
   { name: 'Angel Montoya', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
   { name: 'Sophia Rodriguez', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
@@ -228,14 +228,14 @@ const chairs = [
   { name: 'Sara Romero', position: 'Career Fair Chair', email: 'Career.Fair@shpeuhchair.org' },
   { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
   { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
-  { name: 'Valeria Zabala', position: 'Marketing Chair', email: '' },
+  { name: 'Valeria Zabala', position: 'Marketing Chair', email: 'Marketing@shpeuhchair.org' },
   { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: '' },
   { name: 'Nicolas Horton', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
   { name: 'Mia Flores', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
   { name: 'Khris Flores', position: 'Outreach Chair', email: 'Outreach@shpeuhchair.org' },
   { name: 'Rhonmar Joseph Marges', position: 'Professional Chair', email: 'Professional@shpeuhchair.org' },
-  { name: 'Lorenzo Ramos', position: 'Project Co-Chair', email: '' },
-  { name: 'Alfonso Salas', position: 'Project Co-Chair', email: '' },
+  { name: 'Lorenzo Ramos', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org' },
+  { name: 'Alfonso Salas', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org' },
   { name: 'Isabela Morales', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
   { name: 'Blake Weaver', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
   { name: 'Alexi Urbina', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
