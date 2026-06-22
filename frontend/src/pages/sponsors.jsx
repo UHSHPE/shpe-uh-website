@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { motion } from 'framer-motion';
 import { useInView } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
 import LYB         from '../assets/images/sponsors/lyondellbasell.png';
 import WILLIAMS    from '../assets/images/sponsors/williams.png';
@@ -142,101 +142,32 @@ function SponsorsGrid() {
   );
 }
 
+const CONTACT_EMAIL = 'vp.external@shpeuh.org';
+
 function ContactSection() {
-  const [form, setForm] = useState({ email: '', subject: '', message: '' });
-
-  const handleChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // TODO: wire up to backend
-  };
-
   return (
     <div className="bg-white py-20 px-8 border-t border-gray-100">
-      <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-16 items-start">
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-[#1170b9] font-semibold text-xl"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              placeholder="e.g., email@example.com"
-              value={form.email}
-              onChange={handleChange}
-              className="bg-[#71aabf54] rounded-xl px-6 py-4 text-[#003a706e] placeholder-[#003a706e]/50 font-medium text-lg outline-none"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-[#1170b9] font-semibold text-xl"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            >
-              Subject
-            </label>
-            <input
-              type="text"
-              name="subject"
-              placeholder="e.g., Support"
-              value={form.subject}
-              onChange={handleChange}
-              className="bg-[#71aabf54] rounded-xl px-6 py-4 text-[#003a706e] placeholder-[#003a706e]/50 font-medium text-lg outline-none"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-[#1170b9] font-semibold text-xl"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            >
-              Your Message
-            </label>
-            <textarea
-              name="message"
-              placeholder="Enter text here"
-              value={form.message}
-              onChange={handleChange}
-              rows={6}
-              className="bg-[#71aabf54] rounded-xl px-6 py-4 text-[#003a706e] placeholder-[#003a706e]/50 font-medium text-lg outline-none"
-              style={{ fontFamily: 'Work Sans, sans-serif' }}
-            />
-          </div>
-
-          <button type="submit" className="primaryBtn self-start px-8 py-3 text-lg">
-            Send Message
-          </button>
-        </form>
-
-        {/* Right side */}
-        <div className="flex-1 flex flex-col items-center gap-6 text-center">
-          <img src={SHPE_LOGO} alt="SHPE UH" className="w-48 h-48 object-contain" />
-          <h3
-            className="text-3xl md:text-5xl font-bold text-[#003A70]"
-            style={{ fontFamily: 'Work Sans, sans-serif' }}
-          >
-            Interested in sponsoring <br /> 
-            <p className='leading-15'>SHPE‑UH?</p>
-          </h3>
-          <p
-            className="text-[#71AABF] text-xl md:text-2xl font-medium"
-            style={{ fontFamily: 'Work Sans, sans-serif' }}
-          >
-            Send us a message and we'll get back to you shortly.
-          </p>
-        </div>
-
+      <div className="max-w-3xl mx-auto flex flex-col items-center gap-6 text-center">
+        <img src={SHPE_LOGO} alt="SHPE UH" className="w-48 h-48 object-contain" />
+        <h3
+          className="text-3xl md:text-5xl font-bold text-[#003A70]"
+          style={{ fontFamily: 'Work Sans, sans-serif' }}
+        >
+          Interested in sponsoring <br />
+          <p className='leading-15'>SHPE‑UH?</p>
+        </h3>
+        <p
+          className="text-[#71AABF] text-xl md:text-2xl font-medium"
+          style={{ fontFamily: 'Work Sans, sans-serif' }}
+        >
+          Send us a message and we'll get back to you shortly.
+        </p>
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          className="primaryBtn px-8 py-3 text-lg"
+        >
+          Email Us
+        </a>
       </div>
     </div>
   );
