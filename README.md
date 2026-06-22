@@ -156,7 +156,7 @@ shpe-uh-website/
 | Path | Description | Auth Required |
 |---|---|---|
 | `/` | Home | No |
-| `/about` | About SHPE UH | No |
+| `/about` | About SHPE UH — history, pillars, and the E-Board & Chairs roster (with contact emails) | No |
 | `/membershpe` | Membership info | No |
 | `/sponsors` | Sponsors | No |
 | `/gallery` | Photo gallery | No |

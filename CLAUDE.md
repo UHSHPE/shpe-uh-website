@@ -96,6 +96,7 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - All API calls go through the `api` axios instance in `src/api/api.js` — never use fetch or a raw axios import
 - Pages live in `src/pages/`, reusable UI in `src/components/`
 - Routes are defined in `App.jsx` — update there when adding new pages
+- The About page (`pages/about.jsx`) has its **own hardcoded** 2026-2027 E-Board + Chairs roster (names/positions/emails). This is **separate from and not synced with** `seed.py`'s `COMMITTEE_ROSTER` — editing one does NOT update the other, and they can drift (the About chairs use committee role-based `@shpeuhchair.org` emails, while seed users use `<first>.<last>@cougarnet.uh.edu`). Cards fall back to an initials placeholder when a member has no `img`, and the email line is omitted when `email` is empty.
 - Tailwind v4 is used — do NOT use v3 syntax (e.g. `bg-[color]` utilities are fine, but config is in `tailwind.config.cjs`)
 
 ### Styling

@@ -4,14 +4,9 @@ import { useRef } from 'react';
 import { useInView } from 'framer-motion';
 import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
 import pillarImg from '../assets/images/pillar.png'
-import Abigail from '../assets/images/Eboard_Photos/Abigail.png'
-import Sean from '../assets/images/Eboard_Photos/Sean.JPG'
 import Daniel from '../assets/images/Eboard_Photos/Daniel.JPG'
 import Carlos from '../assets/images/Eboard_Photos/Carlos.JPG'
 import Gabriela from '../assets/images/Eboard_Photos/Gaby.JPG'
-import Gigi from '../assets/images/Eboard_Photos/Gigi.JPG'
-import Abel from '../assets/images/Eboard_Photos/Abel.JPG'
-import Ivan from '../assets/images/Eboard_Photos/Ivan.JPG'
 
 export function ScrollTransitionHero() {
   const containerRef = useRef(null);
@@ -175,6 +170,14 @@ export function VisionSection() {
     <div className="bg-linear-to-b from-[#c2410c] to-[#ea580c] py-20 px-8">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-white">
+          {/* Mission */}
+          <div className="text-center md:text-left">
+            <h3 className="text-4xl font-bold mb-6">Mission</h3>
+            <p className="text-sm leading-relaxed">
+              SHPE changes lives by empowering the Hispanic community to realize their fullest potential and to impact the world through STEM awareness, access, support, and professional development.
+            </p>
+          </div>
+
           {/* Vision */}
           <div className="text-center md:text-left">
             <h3 className="text-4xl font-bold mb-6">Vision</h3>
@@ -190,14 +193,6 @@ export function VisionSection() {
               Familia, Service, Learning & Diversity, Resilience, and Integrity.
             </p>
           </div>
-
-          {/* Mission */}
-          <div className="text-center md:text-left">
-            <h3 className="text-4xl font-bold mb-6">Mission</h3>
-            <p className="text-sm leading-relaxed">
-              SHPE changes lives by empowering the Hispanic community to realize their fullest potential and to impact the world through STEM awareness, access, support, and professional development.
-            </p>
-          </div>
         </div>
       </div>
     </div>
@@ -205,40 +200,113 @@ export function VisionSection() {
 }
 
 
-/* E-BOARD */
+/* E-BOARD & CHAIRS */
 
+// 2026-2027 E-Board. Photos exist only for returning members (Daniel, Gabriela,
+// Carlos); everyone else falls back to an initials placeholder until a photo is added.
 const boardMembers = [
-  { name: 'Abigail Lopez', position: 'President' ,img: Abigail},
-  { name: 'Sean Laguna', position: 'Vice President Internal' ,img: Sean},
-  { name: 'Daniel Lopez', position: 'Vice President External' ,img: Daniel},
-  { name: 'Carlos Alba', position: 'Treasurer' ,img: Carlos},
-  { name: 'Gabriela Lorenzo', position: 'Secretary' ,img: Gabriela},
-  { name: 'Gizelle Flores', position: 'Communications Director' ,img: Gigi},
-  { name: 'Abel Aguirre', position: 'Regional Representative' ,img: Abel}, 
-  { name: 'Ivan Sanchez', position: 'Directior of Internal Affairs',img: Ivan}
+  { name: 'Daniel Lopez Gil', position: 'President', email: 'president@shpeuh.org', img: Daniel },
+  { name: 'Gabriela Lorenzo', position: 'Vice President Internal', email: 'vp.internal@shpeuh.org', img: Gabriela },
+  { name: 'Carlos Alba', position: 'Vice President External', email: 'vp.external@shpeuh.org', img: Carlos },
+  { name: 'Jaden Gomez', position: 'Treasurer', email: 'treasurer@shpeuh.org' },
+  { name: 'Sara Sanchez', position: 'Secretary', email: 'secretary@shpeuh.org' },
+  { name: 'Jennifer Bonilla', position: 'Communications Director', email: 'comm.director@shpeuh.org' },
+  { name: 'Santiago Gonzalez', position: 'New Member Representative', email: 'new.member.rep@shpeuh.org' },
+  { name: 'Fernando Vaca', position: 'Regional Representative', email: 'regional.rep@shpeuh.org' },
+  { name: 'Alejandro Castro', position: 'Director of Internal Affairs', email: 'director.internal@shpeuh.org' }
 ];
+
+// 2026-2027 chair roster. Emails are the committee role-based addresses
+// (@shpeuhchair.org), which stay constant regardless of who holds the role.
+// Photos are not yet available — cards fall back to an initials placeholder.
+// Marketing, Member Relations, and Projects chairs have no published role email.
+const chairs = [
+  { name: 'Angel Montoya', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
+  { name: 'Sophia Rodriguez', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
+  { name: 'Smiley Trenton', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org' },
+  { name: 'Ean Plasencia', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org' },
+  { name: 'Sara Romero', position: 'Career Fair Chair', email: 'Career.Fair@shpeuhchair.org' },
+  { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
+  { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
+  { name: 'Valeria Zabala', position: 'Marketing Chair', email: '' },
+  { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: '' },
+  { name: 'Nicolas Horton', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
+  { name: 'Mia Flores', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
+  { name: 'Khris Flores', position: 'Outreach Chair', email: 'Outreach@shpeuhchair.org' },
+  { name: 'Rhonmar Joseph Marges', position: 'Professional Chair', email: 'Professional@shpeuhchair.org' },
+  { name: 'Lorenzo Ramos', position: 'Project Co-Chair', email: '' },
+  { name: 'Alfonso Salas', position: 'Project Co-Chair', email: '' },
+  { name: 'Isabela Morales', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
+  { name: 'Blake Weaver', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
+  { name: 'Alexi Urbina', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
+  { name: 'Marylin Uriostegui', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
+  { name: 'Anahi Salinas', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
+  { name: 'Samuel Avendano', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
+  { name: 'Elvin Paz', position: 'Web Development Chair', email: 'Tech.Affairs@shpeuhchair.org' }
+];
+
+function getInitials(name) {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+function MemberCard({ name, position, email, img }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-40 h-40 rounded-full overflow-hidden mb-4 border-4 border-[#c2410c] bg-[#1a2858] flex items-center justify-center">
+        {img ? (
+          <img src={img} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-4xl font-bold text-white">{getInitials(name)}</span>
+        )}
+      </div>
+      <h4 className="font-bold text-[#c2410c] text-center">{name}</h4>
+      <p className="text-sm text-gray-600 text-center">{position}</p>
+      {email && (
+        <a
+          href={`mailto:${email}`}
+          className="text-sm text-[#1170b9] text-center hover:underline break-all"
+        >
+          {email}
+        </a>
+      )}
+    </div>
+  );
+}
 
 export function EBoardSection() {
   return (
     <div className="bg-white py-20 px-8">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-4xl font-bold text-center mb-16 text-[#0891b2]">
-          Meet the 2025-2026 E-Board!
+          Meet the 2026-2027 E-Board!
         </h2>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
           {boardMembers.map((member, index) => (
-            <div key={index} className="flex flex-col items-center">
-              <div className="relative w-40 h-40 rounded-full overflow-hidden mb-4 border-4 border-[#c2410c]">
-                <img
-                  src={member.img}
-                  alt={member.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <h4 className="font-bold text-[#c2410c] text-center">{member.name}</h4>
-              <p className="text-sm text-gray-600 text-center">{member.position}</p>
-            </div>
+            <MemberCard key={index} {...member} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ChairsSection() {
+  return (
+    <div className="bg-gray-50 py-20 px-8">
+      <div className="max-w-7xl mx-auto">
+        <h2 className="text-4xl font-bold text-center mb-16 text-[#0891b2]">
+          Meet the 2026-2027 Chairs!
+        </h2>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+          {chairs.map((chair, index) => (
+            <MemberCard key={index} {...chair} />
           ))}
         </div>
       </div>
@@ -255,6 +323,7 @@ export default function About() {
         <PillarsSection />
         <VisionSection />
         <EBoardSection />
+        <ChairsSection />
       </main>
       
     </div>
