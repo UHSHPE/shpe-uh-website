@@ -75,8 +75,10 @@ EMAIL_FROM=SHPE UH <noreply@example.org>   # optional, defaults to SMTP_USER
 **Frontend** (`frontend/.env.local`):
 ```
 VITE_API_URL=http://localhost:8000
+VITE_BEHOLD_FEED_URL=https://feeds.behold.so/<feed-id>   # public Behold JSON feed for the home-page Instagram grid
 ```
 The `api.js` axios instance reads `VITE_API_URL` — without this set, all API calls will fail.
+`VITE_BEHOLD_FEED_URL` powers the home page's Instagram section; if unset or the fetch fails, the grid keeps its shimmer placeholder (layout never breaks).
 
 ## Key Rules & Lessons Learned
 
@@ -98,6 +100,7 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - Routes are defined in `App.jsx` — update there when adding new pages
 - The About page (`pages/about.jsx`) has its **own hardcoded** 2026-2027 E-Board + Chairs roster (names/positions/emails). This is **separate from and not synced with** `seed.py`'s `COMMITTEE_ROSTER` — editing one does NOT update the other, and they can drift (the About chairs use committee role-based `@shpeuhchair.org` emails, while seed users use `<first>.<last>@cougarnet.uh.edu`). Cards fall back to an initials placeholder when a member has no `img`, and the email line is omitted when `email` is empty.
 - Tailwind v4 is used — do NOT use v3 syntax (e.g. `bg-[color]` utilities are fine, but config is in `tailwind.config.cjs`)
+- The home page (`pages/home.jsx`) `#insta` grid is wired to a live **Behold** (behold.so) Instagram feed: a `useEffect` fetches `VITE_BEHOLD_FEED_URL` on mount, takes the first 6 `data.posts`, and renders each as an `<a>` (permalink, new tab) wrapping an `<img>`. Image src is `post.sizes?.medium?.mediaUrl` (Behold-hosted thumbnail) with `post.mediaUrl` (Instagram CDN) as fallback. This is an **external public CDN** — it uses `fetch()` directly, NOT the `api.js` axios instance. On fetch error / unset env var, `instaPosts` stays empty and the original shimmer placeholder renders as fallback so the layout never breaks.
 
 ### Styling
 - The design-system tokens live in `src/styles.css` `:root` — brand colors (`--shpe-navy`, `--shpe-blue`, `--shpe-red`, `--event-*`), gradients (`--gradient-navy`, `--gradient-orange`), radii (`--radius-*`), shadows (`--shadow-card/pop/modal`), and container widths. Reference these tokens (in Tailwind arbitrary values or inline styles) rather than hardcoding hex. Legacy aliases `--blue`/`--navText`/`--muted` are kept for existing pages.

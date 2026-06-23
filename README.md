@@ -12,6 +12,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Gallery** — Photo gallery with an approval workflow
+- **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
 
 ## Tech Stack
@@ -109,9 +110,10 @@ Frontend runs at **http://localhost:5173**.
 
 ### `frontend/.env.local`
 
-| Variable | Description | Example |
-|---|---|---|
-| `VITE_API_URL` | Backend base URL | `http://localhost:8000` |
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `VITE_API_URL` | Yes | Backend base URL | `http://localhost:8000` |
+| `VITE_BEHOLD_FEED_URL` | No | Public [Behold](https://behold.so) JSON feed for the home-page Instagram grid. If unset/unreachable, the grid shows a shimmer placeholder | `https://feeds.behold.so/<feed-id>` |
 
 > **Never commit `.env` or `.env.local` to version control.**
 

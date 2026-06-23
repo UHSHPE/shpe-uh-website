@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import shpeSpirit from "../assets/images/SHPESpiritWeb.png"
 import shpeLogo from "../assets/images/shpelogo.png"
@@ -10,10 +10,31 @@ import { useAuth } from '../context/AuthContext'
 
 export default function Home() {
 	const [email, setEmail] = useState('');
+	const [instaPosts, setInstaPosts] = useState([]);
 	const navigate = useNavigate();
 	const { user } = useAuth()
 
 	const handleMainButtonClick = () => user ? navigate('/dashboard') : navigate('/signup')
+
+	// Fetch the public Behold Instagram feed (external CDN — uses fetch, not api.js).
+	// On any error we leave instaPosts empty so the shimmer placeholder stays as fallback.
+	useEffect(() => {
+		const feedUrl = import.meta.env.VITE_BEHOLD_FEED_URL;
+		if (!feedUrl) return;
+		let active = true;
+		fetch(feedUrl)
+			.then((res) => {
+				if (!res.ok) throw new Error(`Behold feed responded ${res.status}`);
+				return res.json();
+			})
+			.then((data) => {
+				if (active) setInstaPosts((data.posts || []).slice(0, 6));
+			})
+			.catch(() => {
+				if (active) setInstaPosts([]);
+			});
+		return () => { active = false; };
+	}, []);
 	
 	return (
 		<section className="text-[#001F5B] overflow-x-hidden mt-20">
@@ -114,14 +135,32 @@ export default function Home() {
 					<span className="text-[#0070C0]">@shpe_uh</span>
 				</h2>
 
-				{/* 3×2 grid — replace the placeholder divs with <img> tags for real posts */}
+				{/* 3×2 grid — real posts from the Behold feed; shimmer placeholder is the fallback */}
 				<div className="relative z-[1] grid grid-cols-3 gap-1 max-w-[520px] mx-auto rounded-lg overflow-hidden shadow-[0_4px_30px_rgba(0,31,91,0.15)]">
-					{Array.from({ length: 6 }).map((_, i) => (
-						<div key={i} className="aspect-square bg-[#dde6f0] overflow-hidden">
-							{/* Swap this div for an <img> once you have real Instagram images */}
-							<div className="w-full h-full bg-gradient-to-br from-[#e0e9f3] via-[#c5d3e6] to-[#e0e9f3] animate-pulse" />
-						</div>
-					))}
+					{instaPosts.length > 0 ? (
+						instaPosts.map((post) => (
+							<a
+								key={post.id}
+								href={post.permalink}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="aspect-square bg-[#dde6f0] overflow-hidden block"
+							>
+								<img
+									src={post.sizes?.medium?.mediaUrl || post.mediaUrl}
+									alt={post.prunedCaption || 'SHPE UH Instagram post'}
+									loading="lazy"
+									className="w-full h-full object-cover"
+								/>
+							</a>
+						))
+					) : (
+						Array.from({ length: 6 }).map((_, i) => (
+							<div key={i} className="aspect-square bg-[#dde6f0] overflow-hidden">
+								<div className="w-full h-full bg-gradient-to-br from-[#e0e9f3] via-[#c5d3e6] to-[#e0e9f3] animate-pulse" />
+							</div>
+						))
+					)}
 				</div>
 			</section>
 
