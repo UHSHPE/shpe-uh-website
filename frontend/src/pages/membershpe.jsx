@@ -228,8 +228,8 @@ export function JoinSecton() {
             eyebrow="Chapter"
             price="$20"
             period="academic year"
-            title="MemberSHPE + T-Shirt Dues"
-            lead="Your home base at UH — everything you need to plug in, grow, and get hired."
+            title="T-Shirt Dues"
+            lead="Being a part of SHPE at UH includes the following benefits:"
             cta="Join Now"
             ctaVariant="accent"
             onCta={goSignup}
