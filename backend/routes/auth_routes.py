@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import select
 
 from models.user.multi_selections.user_country_origin import UserCountryOrigin
@@ -14,6 +14,7 @@ from security.jwt import ACCESS_TOKEN_EXPIRE_MINUTES, Token, create_access_token
 from services.auth_user import authenticate_user
 from services.user_services import create_user
 from services.dependencies import SessionDependencies, get_current_user
+from services.rate_limit import limiter
 from services.user_services import get_user_by_email
 from validators.email import normalize_email
 from fastapi.security import OAuth2PasswordRequestForm
@@ -21,7 +22,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 router = APIRouter(tags=["Auth"])
 
 @router.post("/login")
-async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDependencies) -> Token:
+@limiter.limit("5/minute")
+async def login_for_token(request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDependencies) -> Token:
     email = normalize_email(form_data.username)
     user = authenticate_user(session, email, form_data.password)
 

@@ -5,6 +5,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 ## Features
 
 - **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing
+- **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
@@ -25,6 +26,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 **Backend**
 - FastAPI, SQLModel (SQLAlchemy 2), SQLite
 - PyJWT, pwdlib (Argon2), Pydantic v2, Uvicorn
+- slowapi (rate limiting)
 - pytest + httpx for the test suite
 
 ## Prerequisites
@@ -60,7 +62,8 @@ Create `backend/.env` (see [Environment Variables](#environment-variables)):
 ```bash
 echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30" > .env
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+FRONTEND_URL=http://localhost:5173" > .env
 ```
 
 Then seed and run:
@@ -102,6 +105,7 @@ Frontend runs at **http://localhost:5173**.
 | `SECRET_KEY` | Yes | Random hex secret for JWT signing | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ALGORITHM` | Yes | JWT signing algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes | `30` |
+| `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
 | `SMTP_PORT` | No | SMTP port | `587` |
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
@@ -144,11 +148,11 @@ shpe-uh-website/
     ├── main.py             # FastAPI app: routers + background reminder-email loop
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
-    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, resume
+    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, password reset, resume
     ├── uploads/            # Uploaded resume PDFs (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email services
+    ├── services/           # DB session deps, user/committee/reminder/email/password-reset services, rate limiter
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -165,6 +169,8 @@ shpe-uh-website/
 | `/calendar` | Events calendar (with "Remind me by email") | No |
 | `/signin` | Sign in | No |
 | `/signup` | Sign up | No |
+| `/forgot-password` | Request a password-reset email | No |
+| `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
 | `/profile` | View your profile info and upload a PDF resume | Yes |
@@ -173,8 +179,10 @@ shpe-uh-website/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/login` | No | Authenticate and receive a JWT token |
+| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute) |
 | POST | `/signup` | No | Register a new account |
+| POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |
+| POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤5 MB) |
 | GET | `/me/resume` | Yes | Download the current user's resume |

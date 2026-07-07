@@ -22,6 +22,17 @@ from models.user.user_enums import (
 )
 
 
+# slowapi's in-memory counters persist across tests in the same process —
+# reset them so rate-limited endpoints (/login, /password-reset/request)
+# don't 429 unrelated tests.
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    from services.rate_limit import limiter
+
+    limiter.reset()
+    yield
+
+
 @pytest.fixture
 def engine():
     engine = create_engine(

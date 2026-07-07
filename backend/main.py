@@ -5,12 +5,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session
 
 from database import create_db, engine
+from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 
-from routes import auth_routes, committee_routes, event_routes, notification_routes, resume_routes
+from routes import auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes
 
 REMINDER_CHECK_SECONDS = 60
 
@@ -36,6 +39,9 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -48,6 +54,7 @@ app.include_router(auth_routes.router)
 app.include_router(committee_routes.router)
 app.include_router(event_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(pw_reset_routes.router)
 app.include_router(resume_routes.router)
 
 if __name__ == "__main__":

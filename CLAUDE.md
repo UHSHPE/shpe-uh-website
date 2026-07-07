@@ -16,8 +16,8 @@ SHPE University of Houston chapter website. React + Vite frontend, FastAPI + SQL
 
 ## Stack
 - **Frontend:** React 19, Vite, Tailwind CSS v4, Framer Motion, React Router v7, Axios
-- **Backend:** FastAPI, SQLModel (ORM), SQLite (`database.db`), PyJWT, pwdlib (Argon2 hashing)
-- **Auth:** JWT bearer tokens via `/login` and `/signup` endpoints
+- **Backend:** FastAPI, SQLModel (ORM), SQLite (`database.db`), PyJWT, pwdlib (Argon2 hashing), slowapi (rate limiting)
+- **Auth:** JWT bearer tokens via `/login` and `/signup` endpoints; self-service password reset via `/password-reset/*`
 
 ## Project Structure
 ```
@@ -32,14 +32,14 @@ shpe-uh-website/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
     database.py           # SQLite engine + session factory
     seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), and sample events — run once: python seed.py
-    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, resume_routes
+    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
-    models/               # SQLModel table definitions (user/, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
+    models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py
     validators/           # email.py (normalize_email)
     tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers
-    .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, optional SMTP_* (never commit)
+    .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
 ```
 
 ## Running Locally
@@ -63,6 +63,10 @@ Runs on http://localhost:5173
 SECRET_KEY=<random hex — generate with: python3 -c "import secrets; print(secrets.token_hex(32))">
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Base URL of the frontend, used to build password-reset links in emails.
+# Defaults to http://localhost:5173 if unset.
+FRONTEND_URL=http://localhost:5173
 
 # Optional — reminder emails. Without SMTP_HOST, emails print to the console (dev mode).
 SMTP_HOST=smtp.gmail.com
@@ -119,6 +123,8 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 | Path | Component | Auth required |
 |------|-----------|---------------|
 | `/` | `pages/home.jsx` | No |
+| `/forgot-password` | `pages/forgot-password.jsx` | No |
+| `/reset-password` | `pages/reset-password.jsx` (token via `?token=`) | No |
 | `/about` | `pages/about.jsx` | No |
 | `/membershpe` | `pages/membershpe.jsx` | No |
 | `/sponsors` | `pages/sponsors.jsx` | No |
@@ -135,8 +141,10 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 ## Backend API Endpoints
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/login` | No | Returns JWT token |
+| POST | `/login` | No | Returns JWT token (rate limited: 5/minute per IP) |
 | POST | `/signup` | No | Creates user, returns JWT token |
+| POST | `/password-reset/request` | No | Always 200 with a generic body; if the account exists, emails a single-use reset link to cougarnet_email (rate limited: 3/hour per IP) |
+| POST | `/password-reset/confirm` | No | Sets a new password from a valid token; generic 400 for unknown/used/expired tokens |
 | GET | `/me` | Yes | Returns current user (includes `points`) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | GET | `/events` | No | All events ordered by start_time (public, powers the calendar) |
@@ -172,6 +180,17 @@ The `api.js` axios instance reads `VITE_API_URL` — without this set, all API c
 - `services/email_services.py` — `send_email(to, subject, body)`: SMTP via `SMTP_*` env vars; with no `SMTP_HOST` it prints to the console and returns True (dev mode). SMTP failure returns False (no raise).
 - Frontend: the public `/calendar` page shows a "Remind me by email" button on future events (toggles to cancel). Signed-out users are sent to `/signin` with `location.state.from`, same as PrivateRoute. Reminder state comes from `getMyReminders()`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
+
+## Password reset & rate limiting
+- `models/user/pw_reset_token.py` — `PasswordResetToken(user_id, token_hash, created_at, expires_at, used_at)`. Only the **SHA-256 hash** of the raw token is stored (the raw token is high-entropy `secrets.token_urlsafe(32)`, so SHA-256 — not Argon2 — is correct here). A token is active while `used_at` is NULL and `expires_at` is in the future; TTL is 1 hour. Requesting a new reset retires any prior active tokens for that user.
+- `services/pw_reset_services.py` — `generate_reset_token()` / `hash_reset_token()`.
+- `routes/pw_reset_routes.py` — `POST /password-reset/request` and `POST /password-reset/confirm`. **Never reveal whether an email exists**: request always returns the same 200 body (even if `send_email` fails), and confirm returns one generic 400 for unknown/used/expired tokens. Reset emails go to **cougarnet_email** (the verified UH address). The link is `{FRONTEND_URL}/reset-password?token=<raw>`.
+- Confirm reuses the shared `validate_password_strength()` from `models/user/user_schemas.py` (also used by `UserCreate`) — change password rules there, in one place.
+- **JWT invalidation:** `create_access_token` sets `iat`; a successful reset stamps `User.password_changed_at`, and `get_current_user` rejects tokens whose `iat` predates it. PyJWT floors `iat` to whole seconds while `password_changed_at` keeps microseconds, so the comparison is at **whole-second granularity with strict `<`** — a token issued in the same second as the reset stays valid. Tokens without `iat` are rejected once `password_changed_at` is set.
+- **Rate limiting (slowapi):** the `Limiter` lives in `services/rate_limit.py` (NOT `main.py` — route modules import it, and importing from `main` would be circular). `main.py` attaches it to `app.state` and registers the 429 handler. `/login` is `5/minute`, `/password-reset/request` is `3/hour` (keyed by client IP). slowapi-decorated endpoints must take a `request: Request` parameter, with the `@limiter.limit(...)` decorator **below** the router decorator.
+- slowapi's counters are in-memory and persist across tests in one process — `tests/conftest.py` has an autouse `reset_rate_limiter` fixture calling `limiter.reset()` so counts don't bleed between tests. Auth tests that must exercise real JWT flow use the `unauth_client` fixture (`client` overrides `get_current_user` and bypasses auth).
+- The `password_changed_at` column lives on the `User` TABLE model (not `UserBase`), same pattern as `resume_filename`. Adding it required a db rebuild (done); new tables like `passwordresettoken` are created by `create_all()` automatically.
+- Frontend: `/forgot-password` (always shows the same "check your email" confirmation) and `/reset-password` (reads `?token=`, new + confirm fields, redirects to `/signin` with `location.state.message` on success — signin renders that message). Sign-in has a "Forgot password?" link and maps 429 to a "too many attempts" error. `api.js`: `requestPasswordReset`, `confirmPasswordReset` — both **public**, no auth headers.
 
 ## Profile page & resume uploads
 - `pages/profile.jsx` (route `/profile`, in the member dropdown under Committees) shows the signed-in user's info **read-only** (no editing) plus a resume section. It reads everything from `useAuth().user` (the `/me` payload) and tracks resume state locally.
