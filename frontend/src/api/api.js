@@ -17,6 +17,15 @@ export function signupUser(data) {
   return api.post("/signup", data);
 }
 
+// Public — no auth headers on either password-reset call
+export function requestPasswordReset(email) {
+  return api.post("/password-reset/request", { email });
+}
+
+export function confirmPasswordReset(token, newPassword) {
+  return api.post("/password-reset/confirm", { token, new_password: newPassword });
+}
+
 export function getMe(token) {
   return api.get("/me", {
     headers: { Authorization: `Bearer ${token}` },

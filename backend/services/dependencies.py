@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from sqlmodel import Session
@@ -23,15 +24,27 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: Ses
 
         if email is None:
             raise credentials_exception
-        
+
         token_data = TokenData(email=email)
 
     except InvalidTokenError:
         raise credentials_exception
-    
+
     user = get_user_by_email(session, token_data.email)
 
     if user is None:
         raise credentials_exception
-    
+
+    # A password reset invalidates every token issued before it. PyJWT floors
+    # iat to whole seconds while password_changed_at keeps microseconds, so
+    # compare at whole-second granularity with strict < — a token issued in
+    # the same second as the reset stays valid.
+    if user.password_changed_at is not None:
+        iat = payload.get("iat")
+        if iat is None:
+            raise credentials_exception
+        issued_at = datetime.fromtimestamp(int(iat), tz=timezone.utc).replace(tzinfo=None)
+        if issued_at < user.password_changed_at.replace(microsecond=0):
+            raise credentials_exception
+
     return user

@@ -8,6 +8,13 @@ _SAFE_NAME_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' \-]{2,50}$")
 _PSID_RE = re.compile(r"^\d{7}$")
 _PHONE_RE = re.compile(r"^[\d\s\(\)\-\+\.]{7,20}$")
 
+
+def validate_password_strength(v: str) -> str:
+    """Shared password rule — used by UserCreate and the password-reset confirm endpoint."""
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters.")
+    return v
+
 class UserBase(SQLModel):
     first_name: str
     last_name: str
@@ -155,9 +162,7 @@ class UserCreate(UserBase, UserMultiSelectedFields):
     @field_validator("password", mode="before")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters.")
-        return v
+        return validate_password_strength(str(v))
 
 
 class UserOut(UserBase, UserMultiSelectedFields):

@@ -11,6 +11,8 @@ export default function SignIn() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Shown after a successful password reset (set by /reset-password)
+  const successMessage = location.state?.message;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -24,6 +26,8 @@ export default function SignIn() {
     } catch (err) {
       if (err.response?.status === 401) {
         setError("Incorrect email or password.");
+      } else if (err.response?.status === 429) {
+        setError("Too many attempts. Please wait a minute and try again.");
       } else {
         setError("Something went wrong. Please try again.");
       }
@@ -69,6 +73,12 @@ export default function SignIn() {
           Sign in to your SHPE UH account
         </p>
 
+        {successMessage && (
+          <p style={{ color: "#15803d", fontSize: "14px", fontWeight: 500, marginBottom: "18px" }}>
+            {successMessage}
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <label style={{ fontSize: "14px", fontWeight: 600, color: "#374151" }}>
@@ -103,6 +113,12 @@ export default function SignIn() {
               {error}
             </p>
           )}
+
+          <p style={{ textAlign: "right", fontSize: "14px", margin: 0 }}>
+            <Link to="/forgot-password" style={{ color: "#0070C0", fontWeight: 600, textDecoration: "none" }}>
+              Forgot password?
+            </Link>
+          </p>
 
           <button
             type="submit"
