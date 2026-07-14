@@ -12,6 +12,8 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      SECRET_KEY: ci-dummy-secret-not-used-in-production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
