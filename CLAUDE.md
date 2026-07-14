@@ -84,6 +84,15 @@ VITE_BEHOLD_FEED_URL=https://feeds.behold.so/<feed-id>   # public Behold JSON fe
 The `api.js` axios instance reads `VITE_API_URL` — without this set, all API calls will fail.
 `VITE_BEHOLD_FEED_URL` powers the home page's Instagram section; if unset or the fetch fails, the grid keeps its shimmer placeholder (layout never breaks).
 
+## Continuous Integration
+
+GitHub Actions runs on every push and pull request to `main` and `dev`:
+
+- **backend** — installs `backend/requirements.txt` and runs `pytest tests/`
+- **frontend** — runs `npm ci`, `npm run lint`, and `npm run build`
+
+Both jobs must pass before merging into `main`.
+
 ## Key Rules & Lessons Learned
 
 ### Never commit secrets
