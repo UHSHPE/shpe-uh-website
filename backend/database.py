@@ -12,6 +12,9 @@ import models.event_reminder  # noqa: F401
 import models.committee  # noqa: F401
 import models.committee_message  # noqa: F401
 import models.notification  # noqa: F401
+import models.shop.product  # noqa: F401
+import models.shop.order  # noqa: F401
+import models.shop.shop_settings  # noqa: F401
 
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"

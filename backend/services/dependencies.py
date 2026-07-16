@@ -5,11 +5,17 @@ from sqlmodel import Session
 import jwt
 from jwt.exceptions import InvalidTokenError
 
+from fastapi.security import OAuth2PasswordBearer
+
 from security.jwt import oauth2_scheme, SECRET_KEY, ALGORITHM, TokenData
 from services.user_services import get_user_by_email
 from database import get_session
 
 SessionDependencies = Annotated[Session, Depends(get_session)]
+
+# Like oauth2_scheme but returns None instead of raising 401 when no token is
+# sent — for public endpoints that behave slightly differently when logged in.
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: SessionDependencies):
     credentials_exception = HTTPException(
@@ -47,4 +53,31 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: Ses
         if issued_at < user.password_changed_at.replace(microsecond=0):
             raise credentials_exception
 
+    return user
+
+
+def get_optional_user(
+    token: Annotated[str | None, Depends(oauth2_scheme_optional)],
+    session: SessionDependencies,
+):
+    """Current user if a valid bearer token was sent, else None. Used by public
+    shop endpoints so a logged-in buyer's order links to their account."""
+    if token is None:
+        return None
+    try:
+        return get_current_user(token, session)
+    except HTTPException:
+        return None
+
+
+def require_shop_admin(user=Depends(get_current_user)):
+    """Gate for shop-admin endpoints — mirrors the committee require_chair
+    pattern. Shop admin is held by the comms director and marketing chair."""
+    from models.user.user_enums import SHOP_ADMIN_ROLES
+
+    if user.role not in SHOP_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only shop admins can do that",
+        )
     return user

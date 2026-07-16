@@ -105,3 +105,79 @@ export function deleteResume() {
 export function markNotificationRead(notificationId) {
   return api.post(`/notifications/${notificationId}/read`, {}, { headers: authHeaders() });
 }
+
+// --- Shop: public storefront (no auth headers) ---
+
+// Tagline + per-order item cap, editable by shop admins.
+export function getShopSettings() {
+  return api.get("/shop/settings");
+}
+
+export function getShopProducts() {
+  return api.get("/shop/products");
+}
+
+export function getShopProduct(productId) {
+  return api.get(`/shop/products/${productId}`);
+}
+
+// Public image URL — safe to use directly in an <img src>.
+export function productImageUrl(product) {
+  return product?.image_filename
+    ? `${api.defaults.baseURL}/shop/products/${product.id}/image`
+    : null;
+}
+
+// Public endpoint, but the token rides along when present so a signed-in
+// buyer's order links to their account (guests send no auth header).
+export function createShopOrder(payload) {
+  return api.post("/shop/orders", payload, { headers: authHeaders() });
+}
+
+// Buyer status lookup — requires the order code AND the buyer email.
+export function getShopOrder(code, email) {
+  return api.get(`/shop/orders/${code}`, { params: { email } });
+}
+
+export function getMyShopOrders() {
+  return api.get("/shop/orders/me", { headers: authHeaders() });
+}
+
+// --- Shop: manager only ---
+
+export function updateShopSettings(data) {
+  return api.patch("/shop/settings", data, { headers: authHeaders() });
+}
+
+export function getAdminProducts() {
+  return api.get("/shop/admin/products", { headers: authHeaders() });
+}
+
+export function createProduct(data) {
+  return api.post("/shop/products", data, { headers: authHeaders() });
+}
+
+export function updateProduct(productId, data) {
+  return api.patch(`/shop/products/${productId}`, data, { headers: authHeaders() });
+}
+
+export function deleteProduct(productId) {
+  return api.delete(`/shop/products/${productId}`, { headers: authHeaders() });
+}
+
+export function uploadProductImage(productId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.post(`/shop/products/${productId}/image`, formData, { headers: authHeaders() });
+}
+
+export function getShopOrders(status) {
+  return api.get("/shop/orders", {
+    headers: authHeaders(),
+    params: status ? { status } : {},
+  });
+}
+
+export function updateShopOrder(orderId, data) {
+  return api.patch(`/shop/orders/${orderId}`, data, { headers: authHeaders() });
+}

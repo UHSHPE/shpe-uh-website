@@ -25,20 +25,23 @@ shpe-uh-website/
   frontend/
     src/
       api/api.js          # Axios instance (baseURL from VITE_API_URL env var)
-      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute
-      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile
-      App.jsx             # Routes
+      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute, CartDrawer, ProductImage, StatusPill, MyOrders, ShopManager, shopIcons
+      context/            # AuthContext, CartContext (cart lines + drawer + toast, persisted to localStorage)
+      utils/shop.js       # formatCents, STATUS_META, isShopManager, order helpers
+      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile, shop, shop-product, shop-checkout, shop-order
+      App.jsx             # Routes (+ renders CartDrawer/ShopToast globally)
   backend/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
     database.py           # SQLite engine + session factory
-    seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), and sample events — run once: python seed.py
-    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes
+    seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the shop-settings row, 4 shop products, and sample events — run once: python seed.py
+    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes, shop_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
-    models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
+    uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
+    models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, shop/ (product.py, order.py, shop_settings.py), committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py
     validators/           # email.py (normalize_email)
-    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers
+    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers; shop_tests/conftest.py adds manager_client/make_product/sent_emails
     .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
 ```
 
@@ -127,6 +130,8 @@ Both jobs must pass before merging into `main`.
 - Do not add `python-dotenv` to requirements — it is already a transitive dependency; just call `load_dotenv()` at the top of any file that needs env vars
 - Do not create new axios instances — reuse the one in `api/api.js`
 - Do not use `React.useState` / `React.useEffect` — use named imports: `import { useState, useEffect } from 'react'`
+- Do not call setState synchronously inside a `useEffect` body — the lint config (react-hooks/set-state-in-effect) fails the build. For "reset state when a prop/route param changes" or "prefill once async data arrives", use the render-phase adjustment pattern (compare-and-set during render, like `Header.jsx`'s `prevPath` and `shop-checkout.jsx`'s prefill)
+- Do not export helpers/constants from a file that also exports a React component — react-refresh lint fails. Put shared helpers in `utils/` and components in their own files (this is why `StatusPill` is its own component and `utils/shop.js` has no JSX)
 
 ## Pages & Routes
 | Path | Component | Auth required |
@@ -140,6 +145,10 @@ Both jobs must pass before merging into `main`.
 | `/gallery` | `pages/gallery.jsx` | No |
 | `/calendar` | `pages/calendar.jsx` | No |
 | `/get-involved` | `pages/get-involved.jsx` (commented out) | No |
+| `/shop` | `pages/shop.jsx` (public storefront) | No |
+| `/shop/:productId` | `pages/shop-product.jsx` (product detail) | No |
+| `/shop/checkout` | `pages/shop-checkout.jsx` (contact → simulated payment) | No |
+| `/shop/order/:code` | `pages/shop-order.jsx` (confirmation + status; lookup needs buyer email) | No |
 | `/dashboard` | `pages/dashboard.jsx` | Yes (PrivateRoute) |
 | `/committees` | `pages/committees.jsx` | Yes (PrivateRoute) |
 | `/profile` | `pages/profile.jsx` | Yes (PrivateRoute) |
@@ -171,6 +180,21 @@ Both jobs must pass before merging into `main`.
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event (404 unknown event, 409 already set, 400 already started) |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder (404 if none active) |
 | GET | `/events/reminders/me` | Yes | Current user's active (unsent) reminders |
+| GET | `/shop/settings` | No | Shop settings singleton (tagline + `order_item_cap`) — the storefront reads both |
+| PATCH | `/shop/settings` | Shop admin | Update tagline and/or per-order item cap |
+| GET | `/shop/products` | No | Active products only, ordered by created_at |
+| GET | `/shop/products/{id}` | No | One product; 404 for unknown OR inactive |
+| GET | `/shop/products/{id}/image` | No | Product image (FileResponse) |
+| POST | `/shop/orders` | Optional | Create order after simulated payment (rate limited 10/minute); server recomputes total; links `user_id` if a valid bearer token rides along |
+| GET | `/shop/orders/me` | Yes | Signed-in member's order history (defined BEFORE `/orders/{code}` so "me" isn't swallowed) |
+| GET | `/shop/orders/{code}?email=` | No | Buyer lookup; wrong/unknown code or email → one generic 404 |
+| POST | `/shop/products` | Shop admin | Create product (201) |
+| PATCH | `/shop/products/{id}` | Shop admin | Edit / toggle `is_active` |
+| DELETE | `/shop/products/{id}` | Shop admin | Hard delete (204); order lines keep snapshots |
+| POST | `/shop/products/{id}/image` | Shop admin | Upload PNG/JPEG/WebP ≤5 MB (magic-byte checked) |
+| GET | `/shop/admin/products` | Shop admin | All products incl. inactive (admin table) |
+| GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
+| PATCH | `/shop/orders/{id}` | Shop admin | `{status?, notes?}`; illegal transition → 400; `ready` emails buyer |
 
 ## Committee leadership, notifications & messaging
 - Committees support **co-chairs**: a committee's chairs are the users with a `CommitteeMembership` row where `is_chair=True` (one row per co-chair). `CommitteeOut.chairs` is a **list** of `ChairOut` (name + email) and `CommitteeOut.is_chair` reflects the current user's membership row.
@@ -189,6 +213,22 @@ Both jobs must pass before merging into `main`.
 - `services/email_services.py` — `send_email(to, subject, body)`: SMTP via `SMTP_*` env vars; with no `SMTP_HOST` it prints to the console and returns True (dev mode). SMTP failure returns False (no raise).
 - Frontend: the public `/calendar` page shows a "Remind me by email" button on future events (toggles to cancel). Signed-out users are sent to `/signin` with `location.state.from`, same as PrivateRoute. Reminder state comes from `getMyReminders()`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
+
+## Merch shop (spec: specs/shop/shop-page.md)
+- **Payment is simulated in v1** — `POST /shop/orders` is called after a fake ~1.3s "Processing…" delay on the frontend and the order is created directly with status `paid`. Real Square checkout later replaces only that step; keep order creation decoupled from payment.
+- **Models** (`models/shop/`): `Product` (with `ProductType` enum `apparel`/`item`; `sizes` is a `list[str] | None` stored via `sa_column=Column(JSON)`; there is **no stock column** — no inventory is tracked, `is_active` is the soft-delete/sold-out toggle), `Order` + `OrderItem` (`OrderStatus`: `paid → ready → picked_up`, plus `cancelled`; terminal is `picked_up`, NOT `completed`), and `ShopSettings` (singleton row: `tagline` + `order_item_cap`, defaults in the model; always access via `shop_services.get_shop_settings()`, which creates the row on first use). Money is integer **cents**; timestamps naive UTC via `utcnow()`. All three modules are imported in `database.py`.
+- **Per-order quantity cap** (no inventory): `create_order` rejects any line item whose quantity exceeds `ShopSettings.order_item_cap` (default 5) with a 400. Admins change the cap (and the storefront tagline) via `PATCH /shop/settings`; the frontend `CartContext` fetches the cap once and clamps add-to-cart and the steppers client-side.
+- **`OrderItem` snapshots `product_name` and `unit_price_cents`** at purchase time, so orders stay readable after a product is edited or hard-deleted.
+- **Order codes**: `SHPE-` + 4 chars from an alphabet without lookalikes (no 0/O/1/I) — `generate_order_code` retries until unique.
+- **State machine** lives in `shop_services.ALLOWED_TRANSITIONS`; `apply_status_transition` stamps `ready_at`/`picked_up_at` and emails the buyer on `ready`. New orders create a `Notification` row + email for **every shop admin** (to their `personal_email`); the buyer gets NO email at order time.
+- **Roles**: there is **no dedicated shop-manager role**. Shop admin rides on `SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair}` (defined in `models/user/user_enums.py`); `require_shop_admin` in `services/dependencies.py` gates admin endpoints (mirrors `require_chair`). Giving `marketing_chair` shop access does NOT affect their committee-chair permissions (`require_chair` checks `role == committee.chair_role`, still true). Seed provides `comms.director@cougarnet.uh.edu` (comm_director) and Valeria Zabala (`valeria.zabala@cougarnet.uh.edu`, marketing_chair from COMMITTEE_ROSTER), both `password123`.
+- **`get_optional_user`** in `services/dependencies.py` (`OAuth2PasswordBearer(auto_error=False)`): returns the user for a valid token, None otherwise (never 401s). Used by `POST /shop/orders` so signed-in buyers' orders link to `user_id`. In tests, override it explicitly — the `client` fixture only overrides `get_current_user`.
+- **Order lookup privacy**: `GET /shop/orders/{code}` requires a matching `?email=` (normalized); unknown code and wrong email return the same generic 404. Never reveal a code exists.
+- **Route ordering**: `/shop/orders/me` is defined before `/shop/orders/{order_code}` in `shop_routes.py` — keep it that way or "me" matches the code param.
+- **Product images** mirror the resume pattern: `PRODUCT_IMAGE_DIR` module constant (tests monkeypatch it to `tmp_path`), deterministic filename `product_<id>.<ext>`, content-type + magic-byte + ≤5 MB validation (PNG/JPEG/WebP).
+- **Tests** in `tests/shop_tests/`; its `conftest.py` adds `manager_client` (auth'd as a `Role.comm_director` user — pass `role=Role.marketing_chair` to `make_manager` to cover the other admin role), `make_product`, and `sent_emails` (monkeypatches `shop_services.send_email`). Do NOT use `client` and `manager_client` in the same test — both override `get_current_user` on the same app and the last fixture wins.
+- **Frontend**: cart state lives in `context/CartContext.jsx` (localStorage key `shpe_cart`, lines merge by product+size, drawer + 2s toast included); `CartDrawer`/`ShopToast` render once in `App.jsx`. Category filter pills on `/shop` are derived from the `product_type`s present — never hardcode "Stickers". `createShopOrder` sends `authHeaders()` (empty for guests) so member orders link. After checkout the confirmation gets the order via route state; revisits look it up with code+email from sessionStorage (`shpe_last_order`), `?email=`, or a prompt. The Shop Manager panel (Overview / Products / Orders / Notifications / Settings tabs) + My Orders live inside `pages/profile.jsx` (`components/ShopManager.jsx`, `components/MyOrders.jsx`); the admin check is `isShopManager(user)` from `utils/shop.js`, which matches the two `SHOP_ADMIN_ROLES` role strings. The `/shop` hero tagline comes from `GET /shop/settings` with a hardcoded product-agnostic fallback.
+- **Shop styling tokens** (page bg, gray ramp additions, the four status color sets `--status-*`, `--gradient-success`, `--font-mono`, `--placeholder-hatch`) are in `styles.css` `:root` under "Shop"; keyframes are prefixed `shop*` (`shopPulse`, `shopSlideInRight`, …). The design handoff lives in `specs/shop/design_handoff_merch_shop/`.
 
 ## Password reset & rate limiting
 - `models/user/pw_reset_token.py` — `PasswordResetToken(user_id, token_hash, created_at, expires_at, used_at)`. Only the **SHA-256 hash** of the raw token is stored (the raw token is high-entropy `secrets.token_urlsafe(32)`, so SHA-256 — not Argon2 — is correct here). A token is active while `used_at` is NULL and `expires_at` is in the future; TTL is 1 hour. Requesting a new reset retires any prior active tokens for that user.

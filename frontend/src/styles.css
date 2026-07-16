@@ -78,6 +78,31 @@
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
+  /* ---- Shop (see specs/shop/shop-page.md §9.1) ---- */
+  --page-bg:       #F4F6FA;   /* app background behind shop pages */
+  --surface-soft:  #F3F4F6;   /* row separators, chip backgrounds */
+  --info-border:   #CFE2F5;   /* blue info-callout border */
+  --success-deep:  #065F46;
+  --success-bg:    #ECFDF5;
+  --success-border:#C7EBDC;
+  --gradient-success: linear-gradient(135deg, #065F46 0%, #0F766E 100%);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --placeholder-hatch: repeating-linear-gradient(135deg, #f2f6fc, #f2f6fc 10px, #eaf0f9 10px, #eaf0f9 20px);
+
+  /* Order-status color sets (text / bg / border) */
+  --status-paid-text:   #005A9C;
+  --status-paid-bg:     #EFF6FF;
+  --status-paid-border: #CFE2F5;
+  --status-ready-text:   #C2410C;
+  --status-ready-bg:     #FFF3EB;
+  --status-ready-border: #FBD9C4;
+  --status-picked-text:   #065F46;
+  --status-picked-bg:     #ECFDF5;
+  --status-picked-border: #C7EBDC;
+  --status-cancelled-text:   #6B7280;
+  --status-cancelled-bg:     #F3F4F6;
+  --status-cancelled-border: #E5E7EB;
+
   /* ---- Legacy aliases (kept: referenced across existing pages) ---- */
   --blue:    var(--shpe-blue);
   --navText: var(--ink);
@@ -276,6 +301,66 @@ a{ color:inherit; text-decoration:none; }
   background: radial-gradient(circle at 30% 30%, rgba(11,79,132,0.25), rgba(11,79,132,0.08));
   filter: blur(2px);
   z-index:1;
+}
+
+/* SHOP */
+@keyframes shopPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.5; } }
+@keyframes shopSlideInRight{ from{ transform:translateX(30px); opacity:.4; } to{ transform:translateX(0); opacity:1; } }
+@keyframes shopFadeIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes shopRiseIn{ from{ transform:translateY(10px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+@keyframes shopSpin{ to{ transform:rotate(360deg); } }
+@keyframes shopToastIn{ from{ transform:translate(-50%,14px); opacity:0; } to{ transform:translate(-50%,0); opacity:1; } }
+
+.cartBtn{
+  position:relative;
+  width:40px; height:40px;
+  border-radius:var(--radius-pill);
+  border:1px solid var(--border);
+  background:#fff;
+  color:var(--shpe-blue);
+  display:grid; place-items:center;
+  cursor:pointer;
+}
+.cartBtnBadge{
+  position:absolute;
+  top:-4px; right:-4px;
+  min-width:18px; height:18px;
+  padding:0 4px;
+  border-radius:var(--radius-pill);
+  background:var(--shpe-red);
+  color:#fff;
+  font-size:11px; font-weight:700;
+  display:grid; place-items:center;
+}
+.cartBtnMobile{ display:none; }
+
+/* Product cards lift on hover (hover states need CSS, not inline styles) */
+.shopCard{
+  transition:box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  box-shadow:var(--shadow-card);
+}
+.shopCard:hover{ box-shadow:var(--shadow-pop); transform:translateY(-3px); }
+
+.shopInput{
+  width:100%;
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  padding:11px 13px;
+  font-size:14px;
+  outline:none;
+  color:var(--ink);
+  font-family:var(--font-body);
+  background:#fff;
+}
+.shopInput:focus{ border-color:var(--shpe-blue-bright); }
+
+.shopDetailGrid{ display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
+.checkoutGrid{ display:grid; grid-template-columns:1.4fr 1fr; gap:28px; align-items:start; }
+@media (max-width: 860px){
+  .shopDetailGrid{ grid-template-columns:1fr; gap:24px; }
+  .checkoutGrid{ grid-template-columns:1fr; }
+  .cartBtnMobile{ display:grid; }
+  .cartBtnDesktop{ display:none; }
 }
 
 /* FOOTER */

@@ -7,6 +7,7 @@ import models.user
 
 from models.event import Event
 from models.committee import Committee, CommitteeMembership
+from models.shop.product import Product, ProductType
 from models.user.user import User
 from models.user.user_schemas import UserCreate
 from models.user.user_enums import ProfDev, RaceEthnicity, Role, Gender, Colleges, Classification, GPA, ExpGradDate, MembershipStatus, ShirtSize, Industry
@@ -182,6 +183,67 @@ def seed_committees_and_chairs(s: Session):
     s.commit()
 
 
+def seed_comm_director(s: Session):
+    """Shop admin is held by the comms director + marketing chair roles. The
+    marketing chair is already in COMMITTEE_ROSTER; comm_director is an
+    e-board role, so seed one here to make that path testable."""
+    existing = s.exec(
+        select(User).where(User.cougarnet_email == "comms.director@cougarnet.uh.edu")
+    ).first()
+    if existing:
+        print("Skipped comms director — already exists.")
+        return
+
+    comms = chair_user_create("Comms", "Director", Role.comm_director, 900)
+    create_user(s, comms)
+    print("Seeded comms director user.")
+
+
+def seed_shop_settings(s: Session):
+    from services.shop_services import get_shop_settings
+
+    get_shop_settings(s)
+    print("Ensured shop settings row.")
+
+
+def seed_products(s: Session):
+    if s.exec(select(Product)).first():
+        print("Skipped products — already seeded.")
+        return
+
+    apparel_sizes = ["S", "M", "L", "XL", "2XL"]
+    products = [
+        Product(
+            name="SHPE UH Quarter-Zip",
+            description="Navy quarter-zip with the embroidered SHPE UH logo. Perfect for career fairs and chilly lecture halls.",
+            price_cents=4500,
+            product_type=ProductType.apparel,
+            sizes=apparel_sizes,
+        ),
+        Product(
+            name="SHPE UH Sweater",
+            description="Cozy crewneck sweater with the chapter wordmark across the chest.",
+            price_cents=4000,
+            product_type=ProductType.apparel,
+            sizes=apparel_sizes,
+        ),
+        Product(
+            name="SHPE UH Logo Sticker",
+            description="Die-cut vinyl sticker of the chapter logo. Weatherproof — laptops, bottles, cars.",
+            price_cents=300,
+            product_type=ProductType.item,
+        ),
+        Product(
+            name="Familia Sticker Pack",
+            description="Pack of five assorted SHPE UH stickers.",
+            price_cents=1000,
+            product_type=ProductType.item,
+        ),
+    ]
+    s.add_all(products)
+    print(f"Seeded {len(products)} products.")
+
+
 def seed_events(s: Session):
     now = datetime.utcnow()
 
@@ -225,6 +287,9 @@ def seed():
     with Session(engine) as s:
         seed_test_user(s)
         seed_committees_and_chairs(s)
+        seed_comm_director(s)
+        seed_shop_settings(s)
+        seed_products(s)
         seed_events(s)
         s.commit()
 

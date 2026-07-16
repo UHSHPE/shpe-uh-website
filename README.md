@@ -12,6 +12,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
+- **Merch Shop** — Public storefront with cart and checkout (payment **simulated** in v1; Square planned). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an email when their order is ready for pickup
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -123,12 +124,15 @@ Frontend runs at **http://localhost:5173**.
 
 ## Seeded Accounts
 
-`python seed.py` creates a test member, all 14 committees, and their chairs/co-chairs (22 chair accounts). All seeded accounts use the password `password123`.
+`python seed.py` creates a test member, all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and four sample shop products. All seeded accounts use the password `password123`.
 
 | Account | Email | Role |
 |---|---|---|
 | Test member | `test@cougarnet.uh.edu` | Member |
 | Committee chairs | `<first>.<last>@cougarnet.uh.edu` (e.g. `angel.montoya@cougarnet.uh.edu`) | Chair of their committee |
+| Comms director | `comms.director@cougarnet.uh.edu` | Communication Director (shop admin) |
+
+The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the other shop admin.
 
 The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
@@ -141,16 +145,18 @@ shpe-uh-website/
 ├── frontend/
 │   └── src/
 │       ├── api/            # Axios instance + all API call functions (api.js)
-│       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute
+│       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
+│       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
+│       ├── utils/          # Shared helpers (money formatting, order-status styling)
 │       ├── pages/          # One file per route
 │       └── App.jsx         # Route definitions
 └── backend/
     ├── main.py             # FastAPI app: routers + background reminder-email loop
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
-    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, password reset, resume
-    ├── uploads/            # Uploaded resume PDFs (gitignored, created on first upload)
-    ├── models/             # SQLModel table definitions (user/, committee, event, notification, ...)
+    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, password reset, resume, shop
+    ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
+    ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
     ├── services/           # DB session deps, user/committee/reminder/email/password-reset services, rate limiter
     ├── validators/         # Input validation (email normalization)
@@ -167,13 +173,17 @@ shpe-uh-website/
 | `/sponsors` | Sponsors | No |
 | `/gallery` | Photo gallery | No |
 | `/calendar` | Events calendar (with "Remind me by email") | No |
+| `/shop` | Merch shop — browse products, filter by category | No |
+| `/shop/:productId` | Product detail — pick a size (apparel) and quantity, add to cart | No |
+| `/shop/checkout` | Two-step checkout: contact details, then (simulated) payment | No |
+| `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
 | `/signup` | Sign up | No |
 | `/forgot-password` | Request a password-reset email | No |
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
-| `/profile` | View your profile info and upload a PDF resume | Yes |
+| `/profile` | Profile info, PDF resume, order history — plus the shop-management panel for shop admins (comms director / marketing chair) | Yes |
 
 ## API Reference
 
@@ -200,6 +210,23 @@ shpe-uh-website/
 | GET | `/committees/{id}/messages` | Member/Chair | Committee messages, newest first |
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark a notification as read |
+| GET | `/shop/settings` | No | Shop settings (storefront tagline + per-order item cap) |
+| GET | `/shop/products` | No | Active shop products |
+| GET | `/shop/products/{id}` | No | One active product (type, sizes, price) |
+| GET | `/shop/products/{id}/image` | No | Product image |
+| POST | `/shop/orders` | No | Place an order after the (simulated) payment; total computed server-side (rate limited: 10/minute) |
+| GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
+| GET | `/shop/orders/me` | Yes | Signed-in member's order history |
+| PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |
+| POST | `/shop/products` | Shop admin | Create a product |
+| PATCH | `/shop/products/{id}` | Shop admin | Edit a product / toggle availability |
+| DELETE | `/shop/products/{id}` | Shop admin | Remove a product |
+| POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤5 MB) |
+| GET | `/shop/admin/products` | Shop admin | All products including sold-out |
+| GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
+| PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
+
+"Shop admin" = a user whose role is **Communication Director** or **Marketing Chair**.
 
 ## Committees & Chairs
 
@@ -210,6 +237,16 @@ Committees support **co-chairs** — a committee can have one or two chairs, and
 - Is notified when a member joins
 
 Chair permissions are tied to the user's `Role` (e.g. `academic_chair`) matching the committee's `chair_role`, plus an `is_chair` membership row. Both are set up by the seed.
+
+## Merch Shop
+
+The shop sells chapter apparel (with sizes) and items like stickers. Anyone can browse and buy — no account needed; signed-in members get checkout prefilled and an order history under their profile.
+
+- **Payment is simulated in v1** — the "Pay" step instantly succeeds and no real money moves. A real Square checkout is planned and will replace only that step.
+- **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
+- Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
+- **No inventory is tracked.** Products are toggled sold-out/available, and each order is limited to a configurable number of units per item (default 5).
+- Shop administration belongs to the **Communication Director** and **Marketing Chair** roles: they manage products (create/edit, images, sold-out toggle), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** panel on their profile page.
 
 ## Running Tests
 
