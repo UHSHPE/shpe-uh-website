@@ -9,7 +9,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
-- **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it)
+- **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Gallery** — Photo gallery with an approval workflow
@@ -111,6 +111,24 @@ Frontend runs at **http://localhost:5173**.
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
 | `SMTP_PASSWORD` | No | SMTP password (use an app password for Gmail) | — |
 | `EMAIL_FROM` | No | From header; defaults to `SMTP_USER` | `SHPE UH <noreply@example.org>` |
+| `GDRIVE_RESUME_FOLDER_ID` | No | Drive folder that resume PDFs are synced to — must be the **app-created** folder id printed by `get_drive_refresh_token.py` (a hand-made folder isn't reachable under the `drive.file` scope). **Unset = dev mode:** resumes stay local only | `1AbC...xyz` |
+| `GDRIVE_OAUTH_CLIENT_ID` | No | OAuth client id for Drive resume sync (see setup below) | `...apps.googleusercontent.com` |
+| `GDRIVE_OAUTH_CLIENT_SECRET` | No | OAuth client secret for Drive resume sync | — |
+| `GDRIVE_OAUTH_REFRESH_TOKEN` | No | Refresh token minted by `get_drive_refresh_token.py` | — |
+
+#### Google Drive resume sync (optional, one-time setup)
+
+When configured, every resume upload is mirrored to the Drive folder, re-uploads replace the old copy in place, and deleting a resume removes it from Drive too. Every resume is renamed to `First_Last_PSID.pdf` (the uploaded filename is discarded) — both locally and in Drive. Sync is best-effort: if Drive is unreachable the upload still succeeds locally.
+
+> **Why OAuth and not a service account?** Google blocks service accounts from uploading to personal My Drive folders (403 `storageQuotaExceeded` — they have no storage quota). A service account only works with a Google Workspace **Shared Drive**. For a folder on a personal Gmail account, the backend must upload *as you* via OAuth.
+
+> **Scoped to one folder.** The OAuth token uses the `drive.file` scope: the backend can only see and modify files/folders **it created itself** — never the rest of your Drive. That's why the setup script creates the resume folder for you (it can't reach a folder you made by hand). The folder is owned by you, in your My Drive, and you can move or rename it afterwards without breaking sync.
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create (or pick) a project and enable the **Google Drive API**.
+2. **APIs & Services → OAuth consent screen** — configure it and set Publishing status to **In production** (refresh tokens minted while in "Testing" expire after 7 days).
+3. **APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app** — copy the client id and secret.
+4. From `backend/`, run `.venv/bin/python get_drive_refresh_token.py <client_id> <client_secret> [folder name]` (folder name defaults to "SHPE Resume Book") — a browser opens; sign in with your Google account and approve. The script mints the refresh token and creates (or reuses) the resume folder.
+5. Paste the four printed `GDRIVE_*` lines into `backend/.env` and restart the backend.
 
 ### `frontend/.env.local`
 
@@ -148,11 +166,12 @@ shpe-uh-website/
     ├── main.py             # FastAPI app: routers + background reminder-email loop
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
+    ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, password reset, resume
     ├── uploads/            # Uploaded resume PDFs (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/password-reset services, rate limiter
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset services, rate limiter
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -184,9 +203,9 @@ shpe-uh-website/
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
-| POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤5 MB) |
+| POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
-| DELETE | `/me/resume` | Yes | Remove the current user's resume |
+| DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive) |
 | GET | `/events` | No | All events (powers the public calendar) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |

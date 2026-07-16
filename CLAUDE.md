@@ -30,13 +30,14 @@ shpe-uh-website/
       App.jsx             # Routes
   backend/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
+    get_drive_refresh_token.py  # One-time helper: mints the OAuth refresh token AND creates the app-owned resume folder (drive.file scope)
     database.py           # SQLite engine + session factory
     seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), and sample events — run once: python seed.py
     routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
     models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, drive_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py
     validators/           # email.py (normalize_email)
     tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers
     .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
@@ -74,6 +75,13 @@ SMTP_PORT=587
 SMTP_USER=<sender address>
 SMTP_PASSWORD=<app password>
 EMAIL_FROM=SHPE UH <noreply@example.org>   # optional, defaults to SMTP_USER
+
+# Optional — Google Drive resume sync. Without folder id + credentials set,
+# Drive sync is a console-printing no-op (dev mode). Setup steps in README.
+GDRIVE_RESUME_FOLDER_ID=<app-created folder id printed by get_drive_refresh_token.py — NOT a hand-made folder's id>
+GDRIVE_OAUTH_CLIENT_ID=<OAuth Desktop-app client id>
+GDRIVE_OAUTH_CLIENT_SECRET=<OAuth client secret>
+GDRIVE_OAUTH_REFRESH_TOKEN=<minted once via get_drive_refresh_token.py>
 ```
 
 **Frontend** (`frontend/.env.local`):
@@ -127,6 +135,7 @@ Both jobs must pass before merging into `main`.
 - Do not add `python-dotenv` to requirements — it is already a transitive dependency; just call `load_dotenv()` at the top of any file that needs env vars
 - Do not create new axios instances — reuse the one in `api/api.js`
 - Do not use `React.useState` / `React.useEffect` — use named imports: `import { useState, useEffect } from 'react'`
+- Do not use a Google **service account** to upload to a personal My Drive folder — Google 403s it (`storageQuotaExceeded`); use the OAuth refresh-token credentials instead (see "Google Drive resume sync")
 
 ## Pages & Routes
 | Path | Component | Auth required |
@@ -165,9 +174,9 @@ Both jobs must pass before merging into `main`.
 | GET | `/committees/{id}/messages` | Yes (member or chair) | Committee messages, newest first; 403 otherwise |
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark one notification read |
-| POST | `/me/resume` | Yes | Upload a PDF resume (multipart `file`); validates PDF type, ext, `%PDF` magic bytes, and ≤5 MB (400/413 otherwise). Sets `User.resume_filename` |
+| POST | `/me/resume` | Yes | Upload a PDF resume (multipart `file`); validates PDF type, ext, `%PDF` magic bytes, and ≤2 MB (400/413 otherwise). Renames it to `First_Last_PSID.pdf` (sets `User.resume_filename`); mirrors to Google Drive when `GDRIVE_*` is configured |
 | GET | `/me/resume` | Yes | Download the current user's resume PDF (`FileResponse`); 404 if none |
-| DELETE | `/me/resume` | Yes | Remove the current user's resume (204) |
+| DELETE | `/me/resume` | Yes | Remove the current user's resume (204); also deletes the Google Drive copy |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event (404 unknown event, 409 already set, 400 already started) |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder (404 if none active) |
 | GET | `/events/reminders/me` | Yes | Current user's active (unsent) reminders |
@@ -203,10 +212,13 @@ Both jobs must pass before merging into `main`.
 
 ## Profile page & resume uploads
 - `pages/profile.jsx` (route `/profile`, in the member dropdown under Committees) shows the signed-in user's info **read-only** (no editing) plus a resume section. It reads everything from `useAuth().user` (the `/me` payload) and tracks resume state locally.
-- Resumes are **PDF only** and **private to the owner** (no chair/other-user access). `User.resume_filename` (nullable, on the `User` table model — NOT `UserBase`, so signup is untouched) stores the original name; `UserOut` exposes it so the frontend knows whether a resume exists. The PDF lives on disk at `backend/uploads/resumes/user_<id>.pdf` (deterministic → re-upload overwrites).
-- `routes/resume_routes.py` validates uploads (PDF content-type + `.pdf` ext + `%PDF` magic bytes, ≤5 MB) and serves the file via `FileResponse`. Storage dir is `RESUME_DIR` (a module constant) — tests monkeypatch it to a `tmp_path` to stay hermetic.
+- Resumes are **PDF only** and **private to the owner** (no chair/other-user access). `User.resume_filename` (nullable, on the `User` table model — NOT `UserBase`, so signup is untouched) stores the canonical `First_Last_PSID.pdf` name; `UserOut` exposes it so the frontend knows whether a resume exists. The PDF lives on disk at `backend/uploads/resumes/user_<id>.pdf` (deterministic → re-upload overwrites).
+- `routes/resume_routes.py` validates uploads (PDF content-type + `.pdf` ext + `%PDF` magic bytes, ≤2 MB) and serves the file via `FileResponse`. Storage dir is `RESUME_DIR` (a module constant) — tests monkeypatch it to a `tmp_path` to stay hermetic. Every resume is **renamed to `First_Last_PSID.pdf`** (`_canonical_resume_name()` — multi-word names join with underscores, uploaded filename discarded); that canonical name is used for `resume_filename`, the download name, and the Drive copy. The profile page also pre-checks type and the 2 MB cap client-side for instant feedback — keep the two limits in sync.
+- **Google Drive sync** (`services/drive_services.py`): when `GDRIVE_RESUME_FOLDER_ID` + credentials are set, uploads mirror the PDF to that Drive folder under the same canonical `First_Last_PSID.pdf` name and deletes remove it. `User.resume_drive_file_id` (table model, internal — NOT in `UserOut`) tracks the Drive file: re-uploads **update in place** (same file id → no orphans; 404 falls back to create), and a failed Drive delete keeps the id so the next upload replaces the orphan. Sync is **best-effort**: failures are logged, never raised — the local file in `uploads/resumes/` stays the source of truth, and without config every Drive call is a console-printing no-op (same dev-mode pattern as `email_services.py`). The googleapiclient is blocking → routes call it via `asyncio.to_thread`. Deps: `google-api-python-client`, `google-auth`, `google-auth-oauthlib` (helper script only). Drive tests monkeypatch the two functions on `routes.resume_routes` (they're imported there by name); an **autouse `disable_drive_sync` fixture in conftest.py clears all `GDRIVE_*` env vars** so tests never hit the real API even when `backend/.env` has live credentials (drive config is read at call time, and `load_dotenv()` leaks .env into the test process).
+- **Credentials — OAuth only, deliberately.** The backend uploads *as the folder owner's Google account* via `GDRIVE_OAUTH_CLIENT_ID`/`_SECRET`/`_REFRESH_TOKEN`. There is intentionally **no service-account path**: Google 403s service-account uploads to personal My Drive folders (`storageQuotaExceeded`: "Service Accounts do not have storage quota — use shared drives or OAuth delegation"); SA keys only work with Workspace Shared Drives, which the chapter doesn't have — don't re-add one. Mint the refresh token once with `backend/get_drive_refresh_token.py <client_id> <client_secret> [folder name]` (Desktop-app OAuth client; consent screen must be **In production** or refresh tokens die after 7 days). Setup steps live in the README.
+- **OAuth is scoped to `drive.file` — one folder only, by design.** The token can only see files/folders the app itself created, never the rest of the owner's Drive. Consequence: `GDRIVE_RESUME_FOLDER_ID` **must** be the app-created folder id printed by `get_drive_refresh_token.py` (the script creates or reuses a folder, default name "SHPE Resume Book") — pointing it at a hand-made folder 404s. The owner can move/rename the folder in Drive freely (sync is id-based), but renaming means a script re-run would create a fresh folder instead of reusing it. Don't "fix" upload 404s by widening the scope to full `drive` — that's the privacy boundary the owner asked for.
 - Frontend: viewing fetches the PDF as a **blob** (`getResumeBlob`, `responseType: "blob"`) and opens it with `URL.createObjectURL` — a bearer token can't ride on an `<iframe>`/`<a href>`. `api.js` functions: `uploadResume` (don't set `Content-Type` — let axios add the multipart boundary), `getResumeBlob`, `deleteResume`.
-- **Adding the `resume_filename` column requires recreating `database.db`** — `create_all()` does not `ALTER` existing tables (delete the db, re-run `seed.py`, restart the backend).
+- **Adding a column to an existing table requires migrating `database.db`** — `create_all()` creates missing *tables* (e.g. `passwordresettoken`) but never `ALTER`s an existing table to add a new column, so a new field on `User` (like `resume_filename` or `password_changed_at`) is silently absent from an old db. Symptom: **every** query that selects that model fails with `sqlite3.OperationalError: no such column`, which breaks `/login`, `/me`, and the reminder loop at once. To keep existing data, migrate in place: `sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN <name> <TYPE>;"` (nullable, no default). Only delete the db + re-run `seed.py` when you don't need the current rows. Either way, restart the backend afterward (see auto-memory: recreating the db under a live uvicorn serves stale data / 401s).
 
 ## SQLite / datetime note
 SQLite stores datetimes as plain text. Store and compare using naive UTC datetimes (`utcnow()` from `services/time_services.py`), not timezone-aware ones. The `Event.start_time` field uses naive UTC. On the frontend, append `'Z'` when constructing a `Date` object so the browser interprets it as UTC: `new Date(event.start_time + 'Z')`.

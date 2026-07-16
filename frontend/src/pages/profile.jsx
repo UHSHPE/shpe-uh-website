@@ -78,6 +78,10 @@ export default function Profile() {
       setStatus({ type: 'error', msg: 'Please choose a PDF file.' });
       return;
     }
+    if (file.size > 2 * 1024 * 1024) {
+      setStatus({ type: 'error', msg: 'Resume must be 2 MB or smaller.' });
+      return;
+    }
     setBusy(true);
     setStatus(null);
     try {
@@ -190,7 +194,7 @@ export default function Profile() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>
-                Upload your resume so SHPE can share opportunities that fit you. PDF only, up to 5&nbsp;MB.
+                Upload your resume so SHPE can share opportunities that fit you. PDF only, up to 2&nbsp;MB.
               </p>
               <button className="primaryBtn" onClick={() => fileInputRef.current?.click()} disabled={busy}
                 style={{ fontSize: '14px', padding: '8px 18px', alignSelf: 'flex-start' }}>
