@@ -21,16 +21,17 @@ CHAIR_EMAILS: dict[Role, str] = {
     Role.shpe_jr_chair: "SHPE.Jr@shpeuhchair.org",
     Role.social_chair: "Social@shpeuhchair.org",
     Role.shpetina_chair: "shpetina@shpeuhchair.org",
-    Role.web_dev_chair: "Tech.Affairs@shpeuhchair.org",
+    Role.web_dev_chair: "Web.Dev@shpeuhchair.org",
+    Role.member_relations_chair: "Member.Relations@shpeuhchair.org",
 }
 
 
 def chair_contact_email(committee: Committee, chair_user: User) -> str:
     """Public contact email for a committee's chairs.
 
-    Co-chairs share one role-based address (see CHAIR_EMAILS). Committees with no
-    published role address (currently just Member Relations) fall back to the
-    chair's own personal email so members still have a way to reach them.
+    Co-chairs share one role-based address (see CHAIR_EMAILS). Any committee
+    without a published role address falls back to the chair's own personal
+    email so members still have a way to reach them.
     """
     return CHAIR_EMAILS.get(committee.chair_role) or chair_user.personal_email
 
