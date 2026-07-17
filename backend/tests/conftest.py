@@ -39,6 +39,11 @@ def reset_rate_limiter():
 # the test process).
 @pytest.fixture(autouse=True)
 def disable_square_payments(monkeypatch):
+    # Import main BEFORE clearing: the client fixtures lazily `from main
+    # import app`, and the first such import runs every route module's
+    # load_dotenv(), which would re-leak .env into os.environ mid-test.
+    import main  # noqa: F401
+
     for var in ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT"):
         monkeypatch.delenv(var, raising=False)
 

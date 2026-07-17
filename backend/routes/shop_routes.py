@@ -109,7 +109,19 @@ def place_order(
     charge uses that server-side amount. Without SQUARE_* config the charge
     is a dev-mode no-op (simulated checkout, same flow as before)."""
     validated = shop_services.validate_order_items(session, payload)
-    _, total_cents = validated
+    order_lines, total_cents = validated
+
+    # Mirror the cart into Square line items so every charge shows up
+    # itemized in the Square Dashboard and its sales reports ("2× Tee (M)").
+    # These sum to total_cents by construction — Square enforces the match.
+    line_items = [
+        {
+            "name": f"{product.name} ({size})" if size else product.name,
+            "quantity": qty,
+            "unit_price_cents": product.price_cents,
+        }
+        for product, size, qty in order_lines
+    ]
 
     if square_services.is_configured() and not payload.payment_token:
         raise HTTPException(
@@ -121,11 +133,12 @@ def place_order(
     # already runs it in the threadpool. No order row exists yet — a declined
     # card leaves nothing behind.
     try:
-        square_payment_id = square_services.charge_card(
+        charge = square_services.charge_card(
             payload.payment_token,
             total_cents,
             payload.buyer_email,
             note=f"SHPE UH shop order — {payload.buyer_name}",
+            line_items=line_items,
         )
     except square_services.PaymentError as exc:
         raise HTTPException(
@@ -136,10 +149,13 @@ def place_order(
         session,
         payload,
         user.id if user else None,
-        square_payment_id=square_payment_id,
+        square_payment_id=charge.payment_id if charge else None,
         validated=validated,
     )
     shop_services.notify_managers_new_order(session, order)
+    shop_services.send_buyer_receipt(
+        session, order, charge.receipt_url if charge else None
+    )
     return shop_services.order_to_out(session, order)
 
 

@@ -5,10 +5,12 @@ import { useCart } from "../context/CartContext";
 import StatusPill from "./StatusPill";
 import { formatCents, formatOrderDate, orderItemsSummary } from "../utils/shop";
 
-// "My orders" card on the profile page — every signed-in member sees their
-// order history with live status and a re-order shortcut.
+// "My orders" card on the profile page — shows the most recent order with
+// live status and a re-order shortcut; the rest of the history sits behind
+// a "Show all" toggle.
 export default function MyOrders() {
   const [orders, setOrders] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const { addItem, showToast } = useCart();
 
   useEffect(() => {
@@ -77,7 +79,8 @@ export default function MyOrders() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        {(orders ?? []).map((order) => (
+        {/* Orders arrive newest-first — collapsed view is just the latest. */}
+        {(expanded ? (orders ?? []) : (orders ?? []).slice(0, 1)).map((order) => (
           <div
             key={order.id}
             style={{
@@ -122,6 +125,28 @@ export default function MyOrders() {
           </div>
         ))}
       </div>
+
+      {(orders?.length ?? 0) > 1 && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            marginTop: "14px",
+            width: "100%",
+            padding: "10px",
+            borderRadius: "10px",
+            border: "1px dashed var(--border-strong)",
+            background: "transparent",
+            color: "var(--shpe-blue)",
+            fontSize: "13px",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {expanded
+            ? "Show only the latest order ▴"
+            : `Show all ${orders.length} orders ▾`}
+        </button>
+      )}
     </div>
   );
 }

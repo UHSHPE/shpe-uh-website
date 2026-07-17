@@ -158,6 +158,30 @@ def _order_summary_lines(session: Session, order: Order) -> list[str]:
     return lines
 
 
+def send_buyer_receipt(session: Session, order: Order, receipt_url: str | None = None) -> None:
+    """Email the buyer their receipt right after checkout. Goes to the contact
+    email given at checkout (the profile prefills personal_email for signed-in
+    members). Includes Square's hosted receipt link when the charge was real;
+    dev-mode/simulated orders still get the itemized confirmation."""
+    body_lines = [
+        f"Hi {order.buyer_name},",
+        "",
+        f"Thanks for your order! Here's your receipt for {order.order_code}:",
+        "",
+        *_order_summary_lines(session, order),
+        "",
+        "We'll email you again when it's ready for pickup at a chapter event.",
+    ]
+    if receipt_url:
+        body_lines += ["", f"Square receipt: {receipt_url}"]
+    body_lines += ["", "— SHPE UH Shop"]
+    send_email(
+        order.buyer_email,
+        f"Your SHPE UH order {order.order_code}",
+        "\n".join(body_lines),
+    )
+
+
 def notify_managers_new_order(session: Session, order: Order) -> None:
     """In-app Notification row + email for every shop admin on each new order."""
     managers = session.exec(

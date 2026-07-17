@@ -12,7 +12,8 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
-- **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an email when their order is ready for pickup
+- **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
+- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -119,7 +120,9 @@ Frontend runs at **http://localhost:5173**.
 
 #### Square shop payments (optional, one-time setup)
 
-When configured, the checkout payment step renders Square's secure card element (card numbers go straight to Square — they never touch this backend), and `POST /shop/orders` charges the card for the server-computed total **before** creating the order. A declined card leaves no order behind. Square's fee is ~2.9% + 30¢ per online charge.
+When configured, the checkout payment step renders Square's secure card element (card numbers go straight to Square — they never touch this backend), and `POST /shop/orders` charges the card for the server-computed total **before** creating the order. A declined card leaves no order behind. Every buyer gets an emailed, itemized receipt at checkout — including Square's hosted receipt link when the charge was real. Square's fee is ~2.9% + 30¢ per online charge.
+
+Every charge is **itemized in Square**: the cart is mirrored into a Square order (product name + size, quantity, unit price), so the Square Dashboard shows exactly what was bought per transaction and item names flow into Square's sales reports and exports — no manual tracking needed.
 
 **Wallets:** Apple Pay and Google Pay buttons appear automatically above the card form on devices/browsers that support them — both reuse the exact same charge flow. Google Pay also works in the sandbox. **Apple Pay is production-only** and needs a one-time domain registration: Square Developer Dashboard → your app → **Apple Pay** → add your web domain, then host the verification file Square provides at `https://<your-domain>/.well-known/apple-developer-merchantid-domain-association` (put it in `frontend/public/.well-known/` — Vite serves `public/` at the site root). Until that's done, the Apple Pay button simply doesn't render.
 
@@ -145,7 +148,7 @@ Start in the **Sandbox** (fake money, test cards), then switch to Production:
 
 ## Seeded Accounts
 
-`python seed.py` creates a test member, all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and four sample shop products. All seeded accounts use the password `password123`.
+`python seed.py` creates a test member, all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
 
 | Account | Email | Role |
 |---|---|---|
@@ -199,7 +202,7 @@ shpe-uh-website/
 | `/shop/checkout` | Two-step checkout: contact details, then payment (Square card element + Apple Pay / Google Pay where supported; simulated when Square isn't configured) | No |
 | `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
-| `/signup` | Sign up | No |
+| `/signup` | Sign up (multi-step; ends by routing into chapter-dues checkout) | No |
 | `/forgot-password` | Request a password-reset email | No |
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |

@@ -15,13 +15,20 @@ from tests.shop_tests.conftest import make_product, order_payload
 @pytest.fixture
 def square(monkeypatch):
     """Pretend Square is configured and record charge attempts."""
-    calls = {"charges": [], "result": "sq-payment-1", "error": None}
+    calls = {
+        "charges": [],
+        "result": square_services.ChargeResult(
+            "sq-payment-1", "https://squareup.com/receipt/preview/sq-payment-1"
+        ),
+        "error": None,
+    }
 
     def fake_is_configured():
         return True
 
-    def fake_charge_card(payment_token, amount_cents, buyer_email, note):
+    def fake_charge_card(payment_token, amount_cents, buyer_email, note, line_items=None):
         calls["charges"].append((payment_token, amount_cents, buyer_email))
+        calls["line_items"] = line_items
         if calls["error"] is not None:
             raise calls["error"]
         return calls["result"]
@@ -66,6 +73,11 @@ def test_charges_server_side_total_and_stores_payment_id(unauth_client, session,
     assert res.status_code == 201
     # Charged exactly the recomputed total — never a client-sent amount.
     assert square["charges"] == [("tok-1", 9000, "jane@example.com")]
+    # Cart mirrored into Square line items (size folded into the name) so the
+    # charge is itemized in the Square Dashboard.
+    assert square["line_items"] == [
+        {"name": "SHPE UH Quarter-Zip (M)", "quantity": 2, "unit_price_cents": 4500}
+    ]
     order = session.exec(select(Order)).one()
     assert order.square_payment_id == "sq-payment-1"
 
@@ -95,3 +107,12 @@ def test_invalid_items_fail_before_the_card_is_charged(unauth_client, session, s
 
     assert res.status_code == 400
     assert square["charges"] == []
+
+
+def test_receipt_email_includes_square_receipt_link(unauth_client, session, square, sent_emails):
+    res = place(unauth_client, session, payment_token="tok-1")
+
+    assert res.status_code == 201
+    buyer_emails = [e for e in sent_emails if e["to"] == "jane@example.com"]
+    assert len(buyer_emails) == 1
+    assert "https://squareup.com/receipt/preview/sq-payment-1" in buyer_emails[0]["body"]

@@ -213,6 +213,16 @@ def seed_products(s: Session):
 
     apparel_sizes = ["S", "M", "L", "XL", "2XL"]
     products = [
+        # The signup flow finds this product BY NAME ("T-Shirt Dues") to send
+        # new members straight into dues checkout — renaming it breaks that
+        # auto-redirect (signup falls back to the home page).
+        Product(
+            name="T-Shirt Dues",
+            description="Chapter membership dues for the academic year — includes your SHPE UH chapter t-shirt plus all member benefits.",
+            price_cents=2000,
+            product_type=ProductType.apparel,
+            sizes=apparel_sizes,
+        ),
         Product(
             name="SHPE UH Quarter-Zip",
             description="Navy quarter-zip with the embroidered SHPE UH logo. Perfect for career fairs and chilly lecture halls.",

@@ -1,10 +1,20 @@
 import logging
 import os
 import uuid
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class ChargeResult(NamedTuple):
+    """A successful Square charge: the payment id we store on the order, and
+    Square's hosted receipt link (emailed to the buyer; can be None)."""
+
+    payment_id: str
+    receipt_url: str | None
+
 
 # Square card payments for the shop. Requires both env vars:
 #
@@ -77,20 +87,67 @@ def _first_error_code(exc) -> str | None:
     return None
 
 
-def charge_card(payment_token: str | None, amount_cents: int, buyer_email: str, note: str) -> str | None:
-    """Charge a card token from the Web Payments SDK; return the Square payment id.
+def _create_itemized_order(client, location_id: str, line_items: list[dict]) -> str | None:
+    """Create a Square order carrying our line items so the charge shows up
+    itemized in the Square Dashboard ("2× Quarter-Zip (M)"), and item names
+    flow into Square's sales reports. Best-effort: itemization is reporting
+    sugar — on failure we log and charge un-itemized rather than block the
+    buyer. Each item dict: {"name", "quantity", "unit_price_cents"}."""
+    try:
+        result = client.orders.create(
+            order={
+                "location_id": location_id,
+                "line_items": [
+                    {
+                        "name": item["name"],
+                        "quantity": str(item["quantity"]),  # Orders API wants a string
+                        "base_price_money": {
+                            "amount": item["unit_price_cents"],
+                            "currency": "USD",
+                        },
+                    }
+                    for item in line_items
+                ],
+            },
+            idempotency_key=str(uuid.uuid4()),
+        )
+        return result.order.id
+    except Exception:
+        logging.exception("Square itemized order failed — charging without itemization")
+        return None
 
-    Dev mode (unconfigured) prints and returns None — the order proceeds as a
-    simulated purchase. Raises PaymentError (buyer-safe message) when the
-    charge is declined or fails; the idempotency key is fresh per attempt, so
-    a retried request can never double-charge within one call."""
+
+def charge_card(
+    payment_token: str | None,
+    amount_cents: int,
+    buyer_email: str,
+    note: str,
+    line_items: list[dict] | None = None,
+) -> ChargeResult | None:
+    """Charge a card token from the Web Payments SDK; return a ChargeResult
+    (payment id + hosted receipt link).
+
+    When line_items is given, the payment is attached to an itemized Square
+    order (see _create_itemized_order) — the line items must sum to
+    amount_cents or Square rejects the payment. Dev mode (unconfigured)
+    prints and returns None — the order proceeds as a simulated purchase.
+    Raises PaymentError (buyer-safe message) when the charge is declined or
+    fails; the idempotency key is fresh per attempt, so a retried request can
+    never double-charge within one call."""
     config = _square_client()
     if config is None:
-        print(f"[square dev mode] would charge {amount_cents} cents to card for {buyer_email}")
+        summary = ", ".join(
+            f"{i['quantity']}× {i['name']}" for i in (line_items or [])
+        ) or "no items"
+        print(f"[square dev mode] would charge {amount_cents} cents for {buyer_email} ({summary})")
         return None
 
     client, location_id = config
     from square.core.api_error import ApiError
+
+    square_order_id = None
+    if line_items:
+        square_order_id = _create_itemized_order(client, location_id, line_items)
 
     try:
         result = client.payments.create(
@@ -98,13 +155,14 @@ def charge_card(payment_token: str | None, amount_cents: int, buyer_email: str, 
             idempotency_key=str(uuid.uuid4()),
             amount_money={"amount": amount_cents, "currency": "USD"},
             location_id=location_id,
+            order_id=square_order_id,
             buyer_email_address=buyer_email,
             note=note,
         )
         payment = result.payment
         if payment is None or payment.id is None:
             raise PaymentError(_GENERIC_MESSAGE)
-        return payment.id
+        return ChargeResult(payment.id, getattr(payment, "receipt_url", None))
     except PaymentError:
         raise
     except ApiError as exc:

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { signupUser } from "../api/api";
+import { getShopProducts, signupUser } from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 import {
   GENDERS, CLASSIFICATIONS, GPA_OPTIONS, EXP_GRAD_DATES,
   MEMBERSHIP_STATUSES, SHIRT_SIZES, COLLEGES, MAJORS_BY_COLLEGE,
@@ -9,6 +10,12 @@ import {
 } from "../constants/userEnums";
 
 const STEPS = ["Account", "Academic", "Personal", "Background", "Membership"];
+
+// After signup we route new members straight into paying their chapter dues.
+// The dues "product" (t-shirt included) is found in the shop catalog BY THIS
+// NAME — it matches seed.py and the membershpe page's tier card. If it's
+// missing or renamed, signup just lands on the home page like before.
+const DUES_PRODUCT_NAME = "T-Shirt Dues";
 
 const emptyForm = {
   first_name: "", last_name: "",
@@ -86,6 +93,7 @@ function getFieldError(field, form) {
 export default function SignUp() {
   const navigate = useNavigate();
   const { user, login } = useAuth();
+  const { addItem, showToast } = useCart();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [touched, setTouched] = useState({});
@@ -202,6 +210,29 @@ export default function SignUp() {
     try {
       const res = await signupUser(payload);
       login(res.data.access_token);
+
+      // Send the new member straight into dues checkout: the dues item goes
+      // in the cart pre-sized with the shirt size they just picked, and the
+      // checkout collects Square payment. Any hiccup (product missing, shop
+      // down) falls through to the normal landing — signup never blocks.
+      try {
+        const products = (await getShopProducts()).data;
+        const dues = products.find((p) => p.name === DUES_PRODUCT_NAME);
+        if (dues) {
+          if (dues.sizes?.includes(form.shirt_size)) {
+            addItem(dues, form.shirt_size, 1, { openDrawer: false });
+            showToast("Account created! One last step — pay your chapter dues.");
+            navigate("/shop/checkout");
+            return;
+          }
+          // Shirt size "Other" (or catalog drift) — pick a size on the product page.
+          showToast("Account created! Pick a shirt size to pay your dues.");
+          navigate(`/shop/${dues.id}`);
+          return;
+        }
+      } catch {
+        /* shop unavailable — fall through */
+      }
       navigate("/");
     } catch (err) {
       if (err.response?.status === 409) {

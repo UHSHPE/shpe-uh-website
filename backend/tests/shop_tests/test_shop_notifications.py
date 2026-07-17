@@ -39,10 +39,16 @@ def test_new_order_emails_managers(unauth_client, session, manager, sent_emails)
     assert order["order_code"] in manager_emails[0]["body"]
 
 
-def test_no_buyer_email_at_order_time(unauth_client, session, manager, sent_emails):
-    place_order(unauth_client, session)
+def test_buyer_gets_receipt_email_at_order_time(unauth_client, session, manager, sent_emails):
+    order = place_order(unauth_client, session)
 
-    assert all(e["to"] != "jane@example.com" for e in sent_emails)
+    buyer_emails = [e for e in sent_emails if e["to"] == "jane@example.com"]
+    assert len(buyer_emails) == 1
+    receipt = buyer_emails[0]
+    assert order["order_code"] in receipt["subject"]
+    # Itemized like a real receipt.
+    assert "SHPE UH Quarter-Zip" in receipt["body"]
+    assert "Total: $45.00" in receipt["body"]
 
 
 def test_marking_ready_emails_buyer(manager_client, unauth_client, session, manager, sent_emails):

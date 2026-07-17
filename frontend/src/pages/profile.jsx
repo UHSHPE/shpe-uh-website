@@ -179,9 +179,6 @@ export default function Profile() {
         {/* Shop management (managers only) */}
         {isShopManager(user) && <ShopManager />}
 
-        {/* Order history */}
-        <MyOrders />
-
         {/* Resume */}
         <Section title="Resume">
           {resumeName ? (
@@ -288,6 +285,9 @@ export default function Profile() {
             <Field label="Professional development" value={joinList(user.prof_dev)} />
           </div>
         </Section>
+
+        {/* Order history — latest order up front, the rest behind the toggle */}
+        <MyOrders />
       </motion.div>
     </div>
   );
