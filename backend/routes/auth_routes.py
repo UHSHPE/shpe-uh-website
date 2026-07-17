@@ -11,6 +11,7 @@ from models.user.multi_selections.user_race_ethnicity import UserRaceEthnicity
 from models.user.user import User
 from models.user.user_schemas import UserCreate, UserOut
 from security.jwt import ACCESS_TOKEN_EXPIRE_MINUTES, Token, create_access_token
+from services import shop_services
 from services.auth_user import authenticate_user
 from services.user_services import create_user
 from services.dependencies import SessionDependencies, get_current_user
@@ -50,6 +51,7 @@ async def me(user: Annotated[User, Depends(get_current_user)], session: SessionD
         interested_industries=[i.interested_industry for i in industries],
         prof_dev=[p.prof_dev for p in prof_devs],
         country_origin=[c.country_origin for c in countries],
+        has_paid_dues=shop_services.has_paid_dues(session, user.id),
     )
 
 # Creates user form sign up

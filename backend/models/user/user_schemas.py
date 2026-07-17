@@ -168,3 +168,7 @@ class UserCreate(UserBase, UserMultiSelectedFields):
 class UserOut(UserBase, UserMultiSelectedFields):
     id: int
     resume_filename: str | None = None
+    # Computed in /me (not a DB column): True when the user has a
+    # non-cancelled order containing the dues product. Drives the frontend
+    # dues banner and the product page's "already paid" state.
+    has_paid_dues: bool = False

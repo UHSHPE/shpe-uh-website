@@ -7,6 +7,7 @@ import models.user
 
 from models.event import Event
 from models.committee import Committee, CommitteeMembership
+from models.shop.order import Order, OrderItem
 from models.shop.product import Product, ProductType
 from models.user.user import User
 from models.user.user_schemas import UserCreate
@@ -35,61 +36,116 @@ COMMITTEE_ROSTER = [
 
 
 def seed_test_user(s: Session):
-    # Seed test user only if it does not already exist
-    existing_user = s.exec(
+    # Two test members: test@ gets a PAID T-Shirt Dues order (see
+    # seed_test_dues_order), test1@ has NOT paid — handy for testing the
+    # dues banner and the one-per-member purchase rule side by side.
+    test_members = [
+        # (first, last, cougarnet, personal, psid, phone) — name fields allow
+        # letters only (no digits), so the "1" lives in the email.
+        ("Test", "User", "test@cougarnet.uh.edu", "test@gmail.com", "1234567", "1234567890"),
+        ("Test", "Unpaid", "test1@cougarnet.uh.edu", "test1@gmail.com", "1234568", "1234567891"),
+    ]
+    for first_name, last_name, cougarnet_email, personal_email, psid, phone_num in test_members:
+        existing_user = s.exec(
+            select(User).where(User.cougarnet_email == cougarnet_email)
+        ).first()
+
+        if existing_user:
+            print(f"Skipped test user {cougarnet_email} — already exists.")
+            continue
+
+        test_user = UserCreate(
+            first_name=first_name,
+            last_name=last_name,
+
+            cougarnet_email=cougarnet_email,
+            personal_email=personal_email,
+
+            password="password123",
+
+            role=Role.member,
+            points=0,
+
+            phone_num=phone_num,
+            psid=psid,
+            birthday=date(2000, 1, 1),
+
+            gender=Gender.male,
+            first_gen=True,
+
+            college=Colleges.nsm,
+            major="Computer Science",
+            classification=Classification.senior,
+            gpa=GPA.gpa_350_400,
+            exp_grad_date=ExpGradDate.spring_2027,
+
+            in_slack=True,
+            is_returning=MembershipStatus.new,
+            is_national_member=True,
+            shirt_size=ShirtSize.m,
+
+            race_and_ethnicity=[
+                RaceEthnicity.native_american,
+            ],
+            prof_dev=[
+                ProfDev.internships,
+            ],
+            interested_industries=[
+                Industry.electronics,
+            ],
+            country_origin=[
+                "Mexico",
+            ],
+        )
+
+        create_user(s, test_user)
+        print(f"Seeded test user {cougarnet_email}.")
+
+
+def seed_test_dues_order(s: Session):
+    """Mark test@cougarnet.uh.edu as dues-paid: a paid order containing the
+    dues product (has_paid_dues matches on the OrderItem name snapshot).
+    test1@cougarnet.uh.edu deliberately gets none — it stays unpaid."""
+    from services.shop_services import DUES_PRODUCT_NAME, generate_order_code
+
+    user = s.exec(
         select(User).where(User.cougarnet_email == "test@cougarnet.uh.edu")
     ).first()
-
-    if existing_user:
-        print("Skipped test user — already exists.")
+    dues = s.exec(select(Product).where(Product.name == DUES_PRODUCT_NAME)).first()
+    if user is None or dues is None:
+        print("Skipped test dues order — test user or dues product missing.")
         return
 
-    test_user = UserCreate(
-        first_name="Test",
-        last_name="User",
+    already = s.exec(
+        select(OrderItem)
+        .join(Order)
+        .where(Order.user_id == user.id, OrderItem.product_name == DUES_PRODUCT_NAME)
+    ).first()
+    if already:
+        print("Skipped test dues order — already exists.")
+        return
 
-        cougarnet_email="test@cougarnet.uh.edu",
-        personal_email="test@gmail.com",
-
-        password="password123",
-
-        role=Role.member,
-        points=0,
-
-        phone_num="1234567890",
-        psid="1234567",
-        birthday=date(2000, 1, 1),
-
-        gender=Gender.male,
-        first_gen=True,
-
-        college=Colleges.nsm,
-        major="Computer Science",
-        classification=Classification.senior,
-        gpa=GPA.gpa_350_400,
-        exp_grad_date=ExpGradDate.spring_2027,
-
-        in_slack=True,
-        is_returning=MembershipStatus.new,
-        is_national_member=True,
-        shirt_size=ShirtSize.m,
-
-        race_and_ethnicity=[
-            RaceEthnicity.native_american,
-        ],
-        prof_dev=[
-            ProfDev.internships,
-        ],
-        interested_industries=[
-            Industry.electronics,
-        ],
-        country_origin=[
-            "Mexico",
-        ],
+    order = Order(
+        order_code=generate_order_code(s),
+        buyer_name=f"{user.first_name} {user.last_name}",
+        buyer_email=user.personal_email,
+        buyer_phone=user.phone_num or "",
+        user_id=user.id,
+        total_cents=dues.price_cents,
     )
-
-    create_user(s, test_user)
-    print("Seeded test user.")
+    s.add(order)
+    s.commit()
+    s.refresh(order)
+    s.add(OrderItem(
+        order_id=order.id,
+        product_id=dues.id,
+        product_name=dues.name,
+        quantity=1,
+        unit_price_cents=dues.price_cents,
+        size="M",
+    ))
+    s.commit()
+    print(f"Seeded paid T-Shirt Dues order ({order.order_code}) for test@cougarnet.uh.edu.")
 
 
 def chair_user_create(first_name: str, last_name: str, role: Role, idx: int) -> UserCreate:
@@ -300,6 +356,7 @@ def seed():
         seed_comm_director(s)
         seed_shop_settings(s)
         seed_products(s)
+        seed_test_dues_order(s)  # after products — needs the dues product
         seed_events(s)
         s.commit()
 

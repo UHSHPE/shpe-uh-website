@@ -111,6 +111,9 @@ def place_order(
     validated = shop_services.validate_order_items(session, payload)
     order_lines, total_cents = validated
 
+    # Dues are one-per-member and require an account — reject before charging.
+    shop_services.enforce_dues_rules(session, order_lines, user.id if user else None)
+
     # Mirror the cart into Square line items so every charge shows up
     # itemized in the Square Dashboard and its sales reports ("2× Tee (M)").
     # These sum to total_cents by construction — Square enforces the match.

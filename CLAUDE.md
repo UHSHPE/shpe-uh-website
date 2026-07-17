@@ -25,15 +25,16 @@ shpe-uh-website/
   frontend/
     src/
       api/api.js          # Axios instance (baseURL from VITE_API_URL env var)
-      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute, CartDrawer, ProductImage, StatusPill, MyOrders, ShopManager, shopIcons
+      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute, CartDrawer, ProductImage, StatusPill, MyOrders, ShopManager, shopIcons, DuesBanner
       context/            # AuthContext, CartContext (cart lines + drawer + toast, persisted to localStorage)
       utils/shop.js       # formatCents, STATUS_META, isShopManager, order helpers
+      utils/dues.js       # DUES_PRODUCT_NAME + startDuesCheckout (shared by signup + DuesBanner)
       pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile, shop, shop-product, shop-checkout, shop-order
       App.jsx             # Routes (+ renders CartDrawer/ShopToast globally)
   backend/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
     database.py           # SQLite engine + session factory
-    seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the shop-settings row, 4 shop products, and sample events — run once: python seed.py
+    seed.py               # Seeds two test users (test@ dues-paid via a seeded order, test1@ unpaid), all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the shop-settings row, 5 shop products (incl. T-Shirt Dues), and sample events — run once: python seed.py
     routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes, shop_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
     uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
@@ -140,6 +141,7 @@ Both jobs must pass before merging into `main`.
 - Do not use `React.useState` / `React.useEffect` — use named imports: `import { useState, useEffect } from 'react'`
 - Do not call setState synchronously inside a `useEffect` body — the lint config (react-hooks/set-state-in-effect) fails the build. For "reset state when a prop/route param changes" or "prefill once async data arrives", use the render-phase adjustment pattern (compare-and-set during render, like `Header.jsx`'s `prevPath` and `shop-checkout.jsx`'s prefill)
 - Do not export helpers/constants from a file that also exports a React component — react-refresh lint fails. Put shared helpers in `utils/` and components in their own files (this is why `StatusPill` is its own component and `utils/shop.js` has no JSX)
+- Do not put digits (or other symbols) in seeded/test user names — `UserCreate`'s name validator allows only letters, hyphens, apostrophes, and spaces, so a first_name like `Test1` crashes `seed.py` mid-run. Put distinguishing digits in the email instead (that's why the unpaid test member is "Test Unpaid" / `test1@cougarnet.uh.edu`)
 
 ## Pages & Routes
 | Path | Component | Auth required |
@@ -171,7 +173,7 @@ Both jobs must pass before merging into `main`.
 | POST | `/signup` | No | Creates user, returns JWT token |
 | POST | `/password-reset/request` | No | Always 200 with a generic body; if the account exists, emails a single-use reset link to cougarnet_email (rate limited: 3/hour per IP) |
 | POST | `/password-reset/confirm` | No | Sets a new password from a valid token; generic 400 for unknown/used/expired tokens |
-| GET | `/me` | Yes | Returns current user (includes `points`) |
+| GET | `/me` | Yes | Returns current user (includes `points` and computed `has_paid_dues`) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | GET | `/events` | No | All events ordered by start_time (public, powers the calendar) |
 | GET | `/committees` | Yes | All committees with `is_member`, `is_chair`, and `chairs` (list of name + role-based contact email) |
@@ -240,6 +242,7 @@ Both jobs must pass before merging into `main`.
 - **Product images** mirror the resume pattern: `PRODUCT_IMAGE_DIR` module constant (tests monkeypatch it to `tmp_path`), deterministic filename `product_<id>.<ext>`, content-type + magic-byte + ≤5 MB validation (PNG/JPEG/WebP).
 - **Tests** in `tests/shop_tests/`; its `conftest.py` adds `manager_client` (auth'd as a `Role.comm_director` user — pass `role=Role.marketing_chair` to `make_manager` to cover the other admin role), `make_product`, and `sent_emails` (monkeypatches `shop_services.send_email`). Do NOT use `client` and `manager_client` in the same test — both override `get_current_user` on the same app and the last fixture wins.
 - **Dues at signup**: completing `/signup` routes the new member straight into dues checkout — `signup.jsx` finds the shop product **by name `"T-Shirt Dues"`** (`DUES_PRODUCT_NAME` constant; matches `seed.py` and the membershpe tier card), adds it to the cart pre-sized with the `shirt_size` they just picked (`openDrawer: false`), and navigates to `/shop/checkout`. Shirt size `Other` (or a size the product lacks) lands on the dues product page to pick a size; a missing/renamed product or shop error falls back to the plain `navigate("/")` — signup never blocks on the shop. **Renaming the dues product silently breaks the auto-redirect** (name-based lookup, no schema flag) — the fallback keeps signup working, but new members stop being routed to pay.
+- **Dues rules & banner**: dues are **one-per-member, enforced server-side** — `shop_services.enforce_dues_rules` (called in `place_order` after validation, before charging) caps dues quantity at 1 per order, rejects guests (the purchase must attach to an account), and 400s a repeat purchase; a **cancelled** dues order doesn't count as paid (`has_paid_dues` matches on the `OrderItem.product_name` snapshot, so it survives product edits/deletes). `UserOut.has_paid_dues` is **computed in `/me`** (not a DB column) and drives `components/DuesBanner.jsx` — a fixed red banner just below the header (top `var(--header-height)`, z-index 900 < header's 1000) shown to signed-in members who haven't paid, listing the benefits; its CTA and the signup redirect share `utils/dues.js` (`startDuesCheckout`). `shop-checkout` calls `AuthContext.refreshUser()` after a successful order so the banner clears without a reload; the dues product page locks the quantity stepper to 1 and swaps the add-to-cart button for an already-paid note. NOTE: `/me` fails validation for users with zero multi-select rows (UserOut requires ≥1 of each) — tests hitting `/me` must seed those rows (see `test_dues_rules.py::test_me_reports_dues_status`).
 - **Frontend**: cart state lives in `context/CartContext.jsx` (localStorage key `shpe_cart`, lines merge by product+size, drawer + 2s toast included); `CartDrawer`/`ShopToast` render once in `App.jsx`. Category filter pills on `/shop` are derived from the `product_type`s present — never hardcode "Stickers". `createShopOrder` sends `authHeaders()` (empty for guests) so member orders link. After checkout the confirmation gets the order via route state; revisits look it up with code+email from sessionStorage (`shpe_last_order`), `?email=`, or a prompt. The Shop Manager panel (Overview / Products / Orders / Notifications / Settings tabs) + My Orders live inside `pages/profile.jsx` (`components/ShopManager.jsx`, `components/MyOrders.jsx`); My Orders sits at the **bottom** of the profile page and shows only the **most recent** order (orders arrive newest-first), with the rest behind a "Show all N orders" toggle; the admin check is `isShopManager(user)` from `utils/shop.js`, which matches the two `SHOP_ADMIN_ROLES` role strings. The `/shop` hero tagline comes from `GET /shop/settings` with a hardcoded product-agnostic fallback.
 - **Shop styling tokens** (page bg, gray ramp additions, the four status color sets `--status-*`, `--gradient-success`, `--font-mono`, `--placeholder-hatch`) are in `styles.css` `:root` under "Shop"; keyframes are prefixed `shop*` (`shopPulse`, `shopSlideInRight`, …). The design handoff lives in `specs/shop/design_handoff_merch_shop/`.
 

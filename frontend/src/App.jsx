@@ -22,11 +22,13 @@ import ShopProduct from './pages/shop-product';
 import ShopCheckout from './pages/shop-checkout';
 import ShopOrder from './pages/shop-order';
 import CartDrawer, { ShopToast } from './components/CartDrawer';
+import DuesBanner from './components/DuesBanner';
 
 export default function App() {
 	return (
 		<div className="app">
 			<Header />
+			<DuesBanner />
 			<main className="main">
 				<Routes>
 					<Route path="/" element={<Home />} />

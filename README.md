@@ -13,7 +13,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
-- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form
+- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form. Dues are **one per member** (server-enforced, sign-in required), and signed-in members who haven't paid see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -148,11 +148,12 @@ Start in the **Sandbox** (fake money, test cards), then switch to Production:
 
 ## Seeded Accounts
 
-`python seed.py` creates a test member, all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
 
 | Account | Email | Role |
 |---|---|---|
-| Test member | `test@cougarnet.uh.edu` | Member |
+| Test member (dues **paid** — no banner) | `test@cougarnet.uh.edu` | Member |
+| Test member (dues **not paid** — sees the dues banner) | `test1@cougarnet.uh.edu` | Member |
 | Committee chairs | `<first>.<last>@cougarnet.uh.edu` (e.g. `angel.montoya@cougarnet.uh.edu`) | Chair of their committee |
 | Comms director | `comms.director@cougarnet.uh.edu` | Communication Director (shop admin) |
 
@@ -217,7 +218,7 @@ shpe-uh-website/
 | POST | `/signup` | No | Register a new account |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
-| GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
+| GET | `/me` | Yes | Current user profile (includes points, `resume_filename`, and `has_paid_dues`) |
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤5 MB) |
 | GET | `/me/resume` | Yes | Download the current user's resume |
 | DELETE | `/me/resume` | Yes | Remove the current user's resume |

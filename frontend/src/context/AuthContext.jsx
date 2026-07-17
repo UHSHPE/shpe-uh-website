@@ -29,8 +29,17 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Re-fetch /me so computed fields update immediately (e.g. has_paid_dues
+  // after paying dues — the banner disappears without a page reload).
+  function refreshUser() {
+    if (!token) return;
+    getMe(token)
+      .then((res) => setUser(res.data))
+      .catch(() => {});
+  }
+
   return (
-    <AuthContext.Provider value={{ token, user, login, logout }}>
+    <AuthContext.Provider value={{ token, user, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

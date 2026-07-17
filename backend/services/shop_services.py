@@ -42,6 +42,56 @@ def generate_order_code(session: Session) -> str:
             return code
 
 
+# The chapter-dues product: one per member, ever. Found BY NAME — must match
+# seed.py and the frontend's DUES_PRODUCT_NAME (signup redirect, banner,
+# product page). OrderItem snapshots this name, so past purchases stay
+# detectable even if the product is later edited or deleted.
+DUES_PRODUCT_NAME = "T-Shirt Dues"
+
+
+def has_paid_dues(session: Session, user_id: int) -> bool:
+    """True when the user has a non-cancelled order containing the dues
+    product (matched on the OrderItem name snapshot)."""
+    row = session.exec(
+        select(OrderItem)
+        .join(Order)
+        .where(
+            Order.user_id == user_id,
+            Order.status != OrderStatus.cancelled,
+            OrderItem.product_name == DUES_PRODUCT_NAME,
+        )
+    ).first()
+    return row is not None
+
+
+def enforce_dues_rules(
+    session: Session,
+    lines: list[tuple[Product, str | None, int]],
+    user_id: int | None,
+) -> None:
+    """Dues are one-per-member, forever: quantity capped at 1, buyers must be
+    signed in (the purchase has to attach to an account to count), and repeat
+    purchases are rejected. A cancelled dues order doesn't count as paid."""
+    dues_qty = sum(qty for product, _, qty in lines if product.name == DUES_PRODUCT_NAME)
+    if dues_qty == 0:
+        return
+    if dues_qty > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="T-Shirt Dues are a one-time purchase — remove the extra from your cart.",
+        )
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sign in to purchase your T-Shirt Dues so they count toward your membership.",
+        )
+    if has_paid_dues(session, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You've already paid your T-Shirt Dues — thank you!",
+        )
+
+
 def validate_order_items(
     session: Session, payload: OrderCreate
 ) -> tuple[list[tuple[Product, str | None, int]], int]:

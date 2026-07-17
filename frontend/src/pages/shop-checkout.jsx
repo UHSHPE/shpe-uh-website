@@ -47,7 +47,7 @@ function loadSquareSdk() {
   return squareSdkPromise;
 }
 export default function ShopCheckout() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { lines, subtotalCents, clearCart } = useCart();
   const navigate = useNavigate();
 
@@ -196,6 +196,9 @@ export default function ShopCheckout() {
         JSON.stringify({ code: order.order_code, email: order.buyer_email })
       );
       clearCart();
+      // Computed /me fields (has_paid_dues) change with this order — refresh
+      // so the dues banner clears immediately. No-op for guests.
+      refreshUser();
       navigate(`/shop/order/${order.order_code}`, { state: { order } });
     } catch (err) {
       const detail = err.response?.data?.detail;

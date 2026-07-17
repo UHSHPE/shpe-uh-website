@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { DUES_PRODUCT_NAME } from "../utils/dues";
 import { Link, useParams } from "react-router-dom";
 import { getShopProduct } from "../api/api";
 import ProductImage from "../components/ProductImage";
@@ -11,6 +13,7 @@ import { formatCents, typeLabel } from "../utils/shop";
 export default function ShopProduct() {
   const { productId } = useParams();
   const { addItem, showToast, itemCap } = useCart();
+  const { user } = useAuth();
 
   const [product, setProduct] = useState(null);
   const [missing, setMissing] = useState(false);
@@ -45,6 +48,12 @@ export default function ShopProduct() {
   }, [productId]);
 
   const isApparel = product?.product_type === "apparel";
+
+  // Dues are one-per-member: quantity locked to 1, and members who already
+  // paid see a confirmation instead of the add-to-cart button.
+  const isDues = product?.name === DUES_PRODUCT_NAME;
+  const effectiveCap = isDues ? 1 : itemCap;
+  const alreadyPaidDues = isDues && user?.has_paid_dues;
 
   function handleAdd() {
     if (isApparel && !size) {
@@ -211,36 +220,56 @@ export default function ShopProduct() {
                   {qty}
                 </span>
                 <button
-                  onClick={() => setQty((q) => Math.min(itemCap, q + 1))}
+                  onClick={() => setQty((q) => Math.min(effectiveCap, q + 1))}
                   aria-label="Increase quantity"
-                  style={{ ...qtyBtn, opacity: qty >= itemCap ? 0.4 : 1 }}
+                  style={{ ...qtyBtn, opacity: qty >= effectiveCap ? 0.4 : 1 }}
                 >
                   <PlusIcon size={16} strokeWidth={2.2} />
                 </button>
               </div>
-              {qty >= itemCap && (
+              {qty >= effectiveCap && (
                 <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--muted)" }}>
-                  Limit {itemCap} per item per order.
+                  {isDues
+                    ? "One per member — dues are a one-time purchase."
+                    : `Limit ${itemCap} per item per order.`}
                 </p>
               )}
             </div>
 
-            <button
-              className="primaryBtn"
-              onClick={handleAdd}
-              style={{
-                width: "100%",
-                padding: "14px 20px",
-                fontSize: "15px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "9px",
-              }}
-            >
-              <CartIcon size={18} strokeWidth={1.9} />
-              Add to cart
-            </button>
+            {alreadyPaidDues ? (
+              <div
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textAlign: "center",
+                  borderRadius: "12px",
+                  background: "var(--success-bg)",
+                  border: "1px solid var(--success-border)",
+                  color: "var(--success-deep)",
+                }}
+              >
+                ✓ You've already paid your T-Shirt Dues — thank you!
+              </div>
+            ) : (
+              <button
+                className="primaryBtn"
+                onClick={handleAdd}
+                style={{
+                  width: "100%",
+                  padding: "14px 20px",
+                  fontSize: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "9px",
+                }}
+              >
+                <CartIcon size={18} strokeWidth={1.9} />
+                Add to cart
+              </button>
+            )}
 
             <div
               style={{
