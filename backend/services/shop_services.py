@@ -42,9 +42,12 @@ def generate_order_code(session: Session) -> str:
             return code
 
 
-def create_order(session: Session, payload: OrderCreate, user_id: int | None) -> Order:
-    """Validate items against the catalog, compute the total server-side, and
-    persist the order + line items. Called after the (simulated) payment succeeds."""
+def validate_order_items(
+    session: Session, payload: OrderCreate
+) -> tuple[list[tuple[Product, str | None, int]], int]:
+    """Validate items against the catalog and compute the total server-side.
+    Persists nothing — the route charges the card between this and
+    create_order, so no order row ever exists for a failed charge."""
     item_cap = get_shop_settings(session).order_item_cap
 
     lines: list[tuple[Product, str | None, int]] = []
@@ -75,6 +78,22 @@ def create_order(session: Session, payload: OrderCreate, user_id: int | None) ->
         lines.append((product, size, item.quantity))
 
     total_cents = sum(product.price_cents * qty for product, _, qty in lines)
+    return lines, total_cents
+
+
+def create_order(
+    session: Session,
+    payload: OrderCreate,
+    user_id: int | None,
+    square_payment_id: str | None = None,
+    validated: tuple[list[tuple[Product, str | None, int]], int] | None = None,
+) -> Order:
+    """Persist the order + line items after the payment step. Pass `validated`
+    (the pair from validate_order_items) so the stored total is exactly the
+    amount charged; it is only recomputed here when omitted."""
+    lines, total_cents = (
+        validated if validated is not None else validate_order_items(session, payload)
+    )
 
     order = Order(
         order_code=generate_order_code(session),
@@ -83,6 +102,7 @@ def create_order(session: Session, payload: OrderCreate, user_id: int | None) ->
         buyer_phone=payload.buyer_phone,
         user_id=user_id,
         total_cents=total_cents,
+        square_payment_id=square_payment_id,
     )
     session.add(order)
     session.commit()

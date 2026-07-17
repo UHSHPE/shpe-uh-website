@@ -28,6 +28,9 @@ class Order(SQLModel, table=True):
     ready_at: datetime | None = Field(default=None)
     picked_up_at: datetime | None = Field(default=None)
     notes: str | None = Field(default=None)
+    # Square payment id backing this order (square_services.py); None for
+    # dev-mode/simulated orders. Internal — deliberately NOT in OrderOut.
+    square_payment_id: str | None = Field(default=None)
 
 
 class OrderItem(SQLModel, table=True):
@@ -60,6 +63,9 @@ class OrderCreate(SQLModel):
     buyer_email: str
     buyer_phone: str = ""
     items: list[OrderItemIn] = Field(min_length=1)
+    # One-time card token from the Square Web Payments SDK. None is only
+    # accepted in dev mode (no SQUARE_* config), where checkout is simulated.
+    payment_token: str | None = None
 
     @field_validator("buyer_email", mode="before")
     @classmethod

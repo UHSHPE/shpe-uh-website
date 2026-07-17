@@ -12,7 +12,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
-- **Merch Shop** — Public storefront with cart and checkout (payment **simulated** in v1; Square planned). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an email when their order is ready for pickup
+- **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an email when their order is ready for pickup
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -28,6 +28,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - FastAPI, SQLModel (SQLAlchemy 2), SQLite
 - PyJWT, pwdlib (Argon2), Pydantic v2, Uvicorn
 - slowapi (rate limiting)
+- squareup (Square Payments API for shop checkout)
 - pytest + httpx for the test suite
 
 ## Prerequisites
@@ -112,6 +113,24 @@ Frontend runs at **http://localhost:5173**.
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
 | `SMTP_PASSWORD` | No | SMTP password (use an app password for Gmail) | — |
 | `EMAIL_FROM` | No | From header; defaults to `SMTP_USER` | `SHPE UH <noreply@example.org>` |
+| `SQUARE_ACCESS_TOKEN` | No | Square API access token for shop card payments. **Unset = dev mode:** checkout is simulated, no real charge | `EAAA...` |
+| `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
+| `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted | `sandbox` |
+
+#### Square shop payments (optional, one-time setup)
+
+When configured, the checkout payment step renders Square's secure card element (card numbers go straight to Square — they never touch this backend), and `POST /shop/orders` charges the card for the server-computed total **before** creating the order. A declined card leaves no order behind. Square's fee is ~2.9% + 30¢ per online charge.
+
+**Wallets:** Apple Pay and Google Pay buttons appear automatically above the card form on devices/browsers that support them — both reuse the exact same charge flow. Google Pay also works in the sandbox. **Apple Pay is production-only** and needs a one-time domain registration: Square Developer Dashboard → your app → **Apple Pay** → add your web domain, then host the verification file Square provides at `https://<your-domain>/.well-known/apple-developer-merchantid-domain-association` (put it in `frontend/public/.well-known/` — Vite serves `public/` at the site root). Until that's done, the Apple Pay button simply doesn't render.
+
+Start in the **Sandbox** (fake money, test cards), then switch to Production:
+
+1. Go to [developer.squareup.com](https://developer.squareup.com/apps) and sign in with the chapter's Square account, then create an application (any name, e.g. "SHPE UH Website").
+2. In the application's **Sandbox** tab, copy the **Application ID** (`sandbox-sq0idb-...`) and **Access Token** (`EAAA...`).
+3. Get the sandbox **Location ID**: open the app's **Locations** page (or Default Test Account) and copy the id.
+4. Set `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT=sandbox`) in `backend/.env`, and `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID` in `frontend/.env.local`. Restart both servers.
+5. Test with Square's sandbox card: `4111 1111 1111 1111`, any future expiry, any CVV, any ZIP. Charges appear in the [Sandbox Seller Dashboard](https://squareupsandbox.com/dashboard).
+6. **Go live:** swap in the app's **Production** Application ID + Access Token, the real store's Location ID, and set `SQUARE_ENVIRONMENT=production`.
 
 ### `frontend/.env.local`
 
@@ -119,6 +138,8 @@ Frontend runs at **http://localhost:5173**.
 |---|---|---|---|
 | `VITE_API_URL` | Yes | Backend base URL | `http://localhost:8000` |
 | `VITE_BEHOLD_FEED_URL` | No | Public [Behold](https://behold.so) JSON feed for the home-page Instagram grid. If unset/unreachable, the grid shows a shimmer placeholder | `https://feeds.behold.so/<feed-id>` |
+| `VITE_SQUARE_APP_ID` | No | Square application id for the checkout card element (sandbox ids start with `sandbox-`). **Unset = dev mode:** payment step stays simulated | `sandbox-sq0idb-...` |
+| `VITE_SQUARE_LOCATION_ID` | No | Square location id — same one as the backend's `SQUARE_LOCATION_ID` | `L4X...` |
 
 > **Never commit `.env` or `.env.local` to version control.**
 
@@ -158,7 +179,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/password-reset services, rate limiter
+    ├── services/           # DB session deps, user/committee/reminder/email/password-reset/shop/Square-payment services, rate limiter
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -175,7 +196,7 @@ shpe-uh-website/
 | `/calendar` | Events calendar (with "Remind me by email") | No |
 | `/shop` | Merch shop — browse products, filter by category | No |
 | `/shop/:productId` | Product detail — pick a size (apparel) and quantity, add to cart | No |
-| `/shop/checkout` | Two-step checkout: contact details, then (simulated) payment | No |
+| `/shop/checkout` | Two-step checkout: contact details, then payment (Square card element + Apple Pay / Google Pay where supported; simulated when Square isn't configured) | No |
 | `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
 | `/signup` | Sign up | No |
@@ -214,7 +235,7 @@ shpe-uh-website/
 | GET | `/shop/products` | No | Active shop products |
 | GET | `/shop/products/{id}` | No | One active product (type, sizes, price) |
 | GET | `/shop/products/{id}/image` | No | Product image |
-| POST | `/shop/orders` | No | Place an order after the (simulated) payment; total computed server-side (rate limited: 10/minute) |
+| POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited: 10/minute) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
 | GET | `/shop/orders/me` | Yes | Signed-in member's order history |
 | PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |

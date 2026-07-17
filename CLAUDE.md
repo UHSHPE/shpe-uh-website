@@ -39,7 +39,7 @@ shpe-uh-website/
     uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
     models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, shop/ (product.py, order.py, shop_settings.py), committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py, square_services.py
     validators/           # email.py (normalize_email)
     tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers; shop_tests/conftest.py adds manager_client/make_product/sent_emails
     .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
@@ -77,12 +77,20 @@ SMTP_PORT=587
 SMTP_USER=<sender address>
 SMTP_PASSWORD=<app password>
 EMAIL_FROM=SHPE UH <noreply@example.org>   # optional, defaults to SMTP_USER
+
+# Optional — Square card payments for the shop. Without these, checkout runs
+# in simulated dev mode (console-printing no-op charge). Setup steps in README.
+SQUARE_ACCESS_TOKEN=<from developer.squareup.com>
+SQUARE_LOCATION_ID=<location id of the same Square application>
+SQUARE_ENVIRONMENT=sandbox   # or "production"; must match the token
 ```
 
 **Frontend** (`frontend/.env.local`):
 ```
 VITE_API_URL=http://localhost:8000
 VITE_BEHOLD_FEED_URL=https://feeds.behold.so/<feed-id>   # public Behold JSON feed for the home-page Instagram grid
+VITE_SQUARE_APP_ID=<Square application id>       # optional — unset keeps checkout simulated
+VITE_SQUARE_LOCATION_ID=<Square location id>     # must match the backend's SQUARE_LOCATION_ID
 ```
 The `api.js` axios instance reads `VITE_API_URL` — without this set, all API calls will fail.
 `VITE_BEHOLD_FEED_URL` powers the home page's Instagram section; if unset or the fetch fails, the grid keeps its shimmer placeholder (layout never breaks).
@@ -147,7 +155,7 @@ Both jobs must pass before merging into `main`.
 | `/get-involved` | `pages/get-involved.jsx` (commented out) | No |
 | `/shop` | `pages/shop.jsx` (public storefront) | No |
 | `/shop/:productId` | `pages/shop-product.jsx` (product detail) | No |
-| `/shop/checkout` | `pages/shop-checkout.jsx` (contact → simulated payment) | No |
+| `/shop/checkout` | `pages/shop-checkout.jsx` (contact → payment: Square card element when `VITE_SQUARE_*` set, simulated otherwise) | No |
 | `/shop/order/:code` | `pages/shop-order.jsx` (confirmation + status; lookup needs buyer email) | No |
 | `/dashboard` | `pages/dashboard.jsx` | Yes (PrivateRoute) |
 | `/committees` | `pages/committees.jsx` | Yes (PrivateRoute) |
@@ -185,7 +193,7 @@ Both jobs must pass before merging into `main`.
 | GET | `/shop/products` | No | Active products only, ordered by created_at |
 | GET | `/shop/products/{id}` | No | One product; 404 for unknown OR inactive |
 | GET | `/shop/products/{id}/image` | No | Product image (FileResponse) |
-| POST | `/shop/orders` | Optional | Create order after simulated payment (rate limited 10/minute); server recomputes total; links `user_id` if a valid bearer token rides along |
+| POST | `/shop/orders` | Optional | Charge card via Square (402 + no order on decline; dev-mode no-op when unconfigured), then create order (rate limited 10/minute); server recomputes total and charges exactly that; links `user_id` if a valid bearer token rides along |
 | GET | `/shop/orders/me` | Yes | Signed-in member's order history (defined BEFORE `/orders/{code}` so "me" isn't swallowed) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer lookup; wrong/unknown code or email → one generic 404 |
 | POST | `/shop/products` | Shop admin | Create product (201) |
@@ -215,7 +223,10 @@ Both jobs must pass before merging into `main`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
 
 ## Merch shop (spec: specs/shop/shop-page.md)
-- **Payment is simulated in v1** — `POST /shop/orders` is called after a fake ~1.3s "Processing…" delay on the frontend and the order is created directly with status `paid`. Real Square checkout later replaces only that step; keep order creation decoupled from payment.
+- **Payments — Square Web Payments SDK + Payments API** (`services/square_services.py`). Configured via `SQUARE_ACCESS_TOKEN` + `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT`, default sandbox — all read at **call time**) on the backend, `VITE_SQUARE_APP_ID` + `VITE_SQUARE_LOCATION_ID` on the frontend. The checkout page loads `square.js` from Square's CDN (required — it serves the secure card iframe; sandbox vs prod build is picked by the `sandbox-` app-id prefix), renders the card element in the payment step, and `card.tokenize()` swaps card data for a one-time token — card numbers never touch our server (PCI stays minimal). No webhooks: the charge response is synchronous.
+- **Charge order-of-operations in `POST /shop/orders`: validate → charge → persist.** The route calls `shop_services.validate_order_items` (returns `(lines, total_cents)` without persisting), charges that server-side total via `square_services.charge_card`, then passes the same `validated` pair into `create_order` so the stored total always equals the charged amount. A declined/failed charge raises `PaymentError` (buyer-safe message) → 402 with **no order row**; missing token while configured → 400 before any charge. `Order.square_payment_id` records the charge (internal — NOT in `OrderOut`). The route is sync, so the blocking Square client already runs in FastAPI's threadpool — if it's ever made `async def`, wrap the charge in `asyncio.to_thread`.
+- **Wallets (Apple Pay / Google Pay)** ride the same flow — no backend changes. The payment-step effect builds a `paymentRequest` (display amount only; the backend still charges its own recomputed total) and tries `payments.applePay()` / `payments.googlePay()`; each **throws where unsupported** (Apple Pay: sandbox, non-Safari, unregistered domain — expected, not a bug) and its button just stays hidden. `handlePay(walletMethod)` tokenizes whichever method is passed (the card element when null); a wallet-sheet `Cancel` result is silently ignored. Gotchas: the `#google-pay-button` container must exist in the DOM **before** `attach()` (it renders always, `display:none` until ready); the Apple Pay button is our own `<button className="applePayBtn">` (native `-apple-pay-button` vendor appearance — CSS lives in `styles.css`, Tailwind can't express it); the init effect depends on `[step, subtotalCents]` so a cart change rebuilds the paymentRequest. Going live with Apple Pay needs a one-time domain registration (Square Developer Dashboard → Apple Pay) + hosting Square's verification file at `frontend/public/.well-known/apple-developer-merchantid-domain-association`.
+- **Unconfigured = dev mode, end to end** (same pattern as `email_services.py`): `charge_card` prints `[square dev mode] would charge …` and returns None, orders are created with `square_payment_id=None`, and the frontend keeps the demo card block + fake 1.3s delay. Tests never hit the real API: an autouse `disable_square_payments` fixture in `tests/conftest.py` clears all `SQUARE_*` env vars (`load_dotenv()` leaks `backend/.env` into the test process); configured-mode tests monkeypatch `square_services.is_configured`/`charge_card` (called as module attributes from `shop_routes`, so patching `services.square_services` works). Dep: `squareup` (lazy-imported inside `square_services.py`, so dev mode works without it).
 - **Models** (`models/shop/`): `Product` (with `ProductType` enum `apparel`/`item`; `sizes` is a `list[str] | None` stored via `sa_column=Column(JSON)`; there is **no stock column** — no inventory is tracked, `is_active` is the soft-delete/sold-out toggle), `Order` + `OrderItem` (`OrderStatus`: `paid → ready → picked_up`, plus `cancelled`; terminal is `picked_up`, NOT `completed`), and `ShopSettings` (singleton row: `tagline` + `order_item_cap`, defaults in the model; always access via `shop_services.get_shop_settings()`, which creates the row on first use). Money is integer **cents**; timestamps naive UTC via `utcnow()`. All three modules are imported in `database.py`.
 - **Per-order quantity cap** (no inventory): `create_order` rejects any line item whose quantity exceeds `ShopSettings.order_item_cap` (default 5) with a 400. Admins change the cap (and the storefront tagline) via `PATCH /shop/settings`; the frontend `CartContext` fetches the cap once and clamps add-to-cart and the steppers client-side.
 - **`OrderItem` snapshots `product_name` and `unit_price_cents`** at purchase time, so orders stay readable after a product is edited or hard-deleted.

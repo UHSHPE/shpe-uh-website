@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createShopOrder } from "../api/api";
 import { CardIcon, CheckIcon, BoxIcon } from "../components/shopIcons";
@@ -6,8 +6,46 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { formatCents } from "../utils/shop";
 
-// Two-step checkout: contact details, then a SIMULATED payment step (a
-// placeholder for the future Square integration — the flow stays the same).
+// Two-step checkout: contact details, then payment. With VITE_SQUARE_* set,
+// the payment step renders Square's secure card element (Web Payments SDK)
+// and the backend charges for real; without it the step stays SIMULATED —
+// matching the backend's no-SQUARE_* dev mode.
+const SQUARE_APP_ID = import.meta.env.VITE_SQUARE_APP_ID;
+const SQUARE_LOCATION_ID = import.meta.env.VITE_SQUARE_LOCATION_ID;
+const SQUARE_CONFIGURED = Boolean(SQUARE_APP_ID && SQUARE_LOCATION_ID);
+// square.js must load from Square's CDN (it serves the secure card iframe) —
+// this is the one sanctioned non-api.js external script. Sandbox app ids
+// start with "sandbox-", which picks the sandbox build.
+const SQUARE_SDK_URL = SQUARE_APP_ID?.startsWith("sandbox-")
+  ? "https://sandbox.web.squarecdn.com/v1/square.js"
+  : "https://web.squarecdn.com/v1/square.js";
+
+// destroy() rejects if an element is already gone (e.g. StrictMode's dev
+// double-run) — swallow that, it just means there's nothing to clean up.
+function safeDestroy(method) {
+  try {
+    method?.destroy();
+  } catch {
+    /* already destroyed */
+  }
+}
+
+let squareSdkPromise = null;
+function loadSquareSdk() {
+  if (!squareSdkPromise) {
+    squareSdkPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = SQUARE_SDK_URL;
+      script.onload = resolve;
+      script.onerror = () => {
+        squareSdkPromise = null; // allow a retry on the next attempt
+        reject(new Error("square.js failed to load"));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return squareSdkPromise;
+}
 export default function ShopCheckout() {
   const { user } = useAuth();
   const { lines, subtotalCents, clearCart } = useCart();
@@ -20,6 +58,12 @@ export default function ShopCheckout() {
   const [prefilled, setPrefilled] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState(null);
+  const cardRef = useRef(null); // live Square card element (configured mode)
+  const [cardReady, setCardReady] = useState(false);
+  // Wallets ride the same tokenize → payment_token flow as the card. Each is
+  // null when the device/browser/domain doesn't support it (its button hides).
+  const [applePayMethod, setApplePayMethod] = useState(null);
+  const [googlePayMethod, setGooglePayMethod] = useState(null);
 
   // Prefill contact info once the signed-in user's profile arrives (it loads
   // async). Render-phase adjustment instead of an effect — see "You Might Not
@@ -33,21 +77,116 @@ export default function ShopCheckout() {
 
   const canContinue = name.trim() !== "" && email.trim() !== "";
 
-  async function handlePay() {
+  // Mount Square's card element while the payment step is showing. Cleanup
+  // destroys it (and guards React StrictMode's dev double-run).
+  useEffect(() => {
+    if (!SQUARE_CONFIGURED || step !== "payment") return undefined;
+    let cancelled = false;
+    let cardInstance = null;
+    let applePayInstance = null;
+    let googlePayInstance = null;
+
+    // The wallet sheet shows this amount; the backend still charges its own
+    // recomputed total (they match — both come from the catalog prices).
+    const buildPaymentRequest = (payments) =>
+      payments.paymentRequest({
+        countryCode: "US",
+        currencyCode: "USD",
+        total: { amount: (subtotalCents / 100).toFixed(2), label: "SHPE UH Shop" },
+      });
+
+    (async () => {
+      try {
+        if (!window.Square) await loadSquareSdk();
+        if (cancelled) return;
+        const payments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
+        const card = await payments.card();
+        if (cancelled) return void safeDestroy(card);
+        await card.attach("#square-card");
+        if (cancelled) return void safeDestroy(card);
+        cardInstance = card;
+        cardRef.current = card;
+        setCardReady(true);
+
+        // Wallets are best-effort: each init throws when unsupported (Apple
+        // Pay in sandbox / non-Safari / unregistered domain; Google Pay in
+        // unsupported browsers) — the button just stays hidden.
+        try {
+          const applePay = await payments.applePay(buildPaymentRequest(payments));
+          if (cancelled) return void safeDestroy(applePay);
+          applePayInstance = applePay;
+          setApplePayMethod(applePay);
+        } catch {
+          /* Apple Pay unavailable here */
+        }
+        try {
+          const googlePay = await payments.googlePay(buildPaymentRequest(payments));
+          await googlePay.attach("#google-pay-button", { buttonSizeMode: "fill" });
+          if (cancelled) return void safeDestroy(googlePay);
+          googlePayInstance = googlePay;
+          setGooglePayMethod(googlePay);
+        } catch {
+          /* Google Pay unavailable here */
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Couldn't load the secure payment form. Refresh the page and try again.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setCardReady(false);
+      setApplePayMethod(null);
+      setGooglePayMethod(null);
+      cardRef.current = null;
+      safeDestroy(cardInstance);
+      safeDestroy(applePayInstance);
+      safeDestroy(googlePayInstance);
+    };
+  }, [step, subtotalCents]);
+
+  async function handlePay(walletMethod = null) {
+    if (paying) return;
     setPaying(true);
     setError(null);
+    let paymentToken = null;
+    if (SQUARE_CONFIGURED) {
+      // Card data lives in Square's iframe (or the wallet's payment sheet) —
+      // tokenize() swaps it for a one-time token; only that token ever
+      // reaches our backend.
+      try {
+        const method = walletMethod || cardRef.current;
+        const result = await method.tokenize();
+        if (result.status !== "OK") {
+          // "Cancel" = the buyer closed the wallet sheet — not an error.
+          if (result.status !== "Cancel") {
+            setError(result.errors?.[0]?.message || "Check your card details and try again.");
+          }
+          setPaying(false);
+          return;
+        }
+        paymentToken = result.token;
+      } catch {
+        setError("Check your card details and try again.");
+        setPaying(false);
+        return;
+      }
+    } else {
+      // Simulated processing delay so the dev-mode step reads as a real charge.
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+    }
     const payload = {
       buyer_name: name.trim(),
       buyer_email: email.trim(),
       buyer_phone: phone.trim(),
+      payment_token: paymentToken,
       items: lines.map((l) => ({
         product_id: l.productId,
         size: l.size,
         quantity: l.qty,
       })),
     };
-    // Simulated processing delay so the payment step reads as a real charge.
-    await new Promise((resolve) => setTimeout(resolve, 1300));
     try {
       const res = await createShopOrder(payload);
       const order = res.data;
@@ -211,14 +350,60 @@ export default function ShopCheckout() {
                     padding: "4px 10px",
                   }}
                 >
-                  SIMULATED · no real charge
+                  {SQUARE_CONFIGURED ? "Secured by Square" : "SIMULATED · no real charge"}
                 </span>
               </div>
               <p style={{ margin: "0 0 18px", fontSize: "13px", color: "var(--muted)" }}>
-                This is a placeholder checkout. It will be replaced by Square — the flow and buttons stay the same.
+                {SQUARE_CONFIGURED
+                  ? "Payments are processed securely by Square — your card number never touches our servers."
+                  : "This is a placeholder checkout. It will be replaced by Square — the flow and buttons stay the same."}
               </p>
 
-              {/* Read-only demo card block */}
+              {SQUARE_CONFIGURED && (
+                <div>
+                  {/* Express wallets — buttons appear only where supported.
+                      The Google Pay container must exist before attach(), so
+                      it always renders and is display:none until ready. */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: applePayMethod || googlePayMethod ? "16px" : 0 }}>
+                    {applePayMethod && (
+                      <button
+                        type="button"
+                        aria-label="Pay with Apple Pay"
+                        className="applePayBtn"
+                        onClick={() => handlePay(applePayMethod)}
+                        disabled={paying}
+                      />
+                    )}
+                    <div
+                      id="google-pay-button"
+                      onClick={() => googlePayMethod && handlePay(googlePayMethod)}
+                      style={{
+                        display: googlePayMethod ? "block" : "none",
+                        pointerEvents: paying ? "none" : "auto",
+                        opacity: paying ? 0.5 : 1,
+                      }}
+                    />
+                    {(applePayMethod || googlePayMethod) && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+                        <span style={{ fontSize: "12px", color: "var(--muted)" }}>or pay with card</span>
+                        <span style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Square's secure card fields render into this container */}
+                  <div id="square-card" style={{ minHeight: "94px" }} />
+                  {!cardReady && !error && (
+                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)" }}>
+                      Loading secure payment form…
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Read-only demo card block (dev mode only) */}
+              {!SQUARE_CONFIGURED && (
               <div
                 style={{
                   border: "1px solid var(--border)",
@@ -252,6 +437,7 @@ export default function ShopCheckout() {
                   </div>
                 </div>
               </div>
+              )}
 
               {error && (
                 <p style={{ margin: "14px 0 0", fontSize: "13px", fontWeight: 600, color: "var(--shpe-red)" }}>{error}</p>
@@ -259,8 +445,8 @@ export default function ShopCheckout() {
 
               <button
                 className="primaryBtn"
-                onClick={handlePay}
-                disabled={paying}
+                onClick={() => handlePay()}
+                disabled={paying || (SQUARE_CONFIGURED && !cardReady)}
                 style={{
                   marginTop: "20px",
                   width: "100%",

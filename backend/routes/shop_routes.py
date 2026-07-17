@@ -9,7 +9,7 @@ from models.shop.order import Order, OrderCreate, OrderOut, OrderStatus, OrderUp
 from models.shop.product import Product, ProductCreate, ProductOut, ProductUpdate
 from models.shop.shop_settings import ShopSettingsOut, ShopSettingsUpdate
 from models.user.user import User
-from services import shop_services
+from services import shop_services, square_services
 from services.dependencies import (
     SessionDependencies,
     get_current_user,
@@ -104,10 +104,41 @@ def place_order(
     session: SessionDependencies,
     user: Annotated[User | None, Depends(get_optional_user)] = None,
 ):
-    """Create an order after the (simulated) payment succeeds. The total is
-    recomputed from DB prices — any client-sent total is ignored. When real
-    Square checkout lands, only the payment step ahead of this changes."""
-    order = shop_services.create_order(session, payload, user.id if user else None)
+    """Charge the card via Square, then create the order. The total is
+    recomputed from DB prices — any client-sent total is ignored — and the
+    charge uses that server-side amount. Without SQUARE_* config the charge
+    is a dev-mode no-op (simulated checkout, same flow as before)."""
+    validated = shop_services.validate_order_items(session, payload)
+    _, total_cents = validated
+
+    if square_services.is_configured() and not payload.payment_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing payment token — refresh the page and try again.",
+        )
+
+    # Blocking Square client is fine here: this route is sync, so FastAPI
+    # already runs it in the threadpool. No order row exists yet — a declined
+    # card leaves nothing behind.
+    try:
+        square_payment_id = square_services.charge_card(
+            payload.payment_token,
+            total_cents,
+            payload.buyer_email,
+            note=f"SHPE UH shop order — {payload.buyer_name}",
+        )
+    except square_services.PaymentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)
+        ) from exc
+
+    order = shop_services.create_order(
+        session,
+        payload,
+        user.id if user else None,
+        square_payment_id=square_payment_id,
+        validated=validated,
+    )
     shop_services.notify_managers_new_order(session, order)
     return shop_services.order_to_out(session, order)
 

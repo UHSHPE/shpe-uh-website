@@ -448,3 +448,19 @@ a{ color:inherit; text-decoration:none; }
   .footerRight{ text-align:left; }
   .socialRow{ justify-content:flex-start; }
 }
+
+/* Native Apple Pay button (Safari draws the real thing). Rendered only when
+   Square reports Apple Pay is available on this device + domain — vendor
+   appearance props, so this can't be a Tailwind utility. */
+.applePayBtn {
+  -webkit-appearance: -apple-pay-button;
+  -apple-pay-button-type: pay;
+  -apple-pay-button-style: black;
+  display: block;
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.applePayBtn:disabled { opacity: 0.5; cursor: default; }
