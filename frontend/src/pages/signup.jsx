@@ -1,9 +1,7 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { signupUser } from "../api/api";
 import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
-import { startDuesCheckout } from "../utils/dues";
 import {
   GENDERS, CLASSIFICATIONS, GPA_OPTIONS, EXP_GRAD_DATES,
   MEMBERSHIP_STATUSES, SHIRT_SIZES, COLLEGES, MAJORS_BY_COLLEGE,
@@ -86,15 +84,17 @@ function getFieldError(field, form) {
 }
 
 export default function SignUp() {
-  const navigate = useNavigate();
-  const { user, login } = useAuth();
-  const { addItem, showToast } = useCart();
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [touched, setTouched] = useState({});
   const [countryInput, setCountryInput] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Set once signup succeeds — the account exists but is unverified, so we
+  // show a "check your email" screen instead of logging in. Dues checkout now
+  // happens on the verify-email page (the buyer must be signed in to pay).
+  const [submittedEmail, setSubmittedEmail] = useState("");
 
   if (user) {
     return <Navigate to="/dashboard" replace />
@@ -203,23 +203,11 @@ export default function SignUp() {
     const payload = { ...form, gpa: form.gpa || null };
 
     try {
-      const res = await signupUser(payload);
-      login(res.data.access_token);
-
-      // Send the new member straight into dues checkout (shared helper —
-      // also used by the dues banner). Shop down / product missing → the
-      // normal landing; signup never blocks on payment.
-      const dest = await startDuesCheckout({ shirtSize: form.shirt_size, addItem });
-      if (dest) {
-        showToast(
-          dest === "/shop/checkout"
-            ? "Account created! One last step — pay your chapter dues."
-            : "Account created! Pick a shirt size to pay your dues."
-        );
-        navigate(dest);
-        return;
-      }
-      navigate("/");
+      await signupUser(payload);
+      // Account created but unverified — no token comes back. Prompt the
+      // member to confirm via the link we just emailed to their CougarNet
+      // address; verification is where they'll be routed into dues checkout.
+      setSubmittedEmail(form.cougarnet_email);
     } catch (err) {
       if (err.response?.status === 409) {
         setSubmitError("An account with that email already exists.");
@@ -235,6 +223,52 @@ export default function SignUp() {
   }
 
   const majorOptions = form.college ? (MAJORS_BY_COLLEGE[form.college] || []) : [];
+
+  if (submittedEmail) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, #001F5B 0%, #003A70 60%, #0070C0 100%)",
+          padding: "24px 16px",
+          fontFamily: "Work Sans, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: "16px",
+            padding: "48px 40px",
+            width: "100%",
+            maxWidth: "460px",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            textAlign: "center",
+          }}
+        >
+          <h1 style={{ fontSize: "26px", fontWeight: 700, color: "#001F5B", marginBottom: "12px" }}>
+            Check your email
+          </h1>
+          <p style={{ color: "#374151", fontSize: "15px", lineHeight: 1.6 }}>
+            We sent a verification link to{" "}
+            <strong style={{ color: "#001F5B" }}>{submittedEmail}</strong>. Click it to
+            activate your account and pay your chapter dues.
+          </p>
+          <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "16px", lineHeight: 1.6 }}>
+            The link expires in 24 hours. Didn't get it? Check your spam folder, or
+            sign up again to resend.
+          </p>
+          <p style={{ marginTop: "28px", fontSize: "14px" }}>
+            <Link to="/signin" style={{ color: "#0070C0", fontWeight: 600, textDecoration: "none" }}>
+              Back to sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

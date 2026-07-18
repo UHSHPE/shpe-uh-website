@@ -26,6 +26,12 @@ export function confirmPasswordReset(token, newPassword) {
   return api.post("/password-reset/confirm", { token, new_password: newPassword });
 }
 
+// Public — confirms a signup with the token from the verification email.
+// Returns a login token on success (the account is now usable).
+export function verifyEmail(token) {
+  return api.post("/verify-email", { token });
+}
+
 export function getMe(token) {
   return api.get("/me", {
     headers: { Authorization: `Bearer ${token}` },

@@ -100,6 +100,7 @@ def make_user(session, **overrides):
         is_national_member=True,
         shirt_size=ShirtSize.m,
         hashed_password="not-a-real-hash",
+        email_verified=True,
     )
     fields.update(overrides)
     user = User(**fields)

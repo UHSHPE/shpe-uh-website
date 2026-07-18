@@ -98,7 +98,10 @@ def seed_test_user(s: Session):
             ],
         )
 
-        create_user(s, test_user)
+        created = create_user(s, test_user)
+        created.email_verified = True  # seeded accounts skip email verification
+        s.add(created)
+        s.commit()
         print(f"Seeded test user {cougarnet_email}.")
 
 
@@ -218,6 +221,9 @@ def seed_committees_and_chairs(s: Session):
             ).first()
             if not user:
                 user = create_user(s, user_data)
+                user.email_verified = True  # seeded accounts skip email verification
+                s.add(user)
+                s.commit()
                 print(f"Seeded chair user: {full_name} ({chair_role.value})")
             else:
                 print(f"Skipped chair user — {full_name} already exists.")
@@ -251,7 +257,10 @@ def seed_comm_director(s: Session):
         return
 
     comms = chair_user_create("Comms", "Director", Role.comm_director, 900)
-    create_user(s, comms)
+    created = create_user(s, comms)
+    created.email_verified = True  # seeded accounts skip email verification
+    s.add(created)
+    s.commit()
     print("Seeded comms director user.")
 
 

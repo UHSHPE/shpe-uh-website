@@ -7,6 +7,7 @@ import models.user.multi_selections.user_prof_dev  # noqa: F401
 import models.user.multi_selections.user_interested_industries  # noqa: F401
 import models.user.multi_selections.user_country_origin  # noqa: F401
 import models.user.pw_reset_token
+import models.user.email_verification  # noqa: F401
 import models.event      # noqa: F401
 import models.event_reminder  # noqa: F401
 import models.committee  # noqa: F401
