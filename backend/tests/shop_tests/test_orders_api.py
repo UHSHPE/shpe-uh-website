@@ -16,6 +16,18 @@ def create_order(client, session, product=None, **payload_overrides):
 
 
 # --- §11.3 creation (public, simulated payment) ---
+def test_item_cap_cannot_be_bypassed_with_duplicate_lines(client, session):
+    product = make_product(session, price_cents=1500)
+    resp = client.post("/shop/orders", json={
+        "buyer_name": "Cap Dodger",
+        "buyer_email": "dodger@example.com",
+        "items": [
+            {"product_id": product.id, "size": "M", "quantity": 3},
+            {"product_id": product.id, "size": "M", "quantity": 3}, # 6 total > cap of 5
+        ],
+    })
+    assert resp.status_code == 400
+    assert "limited to" in resp.json()["detail"]
 
 def test_create_order_is_public_and_starts_paid(unauth_client, session, sent_emails):
     res, _ = create_order(unauth_client, session)
