@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -49,9 +50,26 @@ def generate_order_code(session: Session) -> str:
 DUES_PRODUCT_NAME = "T-Shirt Dues"
 
 
+# Dues are per membership year and reset every May 30.
+DUES_RESET_MONTH = 5
+DUES_RESET_DAY = 30
+
+
+def current_dues_period_start() -> datetime:
+    """Start of the current dues period — the most recent May 30 (this year's
+    if today is on/after it, otherwise last year's). Dues paid before this no
+    longer count, so the member owes dues again for the new membership year."""
+    now = utcnow()
+    reset_this_year = datetime(now.year, DUES_RESET_MONTH, DUES_RESET_DAY)
+    if now >= reset_this_year:
+        return reset_this_year
+    return datetime(now.year - 1, DUES_RESET_MONTH, DUES_RESET_DAY)
+
+
 def has_paid_dues(session: Session, user_id: int) -> bool:
-    """True when the user has a non-cancelled order containing the dues
-    product (matched on the OrderItem name snapshot)."""
+    """True when the user has a non-cancelled dues order in the CURRENT
+    membership period (dues reset every May 30 — see current_dues_period_start).
+    Matched on the OrderItem name snapshot."""
     row = session.exec(
         select(OrderItem)
         .join(Order)
@@ -59,6 +77,7 @@ def has_paid_dues(session: Session, user_id: int) -> bool:
             Order.user_id == user_id,
             Order.status != OrderStatus.cancelled,
             OrderItem.product_name == DUES_PRODUCT_NAME,
+            Order.created_at >= current_dues_period_start(),
         )
     ).first()
     return row is not None
@@ -69,9 +88,10 @@ def enforce_dues_rules(
     lines: list[tuple[Product, str | None, int]],
     user_id: int | None,
 ) -> None:
-    """Dues are one-per-member, forever: quantity capped at 1, buyers must be
-    signed in (the purchase has to attach to an account to count), and repeat
-    purchases are rejected. A cancelled dues order doesn't count as paid."""
+    """Dues are one per member per membership year (reset every May 30):
+    quantity capped at 1, buyers must be signed in (the purchase has to attach
+    to an account to count), and a repeat purchase within the current period is
+    rejected. A cancelled dues order doesn't count as paid."""
     dues_qty = sum(qty for product, _, qty in lines if product.name == DUES_PRODUCT_NAME)
     if dues_qty == 0:
         return

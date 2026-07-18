@@ -17,6 +17,7 @@ import Dashboard from './pages/dashboard';
 import Committees from './pages/committees';
 import Calendar from './pages/calendar';
 import Profile from './pages/profile';
+import ShopManagerPage from './pages/shop-manager';
 import Shop from './pages/shop';
 import ShopProduct from './pages/shop-product';
 import ShopCheckout from './pages/shop-checkout';
@@ -67,6 +68,14 @@ export default function App() {
 						element={
 							<PrivateRoute>
 								<Profile />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/shop-manager"
+						element={
+							<PrivateRoute>
+								<ShopManagerPage />
 							</PrivateRoute>
 						}
 					/>

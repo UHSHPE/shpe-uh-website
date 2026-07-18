@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import { isShopManager } from "../utils/shop";
 import Avatar from "./Avatar";
 import { CartIcon } from "./shopIcons";
 
@@ -25,6 +26,18 @@ const memberLinks = [
   { label: "Committees", to: "/committees" },
   { label: "Profile", to: "/profile" },
 ];
+
+// Shop admins get an extra tab (after Committees) to the shop-management page.
+function memberLinksFor(user) {
+  if (user && isShopManager(user)) {
+    return [
+      ...memberLinks.slice(0, 2),
+      { label: "Shop Manager", to: "/shop-manager" },
+      ...memberLinks.slice(2),
+    ];
+  }
+  return memberLinks;
+}
 
 function NavItem({ to, children }) {
   return (
@@ -63,9 +76,9 @@ function CartButton({ className }) {
   );
 }
 
-function MemberMenu({ user, open, setOpen, onSignOut, menuRef }) {
+function MemberMenu({ user, links, open, setOpen, onSignOut, menuRef }) {
   const location = useLocation();
-  const onMember = memberLinks.some((l) => l.to === location.pathname);
+  const onMember = links.some((l) => l.to === location.pathname);
   return (
     <div className="memberMenu" ref={menuRef}>
       <button
@@ -83,7 +96,7 @@ function MemberMenu({ user, open, setOpen, onSignOut, menuRef }) {
       {open && (
         <div className="memberMenuPanel" role="menu">
           <div className="memberMenuLabel">Member area</div>
-          {memberLinks.map((l) => {
+          {links.map((l) => {
             const active = location.pathname === l.to;
             return (
               <NavLink
@@ -126,6 +139,8 @@ export default function Header() {
 
   // The calendar is public — it stays in the top nav whether signed in or not.
   const navLinks = links;
+  // Member dropdown/mobile links, with the Shop Manager tab for shop admins.
+  const memberNav = memberLinksFor(user);
 
   // Close the member dropdown when clicking anywhere outside of it.
   useEffect(() => {
@@ -185,6 +200,7 @@ export default function Header() {
           {user ? (
             <MemberMenu
               user={user}
+              links={memberNav}
               open={isMemberMenuOpen}
               setOpen={setIsMemberMenuOpen}
               onSignOut={handleSignOut}
@@ -217,7 +233,7 @@ export default function Header() {
             </NavLink>
           ))}
           {user &&
-            memberLinks.map((l) => (
+            memberNav.map((l) => (
               <NavLink key={l.to} to={l.to} className="mobileNavLink">
                 {({ isActive }) => (
                   <span className={`mobileNavLinkInner ${isActive ? "active" : ""}`}>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { getShopSettings } from "../api/api";
+import { DUES_PRODUCT_NAME } from "../utils/dues";
 
 // Cart state shared across the app: line items (persisted to localStorage so
 // guests keep their cart across navigation), the drawer open state, the shop
@@ -46,19 +47,27 @@ export function CartProvider({ children }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // T-Shirt Dues are one-per-member — never more than 1 in the cart,
+  // regardless of the shop-wide item cap.
+  function lineCap(name) {
+    return name === DUES_PRODUCT_NAME ? 1 : itemCap;
+  }
+
   function addItem(product, size, qty = 1, { openDrawer = true } = {}) {
+    const cap = lineCap(product.name);
+    const isDues = product.name === DUES_PRODUCT_NAME;
     let capped = false;
     setLines((prev) => {
       const key = lineKey(product.id, size);
       const existing = prev.find((l) => lineKey(l.productId, l.size) === key);
       if (existing) {
-        const next = Math.min(existing.qty + qty, itemCap);
+        const next = Math.min(existing.qty + qty, cap);
         capped = next < existing.qty + qty;
         return prev.map((l) =>
           lineKey(l.productId, l.size) === key ? { ...l, qty: next } : l
         );
       }
-      const next = Math.min(qty, itemCap);
+      const next = Math.min(qty, cap);
       capped = next < qty;
       return [
         ...prev,
@@ -73,17 +82,23 @@ export function CartProvider({ children }) {
       ];
     });
     if (openDrawer) setIsOpen(true);
-    setToast(capped ? `Limit ${itemCap} per item` : "Added to cart");
+    setToast(
+      capped
+        ? isDues
+          ? "You can only buy dues once"
+          : `Limit ${itemCap} per item`
+        : "Added to cart"
+    );
   }
 
   // delta of -1/+1 from the steppers; a line hitting 0 is removed, and
-  // quantity never exceeds the per-order item cap.
+  // quantity never exceeds the line's cap (1 for dues, else the item cap).
   function changeQty(productId, size, delta) {
     setLines((prev) =>
       prev
         .map((l) =>
           lineKey(l.productId, l.size) === lineKey(productId, size)
-            ? { ...l, qty: Math.min(l.qty + delta, itemCap) }
+            ? { ...l, qty: Math.min(l.qty + delta, lineCap(l.name)) }
             : l
         )
         .filter((l) => l.qty > 0)

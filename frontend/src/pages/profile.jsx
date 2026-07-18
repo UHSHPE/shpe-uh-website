@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { uploadResume, getResumeBlob, deleteResume } from '../api/api';
 import MyOrders from '../components/MyOrders';
-import ShopManager from '../components/ShopManager';
 import { isShopManager } from '../utils/shop';
 
 function yesNo(v) {
@@ -180,9 +179,6 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
       >
-        {/* Shop management (managers only) */}
-        {isShopManager(user) && <ShopManager />}
-
         {/* Resume */}
         <Section title="Resume">
           {resumeName ? (

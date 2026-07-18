@@ -13,7 +13,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
-- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form. Dues are **one per member** (server-enforced, sign-in required), and signed-in members who haven't paid see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
+- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -227,7 +227,8 @@ shpe-uh-website/
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
-| `/profile` | Profile info, PDF resume, order history — plus the shop-management panel for shop admins (comms director / marketing chair) | Yes |
+| `/profile` | Profile info, PDF resume, and order history | Yes |
+| `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair) | Yes |
 
 ## API Reference
 
