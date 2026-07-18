@@ -27,6 +27,10 @@ class Role(str, Enum):
     projects_chair = "Projects Chair"
     member_relations_chair = "Member Relations Chair"
 
+# Roles allowed to administer the merch shop (products, orders, settings).
+# There is no dedicated shop-manager role — shop admin rides on these two.
+SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair}
+
 class Gender(str, Enum):
     female = "Female"
     male = "Male"

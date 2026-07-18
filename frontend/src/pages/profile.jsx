@@ -3,6 +3,9 @@ import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { uploadResume, getResumeBlob, deleteResume } from '../api/api';
+import MyOrders from '../components/MyOrders';
+import ShopManager from '../components/ShopManager';
+import { isShopManager } from '../utils/shop';
 
 function yesNo(v) {
   return v ? 'Yes' : 'No';
@@ -146,11 +149,30 @@ export default function Profile() {
           marginBottom: '28px',
         }}
       >
-        <p style={{ margin: 0, opacity: 0.75, fontSize: '14px', fontWeight: 500 }}>Your profile</p>
-        <h1 style={{ margin: '4px 0 0', fontSize: '30px', fontWeight: 800, lineHeight: 1.1 }}>
-          {user.first_name} {user.last_name}
-        </h1>
-        <p style={{ margin: '6px 0 0', opacity: 0.85, fontSize: '14px' }}>{user.cougarnet_email}</p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ margin: 0, opacity: 0.75, fontSize: '14px', fontWeight: 500 }}>Your profile</p>
+            <h1 style={{ margin: '4px 0 0', fontSize: '30px', fontWeight: 800, lineHeight: 1.1 }}>
+              {user.first_name} {user.last_name}
+            </h1>
+            <p style={{ margin: '6px 0 0', opacity: 0.85, fontSize: '14px' }}>{user.cougarnet_email}</p>
+          </div>
+          {isShopManager(user) && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              background: 'rgba(253,101,47,.2)',
+              border: '1px solid rgba(253,101,47,.5)',
+              borderRadius: '999px',
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+            }}>
+              ★ Shop Manager
+            </span>
+          )}
+        </div>
       </motion.div>
 
       <motion.div
@@ -158,6 +180,9 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
       >
+        {/* Shop management (managers only) */}
+        {isShopManager(user) && <ShopManager />}
+
         {/* Resume */}
         <Section title="Resume">
           {resumeName ? (
@@ -264,6 +289,9 @@ export default function Profile() {
             <Field label="Professional development" value={joinList(user.prof_dev)} />
           </div>
         </Section>
+
+        {/* Order history — latest order up front, the rest behind the toggle */}
+        <MyOrders />
       </motion.div>
     </div>
   );

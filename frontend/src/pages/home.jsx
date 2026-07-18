@@ -132,7 +132,14 @@ export default function Home() {
 
 				<h2 className="relative z-[1] text-center italic font-semibold text-[clamp(1.2rem,2.5vw,1.8rem)] mb-6 text-[#001F5B]">
 					Follow us on Instagram:{' '}
-					<span className="text-[#0070C0]">@shpe_uh</span>
+					<a
+						href="https://www.instagram.com/shpe_uh/"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-[#0070C0] hover:underline"
+					>
+						@shpe_uh
+					</a>
 				</h2>
 
 				{/* 3×2 grid — real posts from the Behold feed; shimmer placeholder is the fallback */}

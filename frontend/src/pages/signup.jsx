@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { signupUser } from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
+import { startDuesCheckout } from "../utils/dues";
 import {
   GENDERS, CLASSIFICATIONS, GPA_OPTIONS, EXP_GRAD_DATES,
   MEMBERSHIP_STATUSES, SHIRT_SIZES, COLLEGES, MAJORS_BY_COLLEGE,
@@ -86,6 +88,7 @@ function getFieldError(field, form) {
 export default function SignUp() {
   const navigate = useNavigate();
   const { user, login } = useAuth();
+  const { addItem, showToast } = useCart();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [touched, setTouched] = useState({});
@@ -202,6 +205,20 @@ export default function SignUp() {
     try {
       const res = await signupUser(payload);
       login(res.data.access_token);
+
+      // Send the new member straight into dues checkout (shared helper —
+      // also used by the dues banner). Shop down / product missing → the
+      // normal landing; signup never blocks on payment.
+      const dest = await startDuesCheckout({ shirtSize: form.shirt_size, addItem });
+      if (dest) {
+        showToast(
+          dest === "/shop/checkout"
+            ? "Account created! One last step — pay your chapter dues."
+            : "Account created! Pick a shirt size to pay your dues."
+        );
+        navigate(dest);
+        return;
+      }
       navigate("/");
     } catch (err) {
       if (err.response?.status === 409) {

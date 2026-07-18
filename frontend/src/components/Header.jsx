@@ -4,7 +4,9 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 import Avatar from "./Avatar";
+import { CartIcon } from "./shopIcons";
 
 const links = [
   { label: "Home", to: "/" },
@@ -13,6 +15,7 @@ const links = [
   { label: "Our Sponsors", to: "/sponsors" },
   { label: "Gallery", to: "/gallery" },
   { label: "Calendar", to: "/calendar" },
+  { label: "Shop", to: "/shop" },
 ];
 
 // Member-only tabs — grouped under the account dropdown once signed in.
@@ -41,6 +44,22 @@ function NavItem({ to, children }) {
         </span>
       )}
     </NavLink>
+  );
+}
+
+// Header cart icon with the orange count badge; opens the cart drawer.
+function CartButton({ className }) {
+  const { count, openCart } = useCart();
+  return (
+    <button
+      type="button"
+      className={`cartBtn ${className ?? ""}`}
+      aria-label="Open cart"
+      onClick={openCart}
+    >
+      <CartIcon size={20} />
+      {count > 0 && <span className="cartBtnBadge">{count}</span>}
+    </button>
   );
 }
 
@@ -142,6 +161,7 @@ export default function Header() {
           </div>
         </div>
 
+        <CartButton className="cartBtnMobile" />
         <button
           type="button"
           className="mobileMenuBtn"
@@ -159,6 +179,8 @@ export default function Header() {
               {l.label}
             </NavItem>
           ))}
+
+          <CartButton className="cartBtnDesktop" />
 
           {user ? (
             <MemberMenu

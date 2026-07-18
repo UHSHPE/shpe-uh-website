@@ -33,6 +33,19 @@ def reset_rate_limiter():
     yield
 
 
+# Square charges read SQUARE_* env vars at call time — clear them so tests
+# always run in dev-mode no-op and never hit the real Square API, no matter
+# what the developer's backend/.env contains (load_dotenv() leaks .env into
+# the test process).
+@pytest.fixture(autouse=True)
+def disable_square_payments(monkeypatch):
+    # Import main BEFORE clearing: the client fixtures lazily `from main
+    # import app`, and the first such import runs every route module's
+    # load_dotenv(), which would re-leak .env into os.environ mid-test.
+    import main  # noqa: F401
+
+    for var in ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT"):
+        monkeypatch.delenv(var, raising=False)
 # Drive sync reads GDRIVE_* env vars at call time — clear them so tests are
 # always in dev-mode no-op and never hit the real Google Drive API, no matter
 # what the developer's backend/.env contains.

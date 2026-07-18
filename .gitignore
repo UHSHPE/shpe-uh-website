@@ -29,3 +29,5 @@ Thumbs.db
 *.db
 
 .claude/settings.local.json
+
+/specs

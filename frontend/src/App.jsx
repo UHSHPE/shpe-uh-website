@@ -17,11 +17,18 @@ import Dashboard from './pages/dashboard';
 import Committees from './pages/committees';
 import Calendar from './pages/calendar';
 import Profile from './pages/profile';
+import Shop from './pages/shop';
+import ShopProduct from './pages/shop-product';
+import ShopCheckout from './pages/shop-checkout';
+import ShopOrder from './pages/shop-order';
+import CartDrawer, { ShopToast } from './components/CartDrawer';
+import DuesBanner from './components/DuesBanner';
 
 export default function App() {
 	return (
 		<div className="app">
 			<Header />
+			<DuesBanner />
 			<main className="main">
 				<Routes>
 					<Route path="/" element={<Home />} />
@@ -31,6 +38,10 @@ export default function App() {
 					<Route path="/sponsors" element={<Sponsors />} />
 					<Route path="/gallery" element={<Gallery />} />
 					<Route path="/calendar" element={<Calendar />} />
+					<Route path="/shop" element={<Shop />} />
+					<Route path="/shop/checkout" element={<ShopCheckout />} />
+					<Route path="/shop/order/:code" element={<ShopOrder />} />
+					<Route path="/shop/:productId" element={<ShopProduct />} />
 					<Route path="/signin" element={<SignIn />} />
 					<Route path="/signup" element={<SignUp />} />
 					<Route path="/forgot-password" element={<ForgotPassword />} />
@@ -83,6 +94,9 @@ export default function App() {
 				</Routes>
 			</main>
 			<Footer />
+			{/* Global shop overlays — the cart drawer can open from any route */}
+			<CartDrawer />
+			<ShopToast />
 		</div>
 	);
 }

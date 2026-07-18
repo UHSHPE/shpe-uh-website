@@ -25,21 +25,25 @@ shpe-uh-website/
   frontend/
     src/
       api/api.js          # Axios instance (baseURL from VITE_API_URL env var)
-      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute
-      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile
-      App.jsx             # Routes
+      components/         # Header, Footer, Avatar, GalleryApproved, PrivateRoute, CartDrawer, ProductImage, StatusPill, MyOrders, ShopManager, shopIcons, DuesBanner
+      context/            # AuthContext, CartContext (cart lines + drawer + toast, persisted to localStorage)
+      utils/shop.js       # formatCents, STATUS_META, isShopManager, order helpers
+      utils/dues.js       # DUES_PRODUCT_NAME + startDuesCheckout (shared by signup + DuesBanner)
+      pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile, shop, shop-product, shop-checkout, shop-order
+      App.jsx             # Routes (+ renders CartDrawer/ShopToast globally)
   backend/
     main.py               # FastAPI app: includes routers + background reminder email loop (60s)
     get_drive_refresh_token.py  # One-time helper: mints the OAuth refresh token AND creates the app-owned resume folder (drive.file scope)
     database.py           # SQLite engine + session factory
-    seed.py               # Seeds test user, all 14 committees with their real chairs/co-chairs (22 chair users), and sample events — run once: python seed.py
-    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes
+    seed.py               # Seeds two test users (test@ dues-paid via a seeded order, test1@ unpaid), all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the shop-settings row, 5 shop products (incl. T-Shirt Dues), and sample events — run once: python seed.py
+    routes/               # APIRouters: auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes, shop_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
-    models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
+    uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
+    models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, shop/ (product.py, order.py, shop_settings.py), committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, drive_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, drive_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py, square_services.py
     validators/           # email.py (normalize_email)
-    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers
+    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers; shop_tests/conftest.py adds manager_client/make_product/sent_emails
     .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
 ```
 
@@ -76,6 +80,12 @@ SMTP_USER=<sender address>
 SMTP_PASSWORD=<app password>
 EMAIL_FROM=SHPE UH <noreply@example.org>   # optional, defaults to SMTP_USER
 
+# Optional — Square card payments for the shop. Without these, checkout runs
+# in simulated dev mode (console-printing no-op charge). Setup steps in README.
+SQUARE_ACCESS_TOKEN=<from developer.squareup.com>
+SQUARE_LOCATION_ID=<location id of the same Square application>
+SQUARE_ENVIRONMENT=sandbox   # or "production"; must match the token
+
 # Optional — Google Drive resume sync. Without folder id + credentials set,
 # Drive sync is a console-printing no-op (dev mode). Setup steps in README.
 GDRIVE_RESUME_FOLDER_ID=<app-created folder id printed by get_drive_refresh_token.py — NOT a hand-made folder's id>
@@ -88,6 +98,8 @@ GDRIVE_OAUTH_REFRESH_TOKEN=<minted once via get_drive_refresh_token.py>
 ```
 VITE_API_URL=http://localhost:8000
 VITE_BEHOLD_FEED_URL=https://feeds.behold.so/<feed-id>   # public Behold JSON feed for the home-page Instagram grid
+VITE_SQUARE_APP_ID=<Square application id>       # optional — unset keeps checkout simulated
+VITE_SQUARE_LOCATION_ID=<Square location id>     # must match the backend's SQUARE_LOCATION_ID
 ```
 The `api.js` axios instance reads `VITE_API_URL` — without this set, all API calls will fail.
 `VITE_BEHOLD_FEED_URL` powers the home page's Instagram section; if unset or the fetch fails, the grid keeps its shimmer placeholder (layout never breaks).
@@ -135,6 +147,9 @@ Both jobs must pass before merging into `main`.
 - Do not add `python-dotenv` to requirements — it is already a transitive dependency; just call `load_dotenv()` at the top of any file that needs env vars
 - Do not create new axios instances — reuse the one in `api/api.js`
 - Do not use `React.useState` / `React.useEffect` — use named imports: `import { useState, useEffect } from 'react'`
+- Do not call setState synchronously inside a `useEffect` body — the lint config (react-hooks/set-state-in-effect) fails the build. For "reset state when a prop/route param changes" or "prefill once async data arrives", use the render-phase adjustment pattern (compare-and-set during render, like `Header.jsx`'s `prevPath` and `shop-checkout.jsx`'s prefill)
+- Do not export helpers/constants from a file that also exports a React component — react-refresh lint fails. Put shared helpers in `utils/` and components in their own files (this is why `StatusPill` is its own component and `utils/shop.js` has no JSX)
+- Do not put digits (or other symbols) in seeded/test user names — `UserCreate`'s name validator allows only letters, hyphens, apostrophes, and spaces, so a first_name like `Test1` crashes `seed.py` mid-run. Put distinguishing digits in the email instead (that's why the unpaid test member is "Test Unpaid" / `test1@cougarnet.uh.edu`)
 - Do not use a Google **service account** to upload to a personal My Drive folder — Google 403s it (`storageQuotaExceeded`); use the OAuth refresh-token credentials instead (see "Google Drive resume sync")
 
 ## Pages & Routes
@@ -149,6 +164,10 @@ Both jobs must pass before merging into `main`.
 | `/gallery` | `pages/gallery.jsx` | No |
 | `/calendar` | `pages/calendar.jsx` | No |
 | `/get-involved` | `pages/get-involved.jsx` (commented out) | No |
+| `/shop` | `pages/shop.jsx` (public storefront) | No |
+| `/shop/:productId` | `pages/shop-product.jsx` (product detail) | No |
+| `/shop/checkout` | `pages/shop-checkout.jsx` (contact → payment: Square card element when `VITE_SQUARE_*` set, simulated otherwise) | No |
+| `/shop/order/:code` | `pages/shop-order.jsx` (confirmation + status; lookup needs buyer email) | No |
 | `/dashboard` | `pages/dashboard.jsx` | Yes (PrivateRoute) |
 | `/committees` | `pages/committees.jsx` | Yes (PrivateRoute) |
 | `/profile` | `pages/profile.jsx` | Yes (PrivateRoute) |
@@ -163,7 +182,7 @@ Both jobs must pass before merging into `main`.
 | POST | `/signup` | No | Creates user, returns JWT token |
 | POST | `/password-reset/request` | No | Always 200 with a generic body; if the account exists, emails a single-use reset link to cougarnet_email (rate limited: 3/hour per IP) |
 | POST | `/password-reset/confirm` | No | Sets a new password from a valid token; generic 400 for unknown/used/expired tokens |
-| GET | `/me` | Yes | Returns current user (includes `points`) |
+| GET | `/me` | Yes | Returns current user (includes `points` and computed `has_paid_dues`) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | GET | `/events` | No | All events ordered by start_time (public, powers the calendar) |
 | GET | `/committees` | Yes | All committees with `is_member`, `is_chair`, and `chairs` (list of name + role-based contact email) |
@@ -180,6 +199,21 @@ Both jobs must pass before merging into `main`.
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event (404 unknown event, 409 already set, 400 already started) |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder (404 if none active) |
 | GET | `/events/reminders/me` | Yes | Current user's active (unsent) reminders |
+| GET | `/shop/settings` | No | Shop settings singleton (tagline + `order_item_cap`) — the storefront reads both |
+| PATCH | `/shop/settings` | Shop admin | Update tagline and/or per-order item cap |
+| GET | `/shop/products` | No | Active products only, ordered by created_at |
+| GET | `/shop/products/{id}` | No | One product; 404 for unknown OR inactive |
+| GET | `/shop/products/{id}/image` | No | Product image (FileResponse) |
+| POST | `/shop/orders` | Optional | Charge card via Square (402 + no order on decline; dev-mode no-op when unconfigured), then create order (rate limited 10/minute); server recomputes total and charges exactly that; links `user_id` if a valid bearer token rides along |
+| GET | `/shop/orders/me` | Yes | Signed-in member's order history (defined BEFORE `/orders/{code}` so "me" isn't swallowed) |
+| GET | `/shop/orders/{code}?email=` | No | Buyer lookup; wrong/unknown code or email → one generic 404 |
+| POST | `/shop/products` | Shop admin | Create product (201) |
+| PATCH | `/shop/products/{id}` | Shop admin | Edit / toggle `is_active` |
+| DELETE | `/shop/products/{id}` | Shop admin | Hard delete (204); order lines keep snapshots |
+| POST | `/shop/products/{id}/image` | Shop admin | Upload PNG/JPEG/WebP ≤5 MB (magic-byte checked) |
+| GET | `/shop/admin/products` | Shop admin | All products incl. inactive (admin table) |
+| GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
+| PATCH | `/shop/orders/{id}` | Shop admin | `{status?, notes?}`; illegal transition → 400; `ready` emails buyer |
 
 ## Committee leadership, notifications & messaging
 - Committees support **co-chairs**: a committee's chairs are the users with a `CommitteeMembership` row where `is_chair=True` (one row per co-chair). `CommitteeOut.chairs` is a **list** of `ChairOut` (name + email) and `CommitteeOut.is_chair` reflects the current user's membership row.
@@ -198,6 +232,28 @@ Both jobs must pass before merging into `main`.
 - `services/email_services.py` — `send_email(to, subject, body)`: SMTP via `SMTP_*` env vars; with no `SMTP_HOST` it prints to the console and returns True (dev mode). SMTP failure returns False (no raise).
 - Frontend: the public `/calendar` page shows a "Remind me by email" button on future events (toggles to cancel). Signed-out users are sent to `/signin` with `location.state.from`, same as PrivateRoute. Reminder state comes from `getMyReminders()`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
+
+## Merch shop (spec: specs/shop/shop-page.md)
+- **Payments — Square Web Payments SDK + Payments API** (`services/square_services.py`). Configured via `SQUARE_ACCESS_TOKEN` + `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT`, default sandbox — all read at **call time**) on the backend, `VITE_SQUARE_APP_ID` + `VITE_SQUARE_LOCATION_ID` on the frontend. The checkout page loads `square.js` from Square's CDN (required — it serves the secure card iframe; sandbox vs prod build is picked by the `sandbox-` app-id prefix), renders the card element in the payment step, and `card.tokenize()` swaps card data for a one-time token — card numbers never touch our server (PCI stays minimal). No webhooks: the charge response is synchronous.
+- **Charges are itemized in Square** via the Orders API: the route mirrors the validated cart into `line_items` (`{"name": "Product (Size)", "quantity", "unit_price_cents"}`) and `charge_card` creates a Square order from them (`_create_itemized_order`), then passes its id as `order_id` to `payments.create` — the Dashboard shows per-item detail and item names flow into Square's sales reports. Gotchas: the Orders API wants `quantity` as a **string**; the line items must **sum exactly to the charged amount** or Square rejects the payment (guaranteed by construction — both come from the same validated lines); itemization is best-effort — if order creation fails, it logs and charges un-itemized rather than blocking the buyer. These are ad-hoc line items (no Square Catalog sync); if per-item unit counts in Square's Item reports ever need to be exact across renames, the upgrade path is mirroring products into the Square Catalog and passing `catalog_object_id`.
+- **Charge order-of-operations in `POST /shop/orders`: validate → charge → persist.** The route calls `shop_services.validate_order_items` (returns `(lines, total_cents)` without persisting), charges that server-side total via `square_services.charge_card`, then passes the same `validated` pair into `create_order` so the stored total always equals the charged amount. A declined/failed charge raises `PaymentError` (buyer-safe message) → 402 with **no order row**; missing token while configured → 400 before any charge. `charge_card` returns a `ChargeResult(payment_id, receipt_url)` NamedTuple (None in dev mode): `Order.square_payment_id` records the payment id (internal — NOT in `OrderOut`), and `receipt_url` goes into the buyer's receipt email. The route is sync, so the blocking Square client already runs in FastAPI's threadpool — if it's ever made `async def`, wrap the charge in `asyncio.to_thread`.
+- **Wallets (Apple Pay / Google Pay)** ride the same flow — no backend changes. The payment-step effect builds a `paymentRequest` (display amount only; the backend still charges its own recomputed total) and tries `payments.applePay()` / `payments.googlePay()`; each **throws where unsupported** (Apple Pay: sandbox, non-Safari, unregistered domain — expected, not a bug) and its button just stays hidden. `handlePay(walletMethod)` tokenizes whichever method is passed (the card element when null); a wallet-sheet `Cancel` result is silently ignored. Gotchas: the `#google-pay-button` container must exist in the DOM **before** `attach()` (it renders always, `display:none` until ready); the Apple Pay button is our own `<button className="applePayBtn">` (native `-apple-pay-button` vendor appearance — CSS lives in `styles.css`, Tailwind can't express it); the init effect depends on `[step, subtotalCents]` so a cart change rebuilds the paymentRequest. Going live with Apple Pay needs a one-time domain registration (Square Developer Dashboard → Apple Pay) + hosting Square's verification file at `frontend/public/.well-known/apple-developer-merchantid-domain-association`.
+- **Unconfigured = dev mode, end to end** (same pattern as `email_services.py`): `charge_card` prints `[square dev mode] would charge …` and returns None, orders are created with `square_payment_id=None`, and the frontend keeps the demo card block + fake 1.3s delay. Tests never hit the real API: an autouse `disable_square_payments` fixture in `tests/conftest.py` **imports `main` first, then** clears all `SQUARE_*` env vars — the order matters: the client fixtures lazily `from main import app`, and the session's FIRST such import runs every route module's `load_dotenv()`, re-leaking `backend/.env` into `os.environ` mid-test (this bit once: shop-only test runs 400'd on "missing payment token" while full-suite runs passed, because auth tests absorbed the first import); configured-mode tests monkeypatch `square_services.is_configured`/`charge_card` (called as module attributes from `shop_routes`, so patching `services.square_services` works). Dep: `squareup` (lazy-imported inside `square_services.py`, so dev mode works without it).
+- **Models** (`models/shop/`): `Product` (with `ProductType` enum `apparel`/`item`; `sizes` is a `list[str] | None` stored via `sa_column=Column(JSON)`; there is **no stock column** — no inventory is tracked, `is_active` is the soft-delete/sold-out toggle), `Order` + `OrderItem` (`OrderStatus`: `paid → ready → picked_up`, plus `cancelled`; terminal is `picked_up`, NOT `completed`), and `ShopSettings` (singleton row: `tagline` + `order_item_cap`, defaults in the model; always access via `shop_services.get_shop_settings()`, which creates the row on first use). Money is integer **cents**; timestamps naive UTC via `utcnow()`. All three modules are imported in `database.py`.
+- **Per-order quantity cap** (no inventory): `create_order` rejects any line item whose quantity exceeds `ShopSettings.order_item_cap` (default 5) with a 400. Admins change the cap (and the storefront tagline) via `PATCH /shop/settings`; the frontend `CartContext` fetches the cap once and clamps add-to-cart and the steppers client-side.
+- **`OrderItem` snapshots `product_name` and `unit_price_cents`** at purchase time, so orders stay readable after a product is edited or hard-deleted.
+- **Order codes**: `SHPE-` + 4 chars from an alphabet without lookalikes (no 0/O/1/I) — `generate_order_code` retries until unique.
+- **State machine** lives in `shop_services.ALLOWED_TRANSITIONS`; `apply_status_transition` stamps `ready_at`/`picked_up_at` and emails the buyer on `ready`. New orders create a `Notification` row + email for **every shop admin** (to their `personal_email`); the buyer also gets an **itemized receipt email at order time** (`shop_services.send_buyer_receipt` — sent to `buyer_email`, which checkout prefills with `personal_email`; includes Square's hosted `receipt_url` link when the charge was real).
+- **Roles**: there is **no dedicated shop-manager role**. Shop admin rides on `SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair}` (defined in `models/user/user_enums.py`); `require_shop_admin` in `services/dependencies.py` gates admin endpoints (mirrors `require_chair`). Giving `marketing_chair` shop access does NOT affect their committee-chair permissions (`require_chair` checks `role == committee.chair_role`, still true). Seed provides `comms.director@cougarnet.uh.edu` (comm_director) and Valeria Zabala (`valeria.zabala@cougarnet.uh.edu`, marketing_chair from COMMITTEE_ROSTER), both `password123`.
+- **`get_optional_user`** in `services/dependencies.py` (`OAuth2PasswordBearer(auto_error=False)`): returns the user for a valid token, None otherwise (never 401s). Used by `POST /shop/orders` so signed-in buyers' orders link to `user_id`. In tests, override it explicitly — the `client` fixture only overrides `get_current_user`.
+- **Order lookup privacy**: `GET /shop/orders/{code}` requires a matching `?email=` (normalized); unknown code and wrong email return the same generic 404. Never reveal a code exists.
+- **Route ordering**: `/shop/orders/me` is defined before `/shop/orders/{order_code}` in `shop_routes.py` — keep it that way or "me" matches the code param.
+- **Product images** mirror the resume pattern: `PRODUCT_IMAGE_DIR` module constant (tests monkeypatch it to `tmp_path`), deterministic filename `product_<id>.<ext>`, content-type + magic-byte + ≤5 MB validation (PNG/JPEG/WebP).
+- **Tests** in `tests/shop_tests/`; its `conftest.py` adds `manager_client` (auth'd as a `Role.comm_director` user — pass `role=Role.marketing_chair` to `make_manager` to cover the other admin role), `make_product`, and `sent_emails` (monkeypatches `shop_services.send_email`). Do NOT use `client` and `manager_client` in the same test — both override `get_current_user` on the same app and the last fixture wins.
+- **Dues at signup**: completing `/signup` routes the new member straight into dues checkout — `signup.jsx` finds the shop product **by name `"T-Shirt Dues"`** (`DUES_PRODUCT_NAME` constant; matches `seed.py` and the membershpe tier card), adds it to the cart pre-sized with the `shirt_size` they just picked (`openDrawer: false`), and navigates to `/shop/checkout`. Shirt size `Other` (or a size the product lacks) lands on the dues product page to pick a size; a missing/renamed product or shop error falls back to the plain `navigate("/")` — signup never blocks on the shop. **Renaming the dues product silently breaks the auto-redirect** (name-based lookup, no schema flag) — the fallback keeps signup working, but new members stop being routed to pay.
+- **Dues rules & banner**: dues are **one-per-member, enforced server-side** — `shop_services.enforce_dues_rules` (called in `place_order` after validation, before charging) caps dues quantity at 1 per order, rejects guests (the purchase must attach to an account), and 400s a repeat purchase; a **cancelled** dues order doesn't count as paid (`has_paid_dues` matches on the `OrderItem.product_name` snapshot, so it survives product edits/deletes). `UserOut.has_paid_dues` is **computed in `/me`** (not a DB column) and drives `components/DuesBanner.jsx` — a fixed red banner just below the header (top `var(--header-height)`, z-index 900 < header's 1000) shown to signed-in members who haven't paid, listing the benefits; its CTA and the signup redirect share `utils/dues.js` (`startDuesCheckout`). `shop-checkout` calls `AuthContext.refreshUser()` after a successful order so the banner clears without a reload; the dues product page locks the quantity stepper to 1 and swaps the add-to-cart button for an already-paid note. NOTE: `/me` fails validation for users with zero multi-select rows (UserOut requires ≥1 of each) — tests hitting `/me` must seed those rows (see `test_dues_rules.py::test_me_reports_dues_status`).
+- **Frontend**: cart state lives in `context/CartContext.jsx` (localStorage key `shpe_cart`, lines merge by product+size, drawer + 2s toast included); `CartDrawer`/`ShopToast` render once in `App.jsx`. Category filter pills on `/shop` are derived from the `product_type`s present — never hardcode "Stickers". `createShopOrder` sends `authHeaders()` (empty for guests) so member orders link. After checkout the confirmation gets the order via route state; revisits look it up with code+email from sessionStorage (`shpe_last_order`), `?email=`, or a prompt. The Shop Manager panel (Overview / Products / Orders / Notifications / Settings tabs) + My Orders live inside `pages/profile.jsx` (`components/ShopManager.jsx`, `components/MyOrders.jsx`); My Orders sits at the **bottom** of the profile page and shows only the **most recent** order (orders arrive newest-first), with the rest behind a "Show all N orders" toggle; the admin check is `isShopManager(user)` from `utils/shop.js`, which matches the two `SHOP_ADMIN_ROLES` role strings. The `/shop` hero tagline comes from `GET /shop/settings` with a hardcoded product-agnostic fallback.
+- **Shop styling tokens** (page bg, gray ramp additions, the four status color sets `--status-*`, `--gradient-success`, `--font-mono`, `--placeholder-hatch`) are in `styles.css` `:root` under "Shop"; keyframes are prefixed `shop*` (`shopPulse`, `shopSlideInRight`, …). The design handoff lives in `specs/shop/design_handoff_merch_shop/`.
 
 ## Password reset & rate limiting
 - `models/user/pw_reset_token.py` — `PasswordResetToken(user_id, token_hash, created_at, expires_at, used_at)`. Only the **SHA-256 hash** of the raw token is stored (the raw token is high-entropy `secrets.token_urlsafe(32)`, so SHA-256 — not Argon2 — is correct here). A token is active while `used_at` is NULL and `expires_at` is in the future; TTL is 1 hour. Requesting a new reset retires any prior active tokens for that user.
