@@ -16,14 +16,15 @@ def resume_dir(monkeypatch, tmp_path):
 
 # --- POST /me/resume ---
 
-def test_upload_valid_pdf_persists_and_returns_filename(client, resume_dir, user):
+def test_upload_valid_pdf_persists_and_returns_canonical_name(client, resume_dir, user):
     res = client.post(
         "/me/resume",
         files={"file": ("my_resume.pdf", PDF_BYTES, "application/pdf")},
     )
 
     assert res.status_code == 200
-    assert res.json()["resume_filename"] == "my_resume.pdf"
+    # The uploaded filename is discarded — resumes are renamed First_Last_PSID.pdf.
+    assert res.json()["resume_filename"] == "Test_User_1234567.pdf"
     assert (resume_dir / f"user_{user.id}.pdf").read_bytes() == PDF_BYTES
 
 
@@ -34,7 +35,31 @@ def test_upload_sets_resume_filename_on_user(client, resume_dir, session, user):
     )
 
     session.refresh(user)
-    assert user.resume_filename == "my_resume.pdf"
+    assert user.resume_filename == "Test_User_1234567.pdf"
+
+
+def test_multi_word_names_join_with_underscores(session):
+    from routes.resume_routes import _canonical_resume_name
+    from tests.conftest import make_user
+
+    user = make_user(
+        session,
+        first_name="Mary Ann",
+        last_name="De La Cruz",
+        cougarnet_email="maryann@cougarnet.uh.edu",
+        personal_email="maryann@gmail.com",
+        psid="7654321",
+    )
+    assert _canonical_resume_name(user) == "Mary_Ann_De_La_Cruz_7654321.pdf"
+
+
+def test_upload_over_2mb_is_rejected_with_413(client, resume_dir):
+    big = PDF_BYTES + b"0" * (2 * 1024 * 1024)
+    res = client.post(
+        "/me/resume",
+        files={"file": ("big.pdf", big, "application/pdf")},
+    )
+    assert res.status_code == 413
 
 
 def test_user_out_exposes_resume_filename():

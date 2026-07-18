@@ -219,7 +219,6 @@ const boardMembers = [
 // 2026-2027 chair roster. Emails are the committee role-based addresses
 // (@shpeuhchair.org), which stay constant regardless of who holds the role.
 // Photos are not yet available — cards fall back to an initials placeholder.
-// The Member Relations chair has no published role email yet.
 const chairs = [
   { name: 'Angel Montoya', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
   { name: 'Sophia Rodriguez', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
@@ -229,7 +228,7 @@ const chairs = [
   { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
   { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
   { name: 'Valeria Zabala', position: 'Marketing Chair', email: 'Marketing@shpeuhchair.org' },
-  { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: '' },
+  { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: 'Member.Relations@shpeuhchair.org' },
   { name: 'Nicolas Horton', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
   { name: 'Mia Flores', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
   { name: 'Khris Flores', position: 'Outreach Chair', email: 'Outreach@shpeuhchair.org' },
@@ -242,7 +241,7 @@ const chairs = [
   { name: 'Marylin Uriostegui', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
   { name: 'Anahi Salinas', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
   { name: 'Samuel Avendano', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
-  { name: 'Elvin Paz', position: 'Web Development Chair', email: 'Tech.Affairs@shpeuhchair.org' }
+  { name: 'Elvin Paz', position: 'Web Development Chair', email: 'Web.Dev@shpeuhchair.org' }
 ];
 
 function getInitials(name) {

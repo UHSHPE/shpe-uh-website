@@ -46,6 +46,18 @@ def disable_square_payments(monkeypatch):
 
     for var in ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT"):
         monkeypatch.delenv(var, raising=False)
+# Drive sync reads GDRIVE_* env vars at call time — clear them so tests are
+# always in dev-mode no-op and never hit the real Google Drive API, no matter
+# what the developer's backend/.env contains.
+@pytest.fixture(autouse=True)
+def disable_drive_sync(monkeypatch):
+    for var in (
+        "GDRIVE_RESUME_FOLDER_ID",
+        "GDRIVE_OAUTH_CLIENT_ID",
+        "GDRIVE_OAUTH_CLIENT_SECRET",
+        "GDRIVE_OAUTH_REFRESH_TOKEN",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture
