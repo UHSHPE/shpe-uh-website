@@ -14,6 +14,14 @@ from models.user.user_schemas import UserCreate
 from models.user.user_enums import ProfDev, RaceEthnicity, Role, Gender, Colleges, Classification, GPA, ExpGradDate, MembershipStatus, ShirtSize, Industry
 from services.user_services import create_user
 
+import os, sys
+from dotenv import load_dotenv
+
+load_dotenv()
+if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
+    print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)
+    sys.exit(1)
+
 # Official committee roster. Each committee has exactly one chair role;
 # co-chairs share that role and each get a CommitteeMembership with is_chair=True.
 # Format: (committee name, description, chair role, [chair full names])

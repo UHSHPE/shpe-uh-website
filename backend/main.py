@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from services import square_services
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,10 +34,26 @@ async def reminder_loop():
 # Inits the DB and starts the reminder email loop
 @asynccontextmanager
 async def lifespan(app):
+    assert_production_config()
     create_db()
     reminder_task = asyncio.create_task(reminder_loop())
     yield
     reminder_task.cancel()
+
+def assert_production_config():
+    if os.getenv("ENVIRONMENT", "").lower() != "production":
+        return
+    missing = []
+    if not square_services.is_configured():
+        missing.append("SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID")
+    if not os.getenv("SMTP_HOST"):
+        missing.append("SMTP_HOST")
+    if os.getenv("SQUARE_ENVIRONMENT", "sandbox").lower() != "production":
+        missing.append("SQUARE_ENVIRONMENT=production")
+    if missing:
+        raise RuntimeError(
+            f"ENVIRONMENT=production but required config is missing: {', '.join(missing)}"
+        )
 
 app = FastAPI(lifespan=lifespan)
 

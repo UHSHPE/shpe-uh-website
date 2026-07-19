@@ -136,6 +136,9 @@ def charge_card(
     never double-charge within one call."""
     config = _square_client()
     if config is None:
+        if os.getenv("ENVIRONMENT", "").lower() == "production":
+            raise RuntimeError("ENVIRONMENT=production but Square is not configured "
+                               "(SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID missing) — refusing to simulate a charge.")
         summary = ", ".join(
             f"{i['quantity']}× {i['name']}" for i in (line_items or [])
         ) or "no items"
