@@ -8,11 +8,22 @@ _SAFE_NAME_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' \-]{2,50}$")
 _PSID_RE = re.compile(r"^\d{7}$")
 _PHONE_RE = re.compile(r"^[\d\s\(\)\-\+\.]{7,20}$")
 
+MIN_PASSWORD_LENGTH = 10
+# NIST 800-63B: allow long passphrases; the cap only bounds Argon2 hashing cost.
+MAX_PASSWORD_LENGTH = 128
+
 
 def validate_password_strength(v: str) -> str:
-    """Shared password rule — used by UserCreate and the password-reset confirm endpoint."""
-    if len(v) < 8:
-        raise ValueError("Password must be at least 8 characters.")
+    """Shared password rule — used by UserCreate and the password-reset confirm
+    endpoint. Policy is length only (NIST 800-63B): no composition rules, no
+    expiry. This validator must stay pure/sync (pydantic runs it during request
+    parsing) — the breached-password check lives in the routes instead
+    (services/hibp_services.py). The frontend length checks in signup.jsx
+    and reset-password.jsx must stay in sync with MIN_PASSWORD_LENGTH."""
+    if len(v) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    if len(v) > MAX_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be {MAX_PASSWORD_LENGTH} characters or fewer.")
     return v
 
 class UserBase(SQLModel):

@@ -257,13 +257,13 @@ def test_create_user_phone_with_dashes_is_valid():
     assert user.phone_num == "713-555-1234"
 
 
-def test_create_user_password_exactly_8_chars_is_valid():
-    user = UserCreate(**valid_user_data(password="12345678"))
-    assert user.password == "12345678"
+def test_create_user_password_exactly_10_chars_is_valid():
+    user = UserCreate(**valid_user_data(password="b7k2m9x4qz"))
+    assert user.password == "b7k2m9x4qz"
 
-def test_create_user_password_7_chars_raises_error():
+def test_create_user_password_9_chars_raises_error():
     with pytest.raises(ValidationError):
-        UserCreate(**valid_user_data(password="1234567"))
+        UserCreate(**valid_user_data(password="b7k2m9x4q"))
 
 def test_create_user_allows_engineering_major():
     user = UserCreate(**valid_user_data(

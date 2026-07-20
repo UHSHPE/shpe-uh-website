@@ -20,8 +20,8 @@ export default function ResetPassword() {
       setError("Passwords do not match.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < 10) {
+      setError("Password must be at least 10 characters.");
       return;
     }
 
@@ -36,7 +36,19 @@ export default function ResetPassword() {
       if (err.response?.status === 400) {
         setError("This reset link is invalid or has expired. Request a new one.");
       } else if (err.response?.status === 422) {
-        setError("Password must be at least 8 characters.");
+        // Surface the server's reason. detail is pydantic's array for schema
+        // failures (length) but a plain string for the HIBP breach rejection.
+        const detail = err.response?.data?.detail;
+        const msg = Array.isArray(detail)
+          ? detail[0]?.msg
+          : typeof detail === "string"
+            ? detail
+            : null;
+        setError(
+          msg
+            ? msg.replace(/^Value error, /, "")
+            : "Password must be at least 10 characters."
+        );
       } else {
         setError("Something went wrong. Please try again.");
       }
@@ -107,7 +119,7 @@ export default function ResetPassword() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={8}
+                  minLength={10}
                   placeholder="••••••••"
                   style={inputStyle}
                 />
@@ -122,7 +134,7 @@ export default function ResetPassword() {
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   required
-                  minLength={8}
+                  minLength={10}
                   placeholder="••••••••"
                   style={inputStyle}
                 />

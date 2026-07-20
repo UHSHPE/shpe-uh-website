@@ -4,7 +4,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 
 ## Features
 
-- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing
+- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins
 - **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
@@ -204,7 +204,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment services, rate limiter
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment services, rate limiter, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -237,7 +237,7 @@ shpe-uh-website/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute); 403 until the account's email is verified |
+| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
 | POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited: 5/hour) |
 | POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |

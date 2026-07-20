@@ -45,7 +45,7 @@ function getFieldError(field, form) {
       return "";
     case "password":
       if (!form.password) return "Password is required.";
-      if (form.password.length < 8) return "Password must be at least 8 characters.";
+      if (form.password.length < 10) return "Password must be at least 10 characters.";
       return "";
     case "college":
       if (!form.college) return "Please select a college.";

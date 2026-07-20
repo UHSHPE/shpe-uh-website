@@ -13,3 +13,5 @@ class User(UserBase, table=True):
     # None when Drive sync is off or the last upload never reached Drive.
     resume_drive_file_id: str | None = Field(default=None)
     password_changed_at: datetime | None = Field(default=None)
+    failed_login_count: int = Field(default=0)
+    locked_until: datetime | None = Field(default=None)

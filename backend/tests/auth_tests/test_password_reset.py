@@ -170,6 +170,14 @@ def test_confirm_weak_password_rejected(unauth_client, session, user):
     assert session.exec(select(PasswordResetToken)).one().used_at is None
 
 
+def test_confirm_9_char_password_rejected(unauth_client, session, user):
+    # One under the new 10-character minimum
+    raw = make_reset_token(session, user)
+    res = confirm_reset(unauth_client, raw, new_password="abc-def-9")
+    assert res.status_code in (400, 422)
+    assert session.exec(select(PasswordResetToken)).one().used_at is None
+
+
 # --- JWT invalidation on reset ---
 
 def test_reset_invalidates_previously_issued_jwt(unauth_client, session):

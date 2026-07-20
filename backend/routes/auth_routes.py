@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from typing import Annotated
 
@@ -11,7 +12,7 @@ from models.user.multi_selections.user_race_ethnicity import UserRaceEthnicity
 from models.user.user import User
 from models.user.user_schemas import UserCreate, UserOut
 from security.jwt import ACCESS_TOKEN_EXPIRE_MINUTES, Token, create_access_token
-from services import shop_services
+from services import hibp_services, shop_services
 from services.auth_user import authenticate_user
 from services.user_services import create_user, get_user_by_user_id
 from services.dependencies import SessionDependencies, get_current_user
@@ -32,6 +33,14 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 
 router = APIRouter(tags=["Auth"])
+
+# Per-account login lockout: after LOCKOUT_THRESHOLD consecutive failures the
+# account is locked for LOCKOUT_MINUTES (429). Complements the per-IP slowapi
+# limit on /login — this one follows the account, not the attacker's IP.
+LOCKOUT_THRESHOLD = 10
+LOCKOUT_MINUTES = 10
+
+PWNED_PASSWORD_DETAIL = "This password has appeared in a data breach — choose a different one."
 
 class EmailVerifyConfirm(SQLModel):
     token: str
@@ -59,14 +68,39 @@ def _delete_unverified_user(session, user: User) -> None:
 @limiter.limit("5/minute")
 async def login_for_token(request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDependencies) -> Token:
     email = normalize_email(form_data.username)
-    user = authenticate_user(session, email, form_data.password)
+    db_user = get_user_by_email(session, email)
 
+    if db_user and db_user.locked_until:
+        if utcnow() < db_user.locked_until:
+            # Cheap reject before the Argon2 verify — the lock stands.
+            raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
+        # Lock expired: clear it and evaluate this attempt normally.
+        db_user.locked_until = None
+        db_user.failed_login_count = 0
+        session.add(db_user)
+        session.commit()
+
+    user = authenticate_user(session, email, form_data.password)
     if not user:
+        if db_user:
+            db_user.failed_login_count += 1
+            if db_user.failed_login_count >= LOCKOUT_THRESHOLD:
+                db_user.locked_until = utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+            # Commit EVERY failure so the count persists across requests.
+            session.add(db_user)
+            session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Successful login clears any accumulated failures.
+    if user.failed_login_count or user.locked_until:
+        user.failed_login_count = 0
+        user.locked_until = None
+        session.add(user)
+        session.commit()
 
     if not user.email_verified:
         raise HTTPException(status_code=403, detail="Please verify your email first. Check your inbox.")
@@ -94,6 +128,12 @@ async def me(user: Annotated[User, Depends(get_current_user)], session: SessionD
 @router.post('/signup', status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 async def signup(request: Request, user_in: UserCreate, session: SessionDependencies):
+    # Breached-password check (fail-open) — before any DB mutation. Module
+    # attribute so tests can monkeypatch it; to_thread because httpx's sync
+    # client would block the event loop.
+    if await asyncio.to_thread(hibp_services.is_password_pwned, user_in.password):
+        raise HTTPException(status_code=422, detail=PWNED_PASSWORD_DETAIL)
+
     email = normalize_email(user_in.cougarnet_email)
     existing = get_user_by_email(session, email)
 
