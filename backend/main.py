@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from services import square_services
 
 from fastapi import FastAPI
@@ -14,10 +16,14 @@ from sqlmodel import Session
 from database import create_db, engine
 from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
+from services.event_tracker_services import sync_events
 
 from routes import auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
 
 REMINDER_CHECK_SECONDS = 60
+
+SYNC_TZ = ZoneInfo("America/Chicago")   # the sheet's timezone
+SYNC_HOUR = 6                           # 6 AM Central — daily event-sheet sync time
 
 def dispatch_due_reminders():
     with Session(engine) as session:
@@ -31,14 +37,35 @@ async def reminder_loop():
             logging.exception("Reminder dispatch failed")
         await asyncio.sleep(REMINDER_CHECK_SECONDS)
 
-# Inits the DB and starts the reminder email loop
+def dispatch_event_sync():
+    with Session(engine) as session:
+        sync_events(session)
+
+def seconds_until_next_sync() -> float:
+    now = datetime.now(SYNC_TZ)
+    target = now.replace(hour=SYNC_HOUR, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)   # already past sync time today → aim for tomorrow
+    return (target - now).total_seconds()
+
+async def event_sync_loop():
+    while True:
+        try:
+            await asyncio.to_thread(dispatch_event_sync)
+        except Exception:
+            logging.exception("Event sheet sync failed")
+        await asyncio.sleep(seconds_until_next_sync())
+
+# Inits the DB and starts the background loops (reminder emails + daily event-sheet sync)
 @asynccontextmanager
 async def lifespan(app):
     assert_production_config()
     create_db()
     reminder_task = asyncio.create_task(reminder_loop())
+    event_sync_task = asyncio.create_task(event_sync_loop())
     yield
     reminder_task.cancel()
+    event_sync_task.cancel()
 
 def assert_production_config():
     if os.getenv("ENVIRONMENT", "").lower() != "production":

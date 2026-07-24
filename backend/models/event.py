@@ -4,6 +4,7 @@ from sqlmodel import SQLModel, Field
 
 class Event(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    source_row_id: str | None = Field(default=None, index=True)
     title: str
     description: str | None = None
     location: str | None = None
