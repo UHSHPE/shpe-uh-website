@@ -32,7 +32,7 @@ shpe-uh-website/
       pages/              # home, about, gallery, membershpe, sponsors, get-involved, dashboard, committees, profile, shop-manager, shop, shop-product, shop-checkout, shop-order
       App.jsx             # Routes (+ renders CartDrawer/ShopToast globally)
   backend/
-    main.py               # FastAPI app: includes routers + background reminder email loop (60s)
+    main.py               # FastAPI app: includes routers + background loops (reminder emails every 60s, event-sheet sync daily at 6 AM Central)
     get_drive_refresh_token.py  # One-time helper: mints the OAuth refresh token AND creates the app-owned resume folder (drive.file scope)
     database.py           # SQLite engine + session factory
     seed.py               # Seeds two test users (test@ dues-paid via a seeded order, test1@ unpaid), all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the shop-settings row, 5 shop products (incl. T-Shirt Dues), and sample events — run once: python seed.py. Refuses to run (exit 1) when ENVIRONMENT=production — all seeded accounts share password123
@@ -41,9 +41,9 @@ shpe-uh-website/
     uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
     models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, email_verification.py, shop/ (product.py, order.py, shop_settings.py), committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
     security/             # jwt.py (token creation), hashing.py (Argon2)
-    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, drive_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py, square_services.py, hibp_services.py
+    services/             # dependencies.py, user_services.py, committee_services.py, reminder_services.py, email_services.py, drive_services.py, time_services.py, auth_user.py, pw_reset_services.py, rate_limit.py, shop_services.py, square_services.py, hibp_services.py, event_tracker_services.py
     validators/           # email.py (normalize_email)
-    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers; shop_tests/conftest.py adds manager_client/make_product/sent_emails
+    tests/                # pytest suite; conftest.py has in-memory-DB fixtures (client, session, user) + make_user/make_event helpers; shop_tests/conftest.py adds manager_client/make_product/sent_emails; event_tracker_tests/ covers the sheet parser + sync
     .env                  # SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL, optional SMTP_* (never commit)
 ```
 
@@ -99,6 +99,12 @@ GDRIVE_RESUME_FOLDER_ID=<app-created folder id printed by get_drive_refresh_toke
 GDRIVE_OAUTH_CLIENT_ID=<OAuth Desktop-app client id>
 GDRIVE_OAUTH_CLIENT_SECRET=<OAuth client secret>
 GDRIVE_OAUTH_REFRESH_TOKEN=<minted once via get_drive_refresh_token.py>
+
+# Optional — event tracker Google Sheet sync. Without both set, the daily sync
+# is a console-printing no-op (dev mode) and the calendar keeps whatever is
+# already in the DB. Both are read at call time by is_configured().
+CREDENTIALS=<path to the Google service-account JSON key file>
+SHEET_ID=<id of the event-tracker spreadsheet, from its URL>
 ```
 
 **Frontend** (`frontend/.env.local`):
@@ -157,6 +163,7 @@ Both jobs must pass before merging into `main`.
 - Do not call setState synchronously inside a `useEffect` body — the lint config (react-hooks/set-state-in-effect) fails the build. For "reset state when a prop/route param changes" or "prefill once async data arrives", use the render-phase adjustment pattern (compare-and-set during render, like `Header.jsx`'s `prevPath` and `shop-checkout.jsx`'s prefill)
 - Do not export helpers/constants from a file that also exports a React component — react-refresh lint fails. Put shared helpers in `utils/` and components in their own files (this is why `StatusPill` is its own component and `utils/shop.js` has no JSX)
 - Do not put digits (or other symbols) in seeded/test user names — `UserCreate`'s name validator allows only letters, hyphens, apostrophes, and spaces, so a first_name like `Test1` crashes `seed.py` mid-run. Put distinguishing digits in the email instead (that's why the unpaid test member is "Test Unpaid" / `test1@cougarnet.uh.edu`)
+- Do not add a delete/sweep pass to `sync_events` — the duplicate left behind by a rescheduled event is intentional (see "Event tracker sheet sync"); deleting silently kills reminders and resets points
 - Do not use a Google **service account** to upload to a personal My Drive folder — Google 403s it (`storageQuotaExceeded`); use the OAuth refresh-token credentials instead (see "Google Drive resume sync")
 
 ## Pages & Routes
@@ -242,6 +249,22 @@ Both jobs must pass before merging into `main`.
 - `services/email_services.py` — `send_email(to, subject, body)`: SMTP via `SMTP_*` env vars; with no `SMTP_HOST` it prints to the console and returns True (dev mode). SMTP failure returns False (no raise).
 - Frontend: the public `/calendar` page shows a "Remind me by email" button on future events (toggles to cancel). Signed-out users are sent to `/signin` with `location.state.from`, same as PrivateRoute. Reminder state comes from `getMyReminders()`.
 - `api/api.js` functions: `setEventReminder`, `cancelEventReminder`, `getMyReminders`.
+
+## Event tracker sheet sync
+- `services/event_tracker_services.py` pulls the chapter's event-tracker Google Sheet (gspread, **read-only** `spreadsheets.readonly` scope, service-account creds via `CREDENTIALS` + `SHEET_ID`) and reconciles it into the `Event` table. `main.py` runs `sync_events` in a background asyncio loop that fires **daily at 6 AM Central** (`SYNC_HOUR` + `seconds_until_next_sync`, started in `lifespan`). Unconfigured = dev-mode no-op: `fetch_sheet_events()` prints and returns `[]`.
+- **Identity is `Event.source_row_id` = `event_key(date, title)` → `"2026-08-05|gbm 1"`** (ISO date + lowercased, whitespace-collapsed name). This is the *join* between a sheet row and a DB row — the auto-increment `Event.id` can't serve that role because the sheet has no column holding it, so without the key every sync would re-insert everything. The column is `index=True, unique=True`; **NULLs stay exempt** (SQL unique indexes treat NULLs as distinct), which is what lets `seed.py` and hand-added events coexist.
+- **There is deliberately NO delete/sweep pass** — rows are only created or updated. All of the following are accepted tradeoffs, not bugs:
+  - **Rescheduling adds a row instead of moving one.** A new date means a new key, so the old row stays behind and the calendar shows both. Chosen over a sweep because delete+reinsert mints a new `Event.id`, which silently orphans `EventReminder` rows (the join in `send_due_reminders` simply stops matching — no email, no error, and the calendar button resets as if the member never set it) and resets `points_value`/`event_type`, neither of which exists in the sheet. A visible duplicate someone fixes by hand beat a silent failure.
+  - **Renames behave the same way** — the name is half the key.
+  - **Deleting a sheet row does not remove the event.** The chapter confirmed nobody deletes rows.
+  - If a sweep is ever added, it MUST scope to `source_row_id IS NOT NULL`, bail out when the fetch returns zero rows (an unconfigured or failed fetch returns `[]`, which would otherwise wipe the entire calendar), and decide what happens to existing reminders.
+- `EXCLUDED_EVENTS` (normalized names, e.g. `"c&e retreat"`) are dropped in `parse_row` before the date is even parsed. **One-way door:** because nothing deletes, an event already synced before its name was added to the set stays in the DB forever.
+- Row handling: the header row and the row-2 template row are skipped (`get_all_records()[1:]`), and a per-row `try/except` isolates failures so one unparseable date doesn't kill the batch. Note `parse_row` reads DATE with direct indexing (`row[COLUMNS["date"]]`), so renaming that sheet header would make **every** row raise, get swallowed, and log a cheerful "0 created, 0 updated" while doing nothing.
+- Times: `parse_time` returns None for blank / `All Day` / `TBD`, so those events fall back to **local midnight**. `end_time` is built from the same `day` as the start — an event crossing midnight would store an end *before* its start. Confirmed no chapter events run past midnight; revisit if that changes.
+- `parse_date` stamps the **current Central year** onto the sheet's MM/DD values. This is correct in normal use because the trackers are **semester-scoped** — the fall sheet runs Aug–Dec and spring is a separate sheet (Jan–May), so every row in one pull shares a calendar year. Do NOT "fix" this by adding a year column; it isn't needed.
+- **The one hazard is `SHEET_ID` still pointing at the fall sheet on January 1.** The 6 AM sync then re-reads `09/15` as September of the *new* year, minting a new key for every row and inserting the entire fall semester as ghost events dated a year out — which persist, since nothing deletes. Either swap `SHEET_ID` to the spring sheet before January, or make `parse_date` anchor to the academic year (`now.year` if `now.month >= 8` else `now.year - 1`; months 8–12 take the anchor, 1–7 take anchor + 1), which keeps `09/15` at 2026 even when read in January 2027.
+- Duplicate keys inside one pull collapse to one row: the first row is `session.add()`-ed but still pending, and the second row's existing-lookup SELECT triggers SQLAlchemy's autoflush, which writes the first INSERT before the query runs — so the second row finds it and updates in place. Result is `(created, updated) == (1, 1)` and one row holding the *second* row's values, no `IntegrityError`.
+- Tests live in `tests/event_tracker_tests/` (`test_event_parsing.py`, `test_event_sync.py`) and use two deliberate seams: `fetch_sheet_events` tests monkeypatch `get_worksheet` with a fake worksheet so the real parse path runs, while `sync_events` tests monkeypatch `fetch_sheet_events` directly so they only exercise DB reconciliation. An autouse `disable_event_tracker_sync` fixture in `tests/conftest.py` clears `CREDENTIALS`/`SHEET_ID` — same `load_dotenv()` leak problem as the Drive and Square fixtures.
 
 ## Merch shop (spec: specs/shop/shop-page.md)
 - **Payments — Square Web Payments SDK + Payments API** (`services/square_services.py`). Configured via `SQUARE_ACCESS_TOKEN` + `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT`, default sandbox — all read at **call time**) on the backend, `VITE_SQUARE_APP_ID` + `VITE_SQUARE_LOCATION_ID` on the frontend. The checkout page loads `square.js` from Square's CDN (required — it serves the secure card iframe; sandbox vs prod build is picked by the `sandbox-` app-id prefix), renders the card element in the payment step, and `card.tokenize()` swaps card data for a one-time token — card numbers never touch our server (PCI stays minimal). No webhooks: the charge response is synchronous.

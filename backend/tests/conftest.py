@@ -72,6 +72,15 @@ def disable_drive_sync(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
+# Event tracker sync reads CREDENTIALS / SHEET_ID env vars at call time —
+# clear them so tests are always in dev-mode no-op and never hit the real
+# Google Sheet, no matter what the developer's backend/.env contains.
+@pytest.fixture(autouse=True)
+def disable_event_tracker_sync(monkeypatch):
+    for var in ("CREDENTIALS", "SHEET_ID"):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture
 def engine():
     engine = create_engine(

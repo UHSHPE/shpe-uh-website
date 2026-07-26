@@ -7,6 +7,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins
 - **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
+- **Event Sheet Sync** — The calendar populates itself from the chapter's event-tracker Google Sheet, re-read once a day, so officers add events in the sheet they already maintain and never touch the website
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder
@@ -119,6 +120,8 @@ Frontend runs at **http://localhost:5173**.
 | `SQUARE_ACCESS_TOKEN` | No | Square API access token for shop card payments. **Unset = dev mode:** checkout is simulated, no real charge | `EAAA...` |
 | `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
 | `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted | `sandbox` |
+| `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
+| `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
 
 #### Square shop payments (optional, one-time setup)
 
@@ -154,6 +157,26 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 3. **APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app** — copy the client id and secret.
 4. From `backend/`, run `.venv/bin/python get_drive_refresh_token.py <client_id> <client_secret> [folder name]` (folder name defaults to "SHPE Resume Book") — a browser opens; sign in with your Google account and approve. The script mints the refresh token and creates (or reuses) the resume folder.
 5. Paste the four printed `GDRIVE_*` lines into `backend/.env` and restart the backend.
+
+#### Event tracker sheet sync (optional, one-time setup)
+
+When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, or location in the sheet updates the calendar entry in place on the next sync.
+
+> **Moving an event to a different day, or renaming it, creates a second calendar entry** rather than replacing the first — the old one has to be removed by hand. The sync only ever adds and updates; it never deletes, so removing a row from the sheet also leaves its calendar entry in place.
+
+> Unlike the Drive resume sync above, a **service account is the right choice here** — it only needs read access to a sheet you share with it, so the personal-Drive storage limitation doesn't apply.
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create (or pick) a project and enable the **Google Sheets API**.
+2. **APIs & Services → Credentials → Create Credentials → Service account** — create one, then open it, go to **Keys → Add key → Create new key → JSON**, and download the file.
+3. Open the downloaded JSON and copy the `client_email` value (ends in `.iam.gserviceaccount.com`).
+4. In the event-tracker spreadsheet, click **Share** and give that address **Viewer** access.
+5. Set `CREDENTIALS` to the JSON file's path and `SHEET_ID` to the id from the sheet's URL (`docs.google.com/spreadsheets/d/<SHEET_ID>/edit`) in `backend/.env`, then restart the backend.
+
+> Keep the service-account JSON out of version control — treat it like a password.
+
+> **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1**; if the fall sheet is still configured when the year rolls over, its events get re-read as next year's and appear on the calendar a second time.
+
+**Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `SIGN IN FORM`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
 
 ### `frontend/.env.local`
 
@@ -196,7 +219,7 @@ shpe-uh-website/
 │       ├── pages/          # One file per route
 │       └── App.jsx         # Route definitions
 └── backend/
-    ├── main.py             # FastAPI app: routers + background reminder-email loop
+    ├── main.py             # FastAPI app: routers + background loops (reminder emails, daily event-sheet sync)
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
@@ -204,7 +227,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment services, rate limiter, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync services, rate limiter, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
