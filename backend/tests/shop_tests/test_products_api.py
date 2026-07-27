@@ -108,13 +108,130 @@ def test_patch_product_as_member_403(client, session):
     assert client.patch(f"/shop/products/{product.id}", json={"is_active": False}).status_code == 403
 
 
-def test_delete_product_as_manager(manager_client, session):
+# --- retire / restore (soft delete; no product row is ever destroyed) ---
+
+def test_retire_product_as_manager(manager_client, session):
+    """DELETE retires: the row survives, stamped retired_at + is_active False,
+    hidden from the public detail route but still in the admin catalog."""
     product = make_product(session)
 
     res = manager_client.delete(f"/shop/products/{product.id}")
 
-    assert res.status_code in (200, 204)
+    assert res.status_code == 204
+
+    session.refresh(product)
+    assert product.retired_at is not None
+    assert product.is_active is False
+
     assert manager_client.get(f"/shop/products/{product.id}").status_code == 404
+
+    admin = manager_client.get("/shop/admin/products")
+    assert admin.status_code == 200
+    assert product.id in [p["id"] for p in admin.json()]
+
+
+def test_retired_product_hidden_from_public_list(manager_client, session):
+    make_product(session, name="Visible")
+    retired = make_product(session, name="Retired One")
+
+    manager_client.delete(f"/shop/products/{retired.id}")
+
+    res = manager_client.get("/shop/products")
+    assert [p["name"] for p in res.json()] == ["Visible"]
+
+
+def test_restore_clears_retired_at_but_leaves_inactive(manager_client, session):
+    """A restored product comes back Hidden — the admin republishes it deliberately."""
+    product = make_product(session)
+    manager_client.delete(f"/shop/products/{product.id}")
+
+    res = manager_client.post(f"/shop/products/{product.id}/restore")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["retired_at"] is None
+    assert body["is_active"] is False
+
+    session.refresh(product)
+    assert product.retired_at is None
+    assert product.is_active is False
+
+
+def test_restore_is_idempotent_on_live_product(manager_client, session):
+    product = make_product(session)
+
+    res = manager_client.post(f"/shop/products/{product.id}/restore")
+
+    assert res.status_code == 200
+    assert res.json()["retired_at"] is None
+    session.refresh(product)
+    assert product.is_active is True
+
+
+def test_retire_is_idempotent(manager_client, session):
+    product = make_product(session)
+
+    assert manager_client.delete(f"/shop/products/{product.id}").status_code == 204
+    session.refresh(product)
+    first_retired_at = product.retired_at
+
+    assert manager_client.delete(f"/shop/products/{product.id}").status_code == 204
+    session.refresh(product)
+    assert product.retired_at == first_retired_at
+
+
+def test_retire_unknown_product_404(manager_client):
+    assert manager_client.delete("/shop/products/999").status_code == 404
+
+
+def test_restore_unknown_product_404(manager_client):
+    assert manager_client.post("/shop/products/999/restore").status_code == 404
+
+
+def test_retire_product_as_member_403(client, session):
+    product = make_product(session)
+    assert client.delete(f"/shop/products/{product.id}").status_code == 403
+
+
+def test_restore_product_as_member_403(client, session):
+    product = make_product(session)
+    assert client.post(f"/shop/products/{product.id}/restore").status_code == 403
+
+
+def test_retire_keeps_the_image_file(manager_client, session, tmp_path, monkeypatch):
+    """Retired rows still show thumbnails in the admin table, and restoring
+    has to bring the image back with it — so retiring must not unlink."""
+    from routes import shop_routes
+
+    monkeypatch.setattr(shop_routes, "PRODUCT_IMAGE_DIR", tmp_path)
+    product = make_product(session)
+    manager_client.post(
+        f"/shop/products/{product.id}/image",
+        files={"file": ("shirt.png", PNG_BYTES, "image/png")},
+    )
+    session.refresh(product)
+    filename = product.image_filename
+    assert filename
+
+    assert manager_client.delete(f"/shop/products/{product.id}").status_code == 204
+
+    session.refresh(product)
+    assert product.image_filename == filename
+    assert (tmp_path / filename).exists()
+
+
+def test_retiring_the_dues_product_400(manager_client, session):
+    """Dues checkout looks the product up by name — retiring it would silently
+    break the post-verification redirect."""
+    from services import shop_services
+
+    product = make_product(session, name=shop_services.DUES_PRODUCT_NAME)
+
+    res = manager_client.delete(f"/shop/products/{product.id}")
+
+    assert res.status_code == 400
+    session.refresh(product)
+    assert product.retired_at is None
 
 
 # --- image upload ---

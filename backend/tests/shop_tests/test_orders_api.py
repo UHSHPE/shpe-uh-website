@@ -82,6 +82,17 @@ def test_inactive_product_400(unauth_client, session, sent_emails):
     assert res.status_code == 400
 
 
+def test_retired_product_400(unauth_client, session, sent_emails):
+    """retired_at alone blocks the order — is_active is left True here so the
+    rejection can only come from the retired check."""
+    from services.time_services import utcnow
+
+    product = make_product(session, retired_at=utcnow())
+    res = unauth_client.post("/shop/orders", json=order_payload(product))
+    assert res.status_code == 400
+    assert res.json()["detail"] == "One of the products is unavailable."
+
+
 def test_unknown_product_400(unauth_client, session, sent_emails):
     payload = order_payload(make_product(session))
     payload["items"][0]["product_id"] = 999

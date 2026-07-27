@@ -206,6 +206,12 @@ The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
+> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire feature needs this once (then restart the backend). A freshly seeded database already has it.
+>
+> ```bash
+> sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
+> ```
+
 ## Project Structure
 
 ```
@@ -283,8 +289,8 @@ shpe-uh-website/
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark a notification as read |
 | GET | `/shop/settings` | No | Shop settings (storefront tagline + per-order item cap) |
-| GET | `/shop/products` | No | Active shop products |
-| GET | `/shop/products/{id}` | No | One active product (type, sizes, price) |
+| GET | `/shop/products` | No | Shop products that are active and not retired |
+| GET | `/shop/products/{id}` | No | One product (type, sizes, price); 404 if unknown, hidden, or retired |
 | GET | `/shop/products/{id}/image` | No | Product image |
 | POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited: 10/minute) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
@@ -292,9 +298,10 @@ shpe-uh-website/
 | PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |
 | POST | `/shop/products` | Shop admin | Create a product |
 | PATCH | `/shop/products/{id}` | Shop admin | Edit a product / toggle availability |
-| DELETE | `/shop/products/{id}` | Shop admin | Remove a product |
+| DELETE | `/shop/products/{id}` | Shop admin | Retire a product — hides it from the shop and keeps it restorable (nothing is deleted); the dues product can't be retired |
+| POST | `/shop/products/{id}/restore` | Shop admin | Restore a retired product (it comes back hidden) |
 | POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤5 MB) |
-| GET | `/shop/admin/products` | Shop admin | All products including sold-out |
+| GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
 
@@ -317,8 +324,9 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **Payment is simulated in v1** — the "Pay" step instantly succeeds and no real money moves. A real Square checkout is planned and will replace only that step.
 - **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
 - Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
-- **No inventory is tracked.** Products are toggled sold-out/available, and each order is limited to a configurable number of units per item (default 5).
-- Shop administration belongs to the **Communication Director** and **Marketing Chair** roles: they manage products (create/edit, images, sold-out toggle), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** panel on their profile page.
+- **No inventory is tracked.** Each product is either **Active** (listed in the shop) or **Hidden** (kept in the admin table, off the storefront), and every order is limited to a configurable number of units per item (default 5).
+- **Products are never deleted.** Retiring one takes it off the storefront and files it under **Retired** in the Shop Manager, where it can be restored at any time (a restored product comes back Hidden, so an admin republishes it deliberately). Past orders keep showing exactly what was bought, and the product image is kept too. The **T-Shirt Dues** product can't be retired — newly verified members are sent straight to it.
+- Shop administration belongs to the **Communication Director** and **Marketing Chair** roles: they manage products (create/edit, images, show/hide, retire/restore), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page at `/shop-manager`.
 
 ## Running Tests
 

@@ -130,7 +130,9 @@ def validate_order_items(
             )
 
         product = session.get(Product, item.product_id)
-        if product is None or not product.is_active:
+        # Retired (soft-deleted) products are as unorderable as hidden ones —
+        # same generic detail either way, never say which.
+        if product is None or product.retired_at is not None or not product.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="One of the products is unavailable.",

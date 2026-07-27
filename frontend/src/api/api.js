@@ -167,8 +167,15 @@ export function updateProduct(productId, data) {
   return api.patch(`/shop/products/${productId}`, data, { headers: authHeaders() });
 }
 
-export function deleteProduct(productId) {
+// Soft delete — the product is hidden from the shop but kept in the admin's
+// Retired list (nothing is destroyed, so order history stays readable).
+export function retireProduct(productId) {
   return api.delete(`/shop/products/${productId}`, { headers: authHeaders() });
+}
+
+// Undo a retire. The product comes back hidden until an admin sets it Active.
+export function restoreProduct(productId) {
+  return api.post(`/shop/products/${productId}/restore`, {}, { headers: authHeaders() });
 }
 
 export function uploadProductImage(productId, file) {

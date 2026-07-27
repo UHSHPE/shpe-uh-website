@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   createProduct,
-  deleteProduct,
   getAdminProducts,
   getNotifications,
   getShopOrders,
   getShopSettings,
   markNotificationRead,
   productImageUrl,
+  restoreProduct,
+  retireProduct,
   updateProduct,
   updateShopOrder,
   updateShopSettings,
@@ -43,6 +44,7 @@ export default function ShopManager() {
   const [expandedId, setExpandedId] = useState(null);
   const [noteDrafts, setNoteDrafts] = useState({});
   const [form, setForm] = useState(null); // null = modal closed
+  const [retiredOpen, setRetiredOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ tagline: "", order_item_cap: "" });
   const fileInputRef = useRef(null);
 
@@ -97,6 +99,11 @@ export default function ShopManager() {
     .filter((o) => o.status !== "cancelled")
     .reduce((sum, o) => sum + o.total_cents, 0);
 
+  // Retired = soft-deleted (retired_at stamped). The main table shows live
+  // products only; retired ones move to their own section, restorable.
+  const liveProducts = products.filter((p) => p.retired_at == null);
+  const retiredProducts = products.filter((p) => p.retired_at != null);
+
   // --- product form ---
 
   function openAdd() {
@@ -145,11 +152,30 @@ export default function ShopManager() {
     refreshProducts();
   }
 
-  async function removeProduct(product) {
-    if (!window.confirm(`Remove "${product.name}" from the shop?`)) return;
-    await deleteProduct(product.id).catch(() => {});
-    refreshProducts();
-    showToast("Product removed");
+  async function retireProductRow(product) {
+    if (
+      !window.confirm(
+        `Retire "${product.name}"? It'll be hidden from the shop but stays in your Retired list.`
+      )
+    )
+      return;
+    try {
+      await retireProduct(product.id);
+      refreshProducts();
+      showToast("Product retired");
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Couldn't retire the product");
+    }
+  }
+
+  async function restoreProductRow(product) {
+    try {
+      await restoreProduct(product.id);
+      refreshProducts();
+      showToast("Product restored — it's hidden until you set it Active");
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Couldn't restore the product");
+    }
   }
 
   // --- orders ---
@@ -293,7 +319,7 @@ export default function ShopManager() {
                 <span>Status</span>
                 <span style={{ textAlign: "right" }}>Edit</span>
               </div>
-              {products.map((p) => (
+              {liveProducts.map((p) => (
                 <div key={p.id} style={{ ...productRow, borderBottom: "1px solid var(--surface-soft)" }}>
                   <div
                     style={{
@@ -326,22 +352,113 @@ export default function ShopManager() {
                         border: p.is_active ? "1px solid var(--status-picked-border)" : "1px solid var(--status-cancelled-border)",
                       }}
                     >
-                      {p.is_active ? "Active" : "Sold out"}
+                      {p.is_active ? "Active" : "Hidden"}
                     </button>
                   </div>
                   <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                     <button onClick={() => openEdit(p)} aria-label="Edit" style={iconBtn}>
                       <PencilIcon size={15} />
                     </button>
-                    <button onClick={() => removeProduct(p)} aria-label="Remove" style={{ ...iconBtn, border: "1px solid #F3D6CC", color: "var(--shpe-red)" }}>
+                    <button onClick={() => retireProductRow(p)} aria-label="Retire" style={{ ...iconBtn, border: "1px solid #F3D6CC", color: "var(--shpe-red)" }}>
                       <TrashIcon size={15} />
                     </button>
                   </div>
                 </div>
               ))}
-              {products.length === 0 && (
+              {liveProducts.length === 0 && (
                 <div style={{ padding: "32px", textAlign: "center", color: "var(--muted)", fontSize: "14px" }}>
                   No products yet — add the first one.
+                </div>
+              )}
+            </div>
+
+            {/* Retired (soft-deleted) products — restorable, never destroyed */}
+            <div style={{ marginTop: "18px", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+              <button
+                onClick={() => setRetiredOpen((open) => !open)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "10px",
+                  padding: "12px 16px",
+                  border: "none",
+                  background: "var(--surface-muted)",
+                  color: "var(--muted)",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Retired ({retiredProducts.length})
+                <ChevronDownIcon size={16} stroke="var(--muted-soft)" style={{ transform: retiredOpen ? "rotate(180deg)" : "none" }} />
+              </button>
+
+              {retiredOpen && (
+                <div style={{ borderTop: "1px solid var(--border)", overflowX: "auto" }}>
+                  {retiredProducts.length === 0 ? (
+                    <div style={{ padding: "20px 16px", textAlign: "center", color: "var(--muted)", fontSize: "13px" }}>
+                      Nothing retired yet — retired products land here and can be restored.
+                    </div>
+                  ) : (
+                    retiredProducts.map((p) => (
+                      <div key={p.id} style={{ ...productRow, borderBottom: "1px solid var(--surface-soft)", opacity: 0.7 }}>
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "8px",
+                            border: "1px solid var(--border)",
+                            background: productImageUrl(p) ? `center/cover url(${productImageUrl(p)})` : "var(--placeholder-hatch)",
+                          }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--muted)", lineHeight: 1.25 }}>{p.name}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--muted-soft)" }}>
+                            {p.product_type === "apparel" ? (p.sizes ?? []).join(" · ") : "No sizes"}
+                          </p>
+                        </div>
+                        <span style={{ fontSize: "13px", color: "var(--muted)" }}>{typeLabel(p.product_type)}</span>
+                        <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--muted)" }}>{formatCents(p.price_cents)}</span>
+                        <div>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              borderRadius: "999px",
+                              padding: "4px 11px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "var(--status-cancelled-text)",
+                              background: "var(--status-cancelled-bg)",
+                              border: "1px solid var(--status-cancelled-border)",
+                            }}
+                          >
+                            Retired
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => restoreProductRow(p)}
+                            style={{
+                              borderRadius: "999px",
+                              padding: "6px 13px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              border: "1px solid var(--border-strong)",
+                              background: "#fff",
+                              color: "var(--shpe-blue)",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Restore
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -741,7 +858,7 @@ export default function ShopManager() {
                 <div>
                   <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>Availability</p>
                   <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--muted)" }}>
-                    {form.is_active ? "Visible in the shop" : "Hidden — shows as sold out"}
+                    {form.is_active ? "Visible in the shop" : "Hidden from the shop"}
                   </p>
                 </div>
                 <button
