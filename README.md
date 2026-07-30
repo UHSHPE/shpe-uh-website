@@ -15,7 +15,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
 - **President & VP Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools). The president and both vice presidents share a **Members** page with four tabs: **All**, **E-Board**, and **Chairs** show chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment; **Structure** holds the chapter org chart. Assigning or removing a chair role automatically updates that committee's chair membership. VPs can assign every role except President and the two VP seats, which only the president manages
-- **Reporting Structure** — An editable org chart of who oversees whom: officers report to a vice president, committee chairs report to a vice president or an officer. It links *roles*, not people, so it survives elections and chair handovers without re-entry. Purely organizational — being someone's supervisor grants no extra permissions
+- **Reporting Structure** — An editable org chart of who oversees whom: officers report to a vice president, chairs report to a vice president or an officer. It links *roles*, not people, so it survives elections and chair handovers without re-entry. Purely organizational — being someone's supervisor grants no extra permissions
 - **Email Verification** — signing up creates an account that stays inactive until the member clicks a verification link emailed to their CougarNet address; only then can they log in. This also prevents someone from registering an email they don't control.
 - **Chapter Dues at Signup** — right after verifying their email, new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the Square checkout, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
@@ -355,7 +355,13 @@ The **Structure** tab is the chapter org chart. The president sits at the top an
 
 It links **roles rather than people**: "Academic Chair reports to Treasurer" keeps working when a new person is elected, so nothing needs re-entering after a handover. Co-chairs of one committee share a role and therefore share a supervisor.
 
-> The structure is organizational only. Being listed as someone's supervisor grants **no** extra permissions — role assignment stays with the president and VPs. `seed.py` fills in a plausible starting tree; adjust it on the Structure tab to match how your chapter actually runs.
+`seed.py` preloads the chapter's current chart: the New Member Representative, Treasurer, and Regional Representative report to the VP External; the Communications Director, Secretary, and Director of Internal Affairs report to the VP Internal; and all 14 chairs sit beneath those officers. Seeding **skips the structure entirely once any link exists**, so re-running `seed.py` never overwrites changes made on the Structure tab. To reload the chart from the file, clear it first:
+
+```bash
+sqlite3 backend/database.db "DELETE FROM rolereport;" && python backend/seed.py
+```
+
+> The structure is organizational only. Being listed as someone's supervisor grants **no** extra permissions — role assignment stays with the president and VPs.
 
 Nobody can change their own role. To hand off the presidency, the sitting president promotes their successor first — two presidents can coexist briefly — and the successor then demotes them.
 

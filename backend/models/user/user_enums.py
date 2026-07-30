@@ -60,7 +60,7 @@ OFFICER_ROLES = {
 # The 9 the About page calls the E-Board (president + VPs + officers).
 EBOARD_ROLES = TOP_TIER_ROLES | OFFICER_ROLES
 
-# The 14 committee chairs — the roles Committee.chair_role maps onto 1:1.
+# The 14 chairs — the roles Committee.chair_role maps onto 1:1.
 CHAIR_ROLES = {
     Role.marketing_chair,
     Role.mentorshpe_chair,

@@ -36,7 +36,7 @@ const TIER_LABELS = {
   president: "President",
   vp: "Vice Presidents",
   officer: "E-Board officers",
-  chair: "Committee chairs",
+  chair: "Chairs",
 };
 
 function StatTile({ value, label, color }) {

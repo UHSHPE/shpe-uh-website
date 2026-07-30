@@ -58,7 +58,7 @@ export function isEboardRole(role) {
   return EBOARD_ROLES.includes(role);
 }
 
-// The 14 committee chairs. Listed rather than sniffed by suffix so a future
+// The 14 chairs. Listed rather than sniffed by suffix so a future
 // role like "Vice Chair" can't silently join the set.
 export const CHAIR_ROLES = [
   "Marketing Chair",

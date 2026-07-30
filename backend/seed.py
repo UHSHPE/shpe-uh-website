@@ -298,39 +298,52 @@ VP_ROSTER = [
     ("Gabriela", "Lorenzo", Role.vpi, 903),
 ]
 
-# A STARTING reporting tree, not the chapter's real one — nobody told us who
-# actually oversees whom, so this is a plausible internal/external split that
-# the president and VPs are expected to correct on the Members > Structure
-# tab. Officers hang off a VP; chairs hang off an officer. The president is
-# the implicit root and the VPs always report to them, so neither is listed.
+# The chapter's real reporting tree, from the 2026-2027 org chart. Officers
+# hang off a VP; chairs hang off an officer. The president is the implicit
+# root and both VPs always report to them, so neither is listed here.
+# Co-chairs (the "(2)" entries on the chart) share one role, so a single link
+# covers both of them.
 DEFAULT_REPORTS = {
-    # officer -> VP
+    # --- officers -> VP External ---
+    Role.new_member_rep: Role.vpe,
+    Role.treasurer: Role.vpe,
+    Role.regional_rep: Role.vpe,
+    # --- officers -> VP Internal ---
+    Role.comm_director: Role.vpi,
     Role.secretary: Role.vpi,
     Role.dir_int_aff: Role.vpi,
-    Role.new_member_rep: Role.vpi,
-    Role.treasurer: Role.vpe,
-    Role.comm_director: Role.vpe,
-    Role.regional_rep: Role.vpe,
-    # chair -> officer
-    Role.academic_chair: Role.dir_int_aff,
-    Role.member_relations_chair: Role.dir_int_aff,
-    Role.mentorshpe_chair: Role.dir_int_aff,
+
+    # --- chairs -> New Member Rep ---
     Role.social_chair: Role.new_member_rep,
-    Role.shpetina_chair: Role.new_member_rep,
-    Role.athletic_chair: Role.new_member_rep,
-    Role.marketing_chair: Role.comm_director,
-    Role.web_dev_chair: Role.comm_director,
-    Role.outreach_chair: Role.regional_rep,
+    Role.member_relations_chair: Role.new_member_rep,
+    # --- chairs -> Treasurer ---
+    Role.eec_chair: Role.treasurer,
+    Role.athletic_chair: Role.treasurer,
+    Role.web_dev_chair: Role.treasurer,
+    # --- chairs -> Regional Rep ---
     Role.shpe_jr_chair: Role.regional_rep,
-    Role.career_fair_chair: Role.treasurer,
-    Role.professional_chair: Role.treasurer,
-    Role.projects_chair: Role.secretary,
-    Role.eec_chair: Role.secretary,
+    Role.professional_chair: Role.regional_rep,
+    Role.career_fair_chair: Role.regional_rep,
+    # --- chairs -> Communication Director ---
+    Role.marketing_chair: Role.comm_director,
+    Role.outreach_chair: Role.comm_director,
+    # --- chairs -> Secretary ---
+    Role.mentorshpe_chair: Role.secretary,
+    Role.shpetina_chair: Role.secretary,
+    # --- chairs -> Director of Internal Affairs ---
+    Role.academic_chair: Role.dir_int_aff,
+    Role.projects_chair: Role.dir_int_aff,
 }
 
 
 def seed_structure(s: Session):
-    """Default org chart. Purely organizational — it grants no permissions."""
+    """The chapter org chart. Purely organizational — grants no permissions.
+
+    Skips entirely once any link exists, so re-running seed.py to top up other
+    data never stomps edits made on the Members > Structure tab. To reload the
+    chart from this file, clear the table first:
+        sqlite3 database.db "DELETE FROM rolereport;"
+    """
     if s.exec(select(RoleReport)).first():
         print("Skipped reporting structure — already seeded.")
         return
@@ -338,8 +351,7 @@ def seed_structure(s: Session):
     for role, supervisor_role in DEFAULT_REPORTS.items():
         s.add(RoleReport(role=role, supervisor_role=supervisor_role))
     s.commit()
-    print(f"Seeded default reporting structure ({len(DEFAULT_REPORTS)} links) — "
-          "adjust it under Members > Structure.")
+    print(f"Seeded reporting structure ({len(DEFAULT_REPORTS)} links).")
 
 
 def seed_vps(s: Session):
