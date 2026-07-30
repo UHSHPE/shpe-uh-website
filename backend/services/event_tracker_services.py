@@ -59,7 +59,13 @@ def event_key(local_date, title: str) -> str:
     return f"{local_date.isoformat()}|{norm_title}"     # e.g. "2026-08-05|gbm 1"
 
 def get_event_type():
-    
+    # TODO: unfinished — landed on dev with an empty body, which made this
+    # module fail to import and took the whole backend down with it. Stubbed
+    # so the app runs; nothing calls it yet. Intended to map a sheet row onto
+    # Event.event_type (projects, professional, eboard, …) for the per-chair
+    # event view.
+    raise NotImplementedError("get_event_type is not implemented yet")
+
 
 def parse_row(row: dict) -> dict | None:
     name = " ".join((row.get(COLUMNS["name"]) or "").split())

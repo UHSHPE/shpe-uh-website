@@ -37,7 +37,6 @@ def sheet_row(**overrides):
         start_time="6:00 PM",
         end_time="7:00 PM",
         owners="Marketing",
-        sign_in_form="",
     )
     fields.update(overrides)
     return {COLUMNS[key]: value for key, value in fields.items()}
