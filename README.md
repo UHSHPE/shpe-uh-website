@@ -216,19 +216,27 @@ The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
-> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, and event-sync features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
+> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, login-lockout, and event-sync features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
 >
 > ```bash
 > sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
 > sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN email_verified BOOLEAN DEFAULT 0;"
 > sqlite3 backend/database.db "UPDATE user SET email_verified = 1;"   # trust accounts that predate verification
+> sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN failed_login_count INTEGER DEFAULT 0;"
+> sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN locked_until DATETIME;"
 > sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN source_row_id VARCHAR;"
 > sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_source_row_id ON event (source_row_id);"
 > ```
 >
 > The `UPDATE` matters: existing members default to unverified, and unverified accounts are refused at login.
 >
-> The `CREATE UNIQUE INDEX` matters too — adding a column does not create the index the column is declared with, and the event sync relies on that index to keep one calendar entry per sheet row. Confirm the upgrade left no gaps with `sqlite3 backend/database.db ".schema event"`, which should match a freshly seeded database.
+> The `CREATE UNIQUE INDEX` matters too — adding a column does not create the index the column is declared with, and the event sync relies on that index to keep one calendar entry per sheet row. (Entirely new *tables* are fine: `create_all()` builds those with their indexes at startup.)
+>
+> Guessing at which columns are missing is how you end up doing this twice. Compare the upgraded database against a fresh one instead — anything the model declares but the file lacks shows up as a `no such column` failure the moment a query touches it:
+>
+> ```bash
+> cd backend && sqlite3 database.db ".schema user" ".schema event" ".schema product"
+> ```
 
 ## Project Structure
 
