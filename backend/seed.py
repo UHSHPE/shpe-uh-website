@@ -7,6 +7,7 @@ import models.user
 
 from models.event import Event
 from models.committee import Committee, CommitteeMembership
+from models.role_report import RoleReport
 from models.shop.order import Order, OrderItem
 from models.shop.product import Product, ProductType
 from models.user.user import User
@@ -297,6 +298,49 @@ VP_ROSTER = [
     ("Gabriela", "Lorenzo", Role.vpi, 903),
 ]
 
+# A STARTING reporting tree, not the chapter's real one — nobody told us who
+# actually oversees whom, so this is a plausible internal/external split that
+# the president and VPs are expected to correct on the Members > Structure
+# tab. Officers hang off a VP; chairs hang off an officer. The president is
+# the implicit root and the VPs always report to them, so neither is listed.
+DEFAULT_REPORTS = {
+    # officer -> VP
+    Role.secretary: Role.vpi,
+    Role.dir_int_aff: Role.vpi,
+    Role.new_member_rep: Role.vpi,
+    Role.treasurer: Role.vpe,
+    Role.comm_director: Role.vpe,
+    Role.regional_rep: Role.vpe,
+    # chair -> officer
+    Role.academic_chair: Role.dir_int_aff,
+    Role.member_relations_chair: Role.dir_int_aff,
+    Role.mentorshpe_chair: Role.dir_int_aff,
+    Role.social_chair: Role.new_member_rep,
+    Role.shpetina_chair: Role.new_member_rep,
+    Role.athletic_chair: Role.new_member_rep,
+    Role.marketing_chair: Role.comm_director,
+    Role.web_dev_chair: Role.comm_director,
+    Role.outreach_chair: Role.regional_rep,
+    Role.shpe_jr_chair: Role.regional_rep,
+    Role.career_fair_chair: Role.treasurer,
+    Role.professional_chair: Role.treasurer,
+    Role.projects_chair: Role.secretary,
+    Role.eec_chair: Role.secretary,
+}
+
+
+def seed_structure(s: Session):
+    """Default org chart. Purely organizational — it grants no permissions."""
+    if s.exec(select(RoleReport)).first():
+        print("Skipped reporting structure — already seeded.")
+        return
+
+    for role, supervisor_role in DEFAULT_REPORTS.items():
+        s.add(RoleReport(role=role, supervisor_role=supervisor_role))
+    s.commit()
+    print(f"Seeded default reporting structure ({len(DEFAULT_REPORTS)} links) — "
+          "adjust it under Members > Structure.")
+
 
 def seed_vps(s: Session):
     """Both vice presidents — they share the president's role-assignment
@@ -416,6 +460,7 @@ def seed():
         seed_comm_director(s)
         seed_president(s)
         seed_vps(s)
+        seed_structure(s)
         seed_shop_settings(s)
         seed_products(s)
         seed_test_dues_order(s)  # after products — needs the dues product

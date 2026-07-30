@@ -11,6 +11,7 @@ import models.user.email_verification  # noqa: F401
 import models.event      # noqa: F401
 import models.event_reminder  # noqa: F401
 import models.committee  # noqa: F401
+import models.role_report  # noqa: F401
 import models.committee_message  # noqa: F401
 import models.notification  # noqa: F401
 import models.shop.product  # noqa: F401

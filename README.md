@@ -14,7 +14,8 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
-- **President & VP Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools). The president and both vice presidents share a **Members** page: chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment (e-board, chairs, member). Assigning or removing a chair role automatically updates that committee's chair membership. VPs can assign every role except President, and can't change the sitting president
+- **President & VP Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools). The president and both vice presidents share a **Members** page with four tabs: **All**, **E-Board**, and **Chairs** show chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment; **Structure** holds the chapter org chart. Assigning or removing a chair role automatically updates that committee's chair membership. VPs can assign every role except President and the two VP seats, which only the president manages
+- **Reporting Structure** — An editable org chart of who oversees whom: officers report to a vice president, committee chairs report to a vice president or an officer. It links *roles*, not people, so it survives elections and chair handovers without re-entry. Purely organizational — being someone's supervisor grants no extra permissions
 - **Email Verification** — signing up creates an account that stays inactive until the member clicks a verification link emailed to their CougarNet address; only then can they log in. This also prevents someone from registering an email they don't control.
 - **Chapter Dues at Signup** — right after verifying their email, new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the Square checkout, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
@@ -288,7 +289,7 @@ shpe-uh-website/
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
 | `/profile` | Profile info, PDF resume, and order history | Yes |
-| `/members` | Member directory: chapter stats, dues paid/unpaid counts, member lookup, and role assignment — president and VPs only | Yes |
+| `/members` | Member directory and org chart: chapter stats, member lookup, role assignment, and the reporting structure, across All/E-Board/Chairs/Structure tabs — president and VPs only | Yes |
 | `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
 
 ## API Reference
@@ -335,8 +336,10 @@ shpe-uh-website/
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
 | GET | `/admin/members?search=&paid=&role=` | President / VP | Member directory with dues status; filter by name/email/PSID search, paid, or role |
 | GET | `/admin/stats` | President / VP | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
-| GET | `/admin/roles` | President / VP | Every role the caller may assign (a VP's list omits President) |
-| PATCH | `/admin/members/{id}/role` | President / VP | Assign a member's role (chair roles also sync the committee's chair membership). A VP can't assign President or change the sitting president |
+| GET | `/admin/roles` | President / VP | Every role the caller may assign (a VP's list omits President and both VP roles) |
+| PATCH | `/admin/members/{id}/role` | President / VP | Assign a member's role (chair roles also sync the committee's chair membership). A VP can't assign or change President or VP roles |
+| GET | `/admin/structure` | President / VP | The reporting tree: every e-board and chair role with its supervisor and who currently holds it |
+| PUT | `/admin/structure/{role}` | President / VP | Set which role a role reports to. Organizational only — grants no permissions |
 
 "Shop admin" = a user whose role is **Communication Director**, **Marketing Chair**, or **President**.
 
@@ -344,7 +347,15 @@ shpe-uh-website/
 
 The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the **Members** page (`/members`) backed by the `/admin/*` endpoints. From there they can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member.
 
-**Both Vice Presidents share the Members page**, so role fixes don't wait on one person. Two limits keep the presidency out of reach: a VP can't assign the President role (it isn't even in their dropdown), and a VP can't change the role of whoever currently is president. Without that second rule a VP could demote the president and leave the chapter with nobody holding full admin.
+**Both Vice Presidents share the Members page**, so role fixes don't wait on one person. Two limits keep the top of the chapter out of reach: a VP can't assign the President or either VP role (none appear in their dropdown), and a VP can't change the role of anyone who currently holds one. That covers both directions of the same risk — without it a VP could demote the president or their fellow VP, or promote an ally into a VP seat, and the chapter could end up with nobody holding full admin.
+
+### Reporting structure
+
+The **Structure** tab is the chapter org chart. The president sits at the top and both VPs report to them (fixed). Each e-board officer reports to one VP, and each committee chair reports to a VP or an officer — the president and both VPs can rearrange either.
+
+It links **roles rather than people**: "Academic Chair reports to Treasurer" keeps working when a new person is elected, so nothing needs re-entering after a handover. Co-chairs of one committee share a role and therefore share a supervisor.
+
+> The structure is organizational only. Being listed as someone's supervisor grants **no** extra permissions — role assignment stays with the president and VPs. `seed.py` fills in a plausible starting tree; adjust it on the Structure tab to match how your chapter actually runs.
 
 Nobody can change their own role. To hand off the presidency, the sitting president promotes their successor first — two presidents can coexist briefly — and the successor then demotes them.
 

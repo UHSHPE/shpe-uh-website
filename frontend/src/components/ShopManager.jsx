@@ -18,6 +18,7 @@ import { useCart } from "../context/CartContext";
 import StatusPill from "./StatusPill";
 import { formatCents, formatOrderDate, orderItemsSummary, typeLabel } from "../utils/shop";
 import { ChevronDownIcon, CheckIcon, CloseIcon, ImageIcon, PencilIcon, PlusIcon, TrashIcon } from "./shopIcons";
+import ConfirmDialog from "./ConfirmDialog";
 
 const APPAREL_SIZES = ["S", "M", "L", "XL", "2XL"];
 
@@ -44,6 +45,7 @@ export default function ShopManager() {
   const [expandedId, setExpandedId] = useState(null);
   const [noteDrafts, setNoteDrafts] = useState({});
   const [form, setForm] = useState(null); // null = modal closed
+  const [pendingRetire, setPendingRetire] = useState(null); // product awaiting confirmation
   const [retiredOpen, setRetiredOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ tagline: "", order_item_cap: "" });
   const fileInputRef = useRef(null);
@@ -152,19 +154,16 @@ export default function ShopManager() {
     refreshProducts();
   }
 
-  async function retireProductRow(product) {
-    if (
-      !window.confirm(
-        `Retire "${product.name}"? It'll be hidden from the shop but stays in your Retired list.`
-      )
-    )
-      return;
+  async function retireProductRow() {
+    const product = pendingRetire;
     try {
       await retireProduct(product.id);
       refreshProducts();
       showToast("Product retired");
     } catch (err) {
       showToast(err.response?.data?.detail || "Couldn't retire the product");
+    } finally {
+      setPendingRetire(null);
     }
   }
 
@@ -359,7 +358,7 @@ export default function ShopManager() {
                     <button onClick={() => openEdit(p)} aria-label="Edit" style={iconBtn}>
                       <PencilIcon size={15} />
                     </button>
-                    <button onClick={() => retireProductRow(p)} aria-label="Retire" style={{ ...iconBtn, border: "1px solid #F3D6CC", color: "var(--shpe-red)" }}>
+                    <button onClick={() => setPendingRetire(p)} aria-label="Retire" style={{ ...iconBtn, border: "1px solid #F3D6CC", color: "var(--shpe-red)" }}>
                       <TrashIcon size={15} />
                     </button>
                   </div>
@@ -716,6 +715,22 @@ export default function ShopManager() {
           </div>
         )}
       </div>
+
+      {pendingRetire && (
+        <ConfirmDialog
+          title="Retire product?"
+          confirmLabel="Retire"
+          tone="danger"
+          onCancel={() => setPendingRetire(null)}
+          onConfirm={retireProductRow}
+          body={
+            <p style={{ margin: 0 }}>
+              Retire <strong>{pendingRetire.name}</strong>? It'll be hidden from the shop
+              but stays in your Retired list, and past orders keep showing it.
+            </p>
+          }
+        />
+      )}
 
       {/* Add/Edit product modal */}
       {form && (

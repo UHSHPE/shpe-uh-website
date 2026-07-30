@@ -215,3 +215,16 @@ export function getAssignableRoles() {
 export function updateMemberRole(userId, role) {
   return api.patch(`/admin/members/${userId}/role`, { role }, { headers: authHeaders() });
 }
+
+// The chapter reporting tree — organizational only, grants no permissions.
+export function getOrgStructure() {
+  return api.get("/admin/structure", { headers: authHeaders() });
+}
+
+export function setRoleSupervisor(role, supervisorRole) {
+  return api.put(
+    `/admin/structure/${encodeURIComponent(role)}`,
+    { supervisor_role: supervisorRole },
+    { headers: authHeaders() },
+  );
+}

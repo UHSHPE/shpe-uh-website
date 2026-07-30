@@ -34,6 +34,53 @@ export function canAssignRoles(user) {
   return ROLE_ADMIN_ROLES.includes(user?.role);
 }
 
+// Org tiers, mirroring user_enums.py. Display values, because that's what the
+// API returns — SQLite stores the enum *name* ("academic_chair"), so these
+// strings only ever match API payloads, never raw database rows.
+export const VP_ROLE_NAMES = ["Vice President External", "Vice President Internal"];
+
+// Only the president may assign or modify these.
+export const TOP_TIER_ROLES = [PRESIDENT_ROLE, ...VP_ROLE_NAMES];
+
+export const OFFICER_ROLES = [
+  "Treasurer",
+  "Secretary",
+  "Communication Director",
+  "Regional Representative",
+  "New Member Representative",
+  "Director Of Internal Affairs",
+];
+
+// The 9 the About page calls the E-Board.
+export const EBOARD_ROLES = [...TOP_TIER_ROLES, ...OFFICER_ROLES];
+
+export function isEboardRole(role) {
+  return EBOARD_ROLES.includes(role);
+}
+
+// The 14 committee chairs. Listed rather than sniffed by suffix so a future
+// role like "Vice Chair" can't silently join the set.
+export const CHAIR_ROLES = [
+  "Marketing Chair",
+  "MentorSHPE Chair",
+  "Academic Chair",
+  "Professional Chair",
+  "Career Fair Chair",
+  "Web Development Chair",
+  "Social Chair",
+  "SHPE Jr Chair",
+  "Outreach Chair",
+  "Engineering Events Coordinator Chair",
+  "SHPEtina Chair",
+  "Athletic Chair",
+  "Projects Chair",
+  "Member Relations Chair",
+];
+
+export function isChairRole(role) {
+  return CHAIR_ROLES.includes(role);
+}
+
 // Order-status pill styling — tokens defined in styles.css §Shop.
 export const STATUS_META = {
   paid: {

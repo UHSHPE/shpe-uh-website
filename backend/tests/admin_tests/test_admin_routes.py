@@ -251,12 +251,50 @@ def test_vp_cannot_change_own_role(vp_client, vp):
     assert res.status_code == 400
 
 
-def test_roles_list_hides_president_from_vps(vp_client):
+def test_vp_cannot_change_the_other_vp(vp_client, session):
+    # The president manages both VP seats; peers can't demote each other.
+    other = make_member(session, 2, role=Role.vpe)
+
+    res = vp_client.patch(f"/admin/members/{other.id}/role", json={"role": "Member"})
+
+    assert res.status_code == 403
+    session.refresh(other)
+    assert other.role == Role.vpe
+
+
+def test_vp_cannot_promote_someone_into_a_vp_seat(vp_client, session):
+    # Minting a peer is the same power as demoting one, one step removed.
+    member = make_member(session, 1)
+
+    res = vp_client.patch(f"/admin/members/{member.id}/role",
+                          json={"role": "Vice President External"})
+
+    assert res.status_code == 403
+    session.refresh(member)
+    assert member.role == Role.member
+
+
+def test_president_can_change_a_vp(president_client, session):
+    vp_user = make_member(session, 3, role=Role.vpi)
+
+    res = president_client.patch(f"/admin/members/{vp_user.id}/role", json={"role": "Member"})
+
+    assert res.status_code == 200
+    session.refresh(vp_user)
+    assert vp_user.role == Role.member
+
+
+def test_roles_list_hides_top_tier_from_vps(vp_client):
     roles = vp_client.get("/admin/roles").json()
 
     assert "President" not in roles
+    assert "Vice President External" not in roles
+    assert "Vice President Internal" not in roles
     assert "Treasurer" in roles
 
 
-def test_roles_list_includes_president_for_the_president(president_client):
-    assert "President" in president_client.get("/admin/roles").json()
+def test_roles_list_includes_top_tier_for_the_president(president_client):
+    roles = president_client.get("/admin/roles").json()
+
+    assert "President" in roles
+    assert "Vice President External" in roles

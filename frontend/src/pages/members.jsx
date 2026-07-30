@@ -4,13 +4,27 @@ import { Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
-import { getAdminMembers, getAdminStats, getAssignableRoles, updateMemberRole } from "../api/api";
-import { canAssignRoles, isPresident, PRESIDENT_ROLE } from "../utils/shop";
+import {
+  getAdminMembers,
+  getAdminStats,
+  getAssignableRoles,
+  getOrgStructure,
+  setRoleSupervisor,
+  updateMemberRole,
+} from "../api/api";
+import {
+  canAssignRoles,
+  isChairRole,
+  isEboardRole,
+  isPresident,
+  TOP_TIER_ROLES,
+} from "../utils/shop";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 // Members directory for the president and both VPs: chapter-wide stats
-// (accounts, dues paid vs not), member lookup, and role assignment (e-board,
-// chairs, member…). Backed by the /admin/* endpoints — anyone else gets a 403
-// there, and other signed-in members are bounced to the dashboard here.
+// (accounts, dues paid vs not), member lookup, role assignment, and the
+// chapter reporting tree. Backed by the /admin/* endpoints — anyone else gets
+// a 403 there, and other signed-in members are bounced to the dashboard here.
 
 const DUES_FILTERS = [
   { key: "all", label: "Everyone" },
@@ -18,20 +32,12 @@ const DUES_FILTERS = [
   { key: "unpaid", label: "Not paid" },
 ];
 
-// Every committee chair role's display value ends in "Chair", so gaining or
-// losing one also moves the person on/off that committee's chair listing.
-function isChairRole(role) {
-  return typeof role === "string" && role.endsWith("Chair");
-}
-
-function roleChangeWarning(member, nextRole) {
-  const name = `${member.first_name} ${member.last_name}`;
-  let text = `Change ${name} from "${member.role}" to "${nextRole}"?`;
-  if (isChairRole(member.role) || isChairRole(nextRole)) {
-    text += "\n\nThis also updates that committee's chair listing.";
-  }
-  return text;
-}
+const TIER_LABELS = {
+  president: "President",
+  vp: "Vice Presidents",
+  officer: "E-Board officers",
+  chair: "Committee chairs",
+};
 
 function StatTile({ value, label, color }) {
   return (
@@ -100,6 +106,126 @@ const memberRow = {
   minWidth: "700px",
 };
 
+function holderNames(node) {
+  if (!node.holders.length) return "Vacant";
+  return node.holders.map((h) => `${h.first_name} ${h.last_name}`).join(", ");
+}
+
+// One row of the org chart: the role, who holds it, and where it reports.
+function StructureRow({ node, options, savingRole, onRequestChange, pending, indent }) {
+  const editable = options.length > 0;
+  const value = pending?.node.role === node.role ? pending.supervisorRole : (node.supervisor_role ?? "");
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(180px, 1.2fr) minmax(140px, 1fr) minmax(190px, 220px)",
+        gap: "12px",
+        alignItems: "center",
+        padding: "10px 16px",
+        paddingLeft: `${16 + indent * 22}px`,
+        borderBottom: "1px solid var(--surface-soft)",
+        minWidth: "620px",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--ink)" }}>{node.role}</p>
+        <p style={{ margin: "2px 0 0", fontSize: "12px", color: node.holders.length ? "var(--muted-soft)" : "var(--status-ready-text)" }}>
+          {holderNames(node)}
+        </p>
+      </div>
+
+      <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+        {node.supervisor_role
+          ? <>reports to {node.supervisor_role}</>
+          : <em style={{ color: "var(--status-ready-text)" }}>unassigned</em>}
+      </span>
+
+      {editable ? (
+        <select
+          value={value}
+          disabled={savingRole === node.role}
+          onChange={(e) => onRequestChange(node, e.target.value)}
+          style={{
+            padding: "7px 10px",
+            fontSize: "13px",
+            fontFamily: "inherit",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "8px",
+            background: "#fff",
+            color: "var(--ink-soft)",
+            maxWidth: "100%",
+            opacity: savingRole === node.role ? 0.6 : 1,
+          }}
+        >
+          {!node.supervisor_role && <option value="">— pick a supervisor —</option>}
+          {options.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      ) : (
+        <span style={{ fontSize: "12px", color: "var(--muted-soft)" }}>fixed</span>
+      )}
+    </div>
+  );
+}
+
+// The reporting tree, grouped by tier. Ordering comes from the API (Role
+// declaration order), so president → VPs → officers → chairs already holds.
+function StructurePanel({ structure, savingRole, onRequestChange, pending }) {
+  if (!structure) {
+    return <p style={{ margin: "8px 4px", fontSize: "14px", color: "var(--muted)" }}>Loading structure…</p>;
+  }
+
+  const byTier = (tier) => structure.filter((n) => n.tier === tier);
+  const vpNames = byTier("vp").map((n) => n.role);
+  const officerNames = byTier("officer").map((n) => n.role);
+
+  const groups = [
+    { tier: "president", options: [], indent: 0 },
+    { tier: "vp", options: [], indent: 1 },
+    { tier: "officer", options: vpNames, indent: 2 },
+    { tier: "chair", options: [...vpNames, ...officerNames], indent: 3 },
+  ];
+
+  const unassigned = structure.filter((n) => n.tier !== "president" && !n.supervisor_role).length;
+
+  return (
+    <>
+      <p style={{ margin: "0 4px 14px", fontSize: "13px", color: "var(--muted)" }}>
+        Who oversees whom. Officers report to a vice president; chairs report to a vice
+        president or an officer. This is organizational only — it does not grant anyone
+        permissions.
+        {unassigned > 0 && (
+          <strong style={{ color: "var(--status-ready-text)" }}> {unassigned} role{unassigned === 1 ? "" : "s"} still unassigned.</strong>
+        )}
+      </p>
+
+      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflowX: "auto", background: "#fff" }}>
+        {groups.map(({ tier, options, indent }) => (
+          <div key={tier}>
+            <div style={{ padding: "10px 16px", background: "var(--surface-muted)", borderBottom: "1px solid var(--border)", fontSize: "11px", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted-soft)", minWidth: "620px" }}>
+              {TIER_LABELS[tier]}
+            </div>
+            {byTier(tier).map((node) => (
+              <StructureRow
+                key={node.role}
+                node={node}
+                options={options}
+                savingRole={savingRole}
+                onRequestChange={onRequestChange}
+                pending={pending}
+                indent={indent}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function MembersPage() {
   const { user } = useAuth();
   const { showToast } = useCart();
@@ -107,12 +233,21 @@ export default function MembersPage() {
   const [members, setMembers] = useState(null);
   const [stats, setStats] = useState(null);
   const [roles, setRoles] = useState([]);
+  const [structure, setStructure] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [savingId, setSavingId] = useState(null);
 
+  const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
   const [duesFilter, setDuesFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
+
+  // Confirmation state doubles as the pending edit. Holding the requested
+  // value here (rather than mutating on change) means the <select> can be
+  // driven entirely from state — cancelling snaps it back on its own, with
+  // no DOM poking.
+  const [pendingRole, setPendingRole] = useState(null);      // {member, role}
+  const [pendingReport, setPendingReport] = useState(null);  // {node, supervisorRole}
 
   // The president and both VPs reach this page; VPs are limited below.
   const authorized = user && canAssignRoles(user);
@@ -121,12 +256,13 @@ export default function MembersPage() {
   useEffect(() => {
     if (!authorized) return;
     let cancelled = false;
-    Promise.all([getAdminMembers(), getAdminStats(), getAssignableRoles()])
-      .then(([membersRes, statsRes, rolesRes]) => {
+    Promise.all([getAdminMembers(), getAdminStats(), getAssignableRoles(), getOrgStructure()])
+      .then(([membersRes, statsRes, rolesRes, structureRes]) => {
         if (cancelled) return;
         setMembers(membersRes.data);
         setStats(statsRes.data);
         setRoles(rolesRes.data);
+        setStructure(structureRes.data);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -140,6 +276,8 @@ export default function MembersPage() {
     if (!members) return [];
     const needle = search.trim().toLowerCase();
     return members.filter((m) => {
+      if (tab === "eboard" && !isEboardRole(m.role)) return false;
+      if (tab === "chairs" && !isChairRole(m.role)) return false;
       if (duesFilter === "paid" && !m.has_paid_dues) return false;
       if (duesFilter === "unpaid" && m.has_paid_dues) return false;
       if (roleFilter !== "all" && m.role !== roleFilter) return false;
@@ -151,7 +289,13 @@ export default function MembersPage() {
         m.psid.includes(needle)
       );
     });
-  }, [members, search, duesFilter, roleFilter]);
+  }, [members, tab, search, duesFilter, roleFilter]);
+
+  const tabCounts = useMemo(() => ({
+    all: members?.length ?? 0,
+    eboard: members?.filter((m) => isEboardRole(m.role)).length ?? 0,
+    chairs: members?.filter((m) => isChairRole(m.role)).length ?? 0,
+  }), [members]);
 
   if (!user) {
     return (
@@ -173,17 +317,38 @@ export default function MembersPage() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  async function changeRole(member, role) {
+  async function confirmRoleChange() {
+    const { member, role } = pendingRole;
     const name = `${member.first_name} ${member.last_name}`;
     setSavingId(member.id);
     try {
       const res = await updateMemberRole(member.id, role);
       setMembers((prev) => prev.map((m) => (m.id === member.id ? res.data : m)));
+      // A chair change rewrites is_chair rows, so the tree's holders moved.
+      if (isChairRole(member.role) || isChairRole(role)) {
+        getOrgStructure().then((r) => setStructure(r.data)).catch(() => {});
+      }
       showToast(`${name} is now ${role}`);
     } catch (err) {
       showToast(err.response?.data?.detail || "Couldn't update the role");
     } finally {
       setSavingId(null);
+      setPendingRole(null);
+    }
+  }
+
+  async function confirmReportChange() {
+    const { node, supervisorRole } = pendingReport;
+    setSavingId(node.role);
+    try {
+      const res = await setRoleSupervisor(node.role, supervisorRole);
+      setStructure((prev) => prev.map((n) => (n.role === node.role ? res.data : n)));
+      showToast(`${node.role} now reports to ${supervisorRole}`);
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Couldn't update the structure");
+    } finally {
+      setSavingId(null);
+      setPendingReport(null);
     }
   }
 
@@ -231,6 +396,55 @@ export default function MembersPage() {
         </motion.div>
       )}
 
+      {/* View tabs — underline style, matching the Shop Manager. Reads as
+          "which view" against the pill filters below, which refine it. */}
+      <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", flexWrap: "wrap", marginBottom: "18px" }}>
+        {[
+          { key: "all", label: "All", count: tabCounts.all },
+          { key: "eboard", label: "E-Board", count: tabCounts.eboard },
+          { key: "chairs", label: "Chairs", count: tabCounts.chairs },
+          { key: "structure", label: "Structure" },
+        ].map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                position: "relative",
+                border: "none",
+                background: "transparent",
+                padding: "10px 14px 14px",
+                fontSize: "14px",
+                fontFamily: "inherit",
+                fontWeight: active ? 700 : 600,
+                color: active ? "var(--shpe-blue)" : "var(--muted)",
+                cursor: "pointer",
+              }}
+            >
+              {t.label}
+              {t.count !== undefined && (
+                <span style={{ marginLeft: "7px", background: active ? "var(--shpe-blue)" : "var(--surface-soft)", color: active ? "#fff" : "var(--muted)", borderRadius: "999px", padding: "1px 7px", fontSize: "11px" }}>
+                  {t.count}
+                </span>
+              )}
+              {active && (
+                <span style={{ position: "absolute", left: "8px", right: "8px", bottom: 0, height: "2px", background: "var(--shpe-blue)", borderRadius: "999px" }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "structure" ? (
+        <StructurePanel
+          structure={structure}
+          savingRole={savingId}
+          onRequestChange={(node, supervisorRole) => setPendingReport({ node, supervisorRole })}
+          pending={pendingReport}
+        />
+      ) : (
+      <>
       {/* Lookup controls */}
       <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "14px" }}>
         <input
@@ -316,9 +530,10 @@ export default function MembersPage() {
 
         {visible.map((m) => {
           const isSelf = m.id === user.id;
-          // Only the president may change the president's role — the backend
-          // 403s a VP here, so don't offer a select that can't succeed.
-          const locked = isSelf || (!viewerIsPresident && m.role === PRESIDENT_ROLE);
+          // Only the president may change a top-tier role (president or
+          // either VP) — the backend 403s a VP here, so don't offer a select
+          // that can't succeed.
+          const locked = isSelf || (!viewerIsPresident && TOP_TIER_ROLES.includes(m.role));
           return (
             <div key={m.id} style={{ ...memberRow, borderBottom: "1px solid var(--surface-soft)" }}>
               <div style={{ minWidth: 0 }}>
@@ -343,18 +558,11 @@ export default function MembersPage() {
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--muted)" }}>{m.role}</span>
               ) : (
                 <select
-                  value={m.role}
+                  // Shows the pending pick while its dialog is open, so
+                  // cancelling reverts by clearing state — no DOM poking.
+                  value={pendingRole?.member.id === m.id ? pendingRole.role : m.role}
                   disabled={savingId === m.id}
-                  onChange={(e) => {
-                    const role = e.target.value;
-                    if (!window.confirm(roleChangeWarning(m, role))) {
-                      // Controlled value didn't change, so React won't repaint
-                      // the cancelled pick — reset the DOM select directly.
-                      e.target.value = m.role;
-                      return;
-                    }
-                    changeRole(m, role);
-                  }}
+                  onChange={(e) => setPendingRole({ member: m, role: e.target.value })}
                   style={{
                     padding: "7px 10px",
                     fontSize: "13px",
@@ -383,6 +591,56 @@ export default function MembersPage() {
           updates that committee's chair automatically. The About page roster is maintained
           by hand and does not change.
         </p>
+      )}
+      </>
+      )}
+
+      {pendingRole && (
+        <ConfirmDialog
+          title="Change role?"
+          confirmLabel="Change role"
+          busy={savingId === pendingRole.member.id}
+          onCancel={() => setPendingRole(null)}
+          onConfirm={confirmRoleChange}
+          body={
+            <>
+              <p style={{ margin: 0 }}>
+                Change <strong>{pendingRole.member.first_name} {pendingRole.member.last_name}</strong> from{" "}
+                <strong>{pendingRole.member.role}</strong> to <strong>{pendingRole.role}</strong>?
+              </p>
+              {(isChairRole(pendingRole.member.role) || isChairRole(pendingRole.role)) && (
+                <p style={{ margin: "12px 0 0", padding: "10px 12px", borderRadius: "10px", background: "var(--surface-tint)", color: "var(--ink-soft)" }}>
+                  This also updates that committee's chair listing. The About page roster is
+                  maintained by hand and won't change.
+                </p>
+              )}
+            </>
+          }
+        />
+      )}
+
+      {pendingReport && (
+        <ConfirmDialog
+          title="Change reporting line?"
+          confirmLabel="Move"
+          busy={savingId === pendingReport.node.role}
+          onCancel={() => setPendingReport(null)}
+          onConfirm={confirmReportChange}
+          body={
+            <>
+              <p style={{ margin: 0 }}>
+                Have <strong>{pendingReport.node.role}</strong> report to{" "}
+                <strong>{pendingReport.supervisorRole}</strong>
+                {pendingReport.node.supervisor_role
+                  ? <> instead of <strong>{pendingReport.node.supervisor_role}</strong>?</>
+                  : <>?</>}
+              </p>
+              <p style={{ margin: "12px 0 0", fontSize: "13px", color: "var(--muted)" }}>
+                This records who oversees whom. It doesn't change anyone's permissions.
+              </p>
+            </>
+          }
+        />
       )}
     </div>
   );

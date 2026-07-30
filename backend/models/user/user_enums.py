@@ -33,9 +33,50 @@ class Role(str, Enum):
 SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair, Role.president}
 
 # Roles allowed to assign other members' roles (the /admin/* endpoints).
-# VPs are restricted further in admin_routes: they can neither grant the
-# President role nor modify whoever currently holds it.
+# VPs are restricted further in admin_routes: only the president may grant or
+# modify a TOP_TIER role, so VPs can't reshape the presidency or each other.
 ROLE_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi}
+
+# --- Org tiers ---------------------------------------------------------
+# Used for the members-page tabs and the reporting tree. Listed explicitly
+# rather than derived from the display string: `value.endswith("Chair")`
+# happens to select exactly the 14 chairs today, but would silently pick up
+# a future role like "Vice Chair".
+VP_ROLES = {Role.vpe, Role.vpi}
+
+# The president plus both VPs — only the president may assign or modify these.
+TOP_TIER_ROLES = {Role.president} | VP_ROLES
+
+# E-board officers below the VPs; each reports to one VP in the tree.
+OFFICER_ROLES = {
+    Role.treasurer,
+    Role.secretary,
+    Role.comm_director,
+    Role.regional_rep,
+    Role.new_member_rep,
+    Role.dir_int_aff,
+}
+
+# The 9 the About page calls the E-Board (president + VPs + officers).
+EBOARD_ROLES = TOP_TIER_ROLES | OFFICER_ROLES
+
+# The 14 committee chairs — the roles Committee.chair_role maps onto 1:1.
+CHAIR_ROLES = {
+    Role.marketing_chair,
+    Role.mentorshpe_chair,
+    Role.academic_chair,
+    Role.professional_chair,
+    Role.career_fair_chair,
+    Role.web_dev_chair,
+    Role.social_chair,
+    Role.shpe_jr_chair,
+    Role.outreach_chair,
+    Role.eec_chair,
+    Role.shpetina_chair,
+    Role.athletic_chair,
+    Role.projects_chair,
+    Role.member_relations_chair,
+}
 
 class Gender(str, Enum):
     female = "Female"

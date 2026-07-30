@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from models.committee import Committee, CommitteeMembership
+from models.role_report import RoleNodeOut, RoleReportUpdate
 from models.user.user import User
-from models.user.user_enums import Role
+from models.user.user_enums import Role, TOP_TIER_ROLES
 from models.user.user_schemas import AdminMemberOut, AdminRoleUpdate, AdminStatsOut
-from services import shop_services
+from services import shop_services, structure_services
 from services.dependencies import SessionDependencies, require_role_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -77,11 +78,12 @@ def member_stats(
 @router.get("/roles", response_model=list[str])
 def list_assignable_roles(actor: Annotated[User, Depends(require_role_admin)]):
     """Every role the caller may assign — keeps the frontend dropdown in sync
-    with the Role enum instead of hardcoding the list. VPs don't get President,
-    so the dropdown can't offer a pick that assign_role would reject."""
+    with the Role enum instead of hardcoding the list. VPs don't get the top
+    tier, so the dropdown can't offer a pick that assign_role would reject."""
     roles = [role.value for role in Role]
     if actor.role != Role.president:
-        roles = [role for role in roles if role != Role.president.value]
+        blocked = {role.value for role in TOP_TIER_ROLES}
+        roles = [role for role in roles if role not in blocked]
     return roles
 
 
@@ -117,20 +119,22 @@ def _sync_chair_memberships(session: Session, user: User, old_role: Role, new_ro
 
 
 def _assert_may_assign(actor: User, target: User, new_role: Role) -> None:
-    """The president may assign anything. A VP may not grant the presidency
-    nor modify whoever currently holds it — otherwise any VP could demote the
-    president unilaterally and leave the chapter with no full admin."""
+    """The president may assign anything. A VP may not grant a top-tier role
+    nor modify anyone holding one — the president manages the presidency and
+    both VP seats. Without the second rule a VP could demote the president (or
+    the other VP) unilaterally; without the first they could mint a peer, which
+    is the same power one step removed."""
     if actor.role == Role.president:
         return
-    if new_role == Role.president:
+    if new_role in TOP_TIER_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the president can assign the President role",
+            detail="Only the president can assign the President or VP roles",
         )
-    if target.role == Role.president:
+    if target.role in TOP_TIER_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the president can change the president's role",
+            detail="Only the president can change a president's or VP's role",
         )
 
 
@@ -162,3 +166,31 @@ def assign_role(
     session.refresh(target)
 
     return _member_out(target, shop_services.has_paid_dues(session, target.id))
+
+
+# --- reporting structure (organizational only — grants no permissions) ---
+
+@router.get("/structure", response_model=list[RoleNodeOut])
+def get_structure(
+    actor: Annotated[User, Depends(require_role_admin)],
+    session: SessionDependencies,
+):
+    """The chapter org chart: every tree role with its supervisor and whoever
+    holds it. Roles with `supervisor_role: null` haven't been assigned yet."""
+    return structure_services.get_structure(session)
+
+
+@router.put("/structure/{role}", response_model=RoleNodeOut)
+def set_role_supervisor(
+    role: Role,
+    payload: RoleReportUpdate,
+    actor: Annotated[User, Depends(require_role_admin)],
+    session: SessionDependencies,
+):
+    """Re-parent a role. Officers report to a VP; chairs report to a VP or an
+    officer; the president and the VP seats aren't editable (400). President
+    and VPs may both edit the tree."""
+    structure_services.set_supervisor(session, role, payload.supervisor_role)
+
+    node = next(n for n in structure_services.get_structure(session) if n.role == role)
+    return node
