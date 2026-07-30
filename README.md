@@ -216,15 +216,19 @@ The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
-> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire and email-verification features needs this once (then restart the backend). A freshly seeded database already has both.
+> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, and event-sync features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
 >
 > ```bash
 > sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
 > sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN email_verified BOOLEAN DEFAULT 0;"
 > sqlite3 backend/database.db "UPDATE user SET email_verified = 1;"   # trust accounts that predate verification
+> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN source_row_id VARCHAR;"
+> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_source_row_id ON event (source_row_id);"
 > ```
 >
 > The `UPDATE` matters: existing members default to unverified, and unverified accounts are refused at login.
+>
+> The `CREATE UNIQUE INDEX` matters too — adding a column does not create the index the column is declared with, and the event sync relies on that index to keep one calendar entry per sheet row. Confirm the upgrade left no gaps with `sqlite3 backend/database.db ".schema event"`, which should match a freshly seeded database.
 
 ## Project Structure
 
