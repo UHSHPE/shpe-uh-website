@@ -27,6 +27,7 @@ Thumbs.db
 .idea/
 
 *.db
+*.db.bak-*
 
 .claude/settings.local.json
 

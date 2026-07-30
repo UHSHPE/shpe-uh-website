@@ -171,9 +171,17 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 2. **APIs & Services → Credentials → Create Credentials → Service account** — create one, then open it, go to **Keys → Add key → Create new key → JSON**, and download the file.
 3. Open the downloaded JSON and copy the `client_email` value (ends in `.iam.gserviceaccount.com`).
 4. In the event-tracker spreadsheet, click **Share** and give that address **Viewer** access.
-5. Set `CREDENTIALS` to the JSON file's path and `SHEET_ID` to the id from the sheet's URL (`docs.google.com/spreadsheets/d/<SHEET_ID>/edit`) in `backend/.env`, then restart the backend.
+5. Move the JSON into `backend/secrets/` (create the folder if it isn't there — it's gitignored, so the key never reaches version control).
+6. Set `CREDENTIALS` and `SHEET_ID` in `backend/.env`, then restart the backend. `SHEET_ID` is the long string in the sheet's URL (`docs.google.com/spreadsheets/d/<SHEET_ID>/edit`):
 
-> Keep the service-account JSON out of version control — treat it like a password.
+   ```
+   CREDENTIALS=secrets/your-service-account.json
+   SHEET_ID=<id from the sheet URL>
+   ```
+
+> `CREDENTIALS` is resolved relative to the working directory, so a `secrets/...` path assumes the backend was started from `backend/` (as in `cd backend && python main.py`). Use an absolute path if you launch it from somewhere else.
+
+> Keep the service-account JSON out of version control — treat it like a password. `backend/secrets/` and `backend/.env` are both already gitignored.
 
 > **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1**; if the fall sheet is still configured when the year rolls over, its events get re-read as next year's and appear on the calendar a second time.
 
