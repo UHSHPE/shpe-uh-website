@@ -32,13 +32,6 @@ const DUES_FILTERS = [
   { key: "unpaid", label: "Not paid" },
 ];
 
-const TIER_LABELS = {
-  president: "President",
-  vp: "Vice Presidents",
-  officer: "E-Board officers",
-  chair: "Chairs",
-};
-
 function StatTile({ value, label, color }) {
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: "14px", padding: "18px 20px", background: "#fff" }}>
@@ -111,45 +104,60 @@ function holderNames(node) {
   return node.holders.map((h) => `${h.first_name} ${h.last_name}`).join(", ");
 }
 
-// One row of the org chart: the role, who holds it, and where it reports.
-function StructureRow({ node, options, savingRole, onRequestChange, pending, indent }) {
+// Tier styling for a node card. The president and VPs are visually heavier so
+// the top of the chart reads at a glance.
+const TIER_STYLE = {
+  president: { bg: "var(--shpe-navy)", fg: "#fff", sub: "rgba(255,255,255,.75)", border: "var(--shpe-navy)" },
+  vp: { bg: "var(--surface-tint)", fg: "var(--shpe-navy)", sub: "var(--muted)", border: "var(--shpe-blue)" },
+  officer: { bg: "#fff", fg: "var(--ink)", sub: "var(--muted-soft)", border: "var(--border-strong)" },
+  chair: { bg: "#fff", fg: "var(--ink-soft)", sub: "var(--muted-soft)", border: "var(--border)" },
+};
+
+// One box in the tree: the role, who holds it, and (where the link is
+// editable) a picker to move it under a different supervisor.
+function OrgCard({ node, options, savingRole, onRequestChange, pending }) {
+  const t = TIER_STYLE[node.tier] ?? TIER_STYLE.chair;
   const editable = options.length > 0;
   const value = pending?.node.role === node.role ? pending.supervisorRole : (node.supervisor_role ?? "");
+  const vacant = node.holders.length === 0;
 
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(180px, 1.2fr) minmax(140px, 1fr) minmax(190px, 220px)",
-        gap: "12px",
+        display: "flex",
         alignItems: "center",
-        padding: "10px 16px",
-        paddingLeft: `${16 + indent * 22}px`,
-        borderBottom: "1px solid var(--surface-soft)",
-        minWidth: "620px",
+        gap: "12px",
+        flexWrap: "wrap",
+        background: t.bg,
+        border: `1px solid ${t.border}`,
+        borderLeft: `4px solid ${t.border}`,
+        borderRadius: "10px",
+        padding: "9px 14px",
+        margin: "6px 0",
+        boxShadow: "var(--shadow-card)",
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--ink)" }}>{node.role}</p>
-        <p style={{ margin: "2px 0 0", fontSize: "12px", color: node.holders.length ? "var(--muted-soft)" : "var(--status-ready-text)" }}>
-          {holderNames(node)}
+      <div style={{ minWidth: "170px", flex: "1 1 auto" }}>
+        <p style={{ margin: 0, fontSize: "13px", fontWeight: 800, color: t.fg, lineHeight: 1.3 }}>
+          {node.role}
+        </p>
+        <p style={{ margin: "1px 0 0", fontSize: "12px", color: vacant ? "var(--status-ready-text)" : t.sub }}>
+          {vacant ? "Vacant" : holderNames(node)}
+          {node.holders.length > 1 && (
+            <span style={{ marginLeft: "6px", fontSize: "11px", opacity: 0.8 }}>({node.holders.length})</span>
+          )}
         </p>
       </div>
 
-      <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-        {node.supervisor_role
-          ? <>reports to {node.supervisor_role}</>
-          : <em style={{ color: "var(--status-ready-text)" }}>unassigned</em>}
-      </span>
-
-      {editable ? (
+      {editable && (
         <select
+          aria-label={`Who ${node.role} reports to`}
           value={value}
           disabled={savingRole === node.role}
           onChange={(e) => onRequestChange(node, e.target.value)}
           style={{
-            padding: "7px 10px",
-            fontSize: "13px",
+            padding: "5px 8px",
+            fontSize: "12px",
             fontFamily: "inherit",
             border: "1px solid var(--border-strong)",
             borderRadius: "8px",
@@ -164,64 +172,122 @@ function StructureRow({ node, options, savingRole, onRequestChange, pending, ind
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-      ) : (
-        <span style={{ fontSize: "12px", color: "var(--muted-soft)" }}>fixed</span>
       )}
     </div>
   );
 }
 
-// The reporting tree, grouped by tier. Ordering comes from the API (Role
-// declaration order), so president → VPs → officers → chairs already holds.
+// Recursive branch. Children come from a supervisor_role -> nodes map, so the
+// nesting is driven by the data rather than by tier position — a chair parked
+// directly under a VP renders in the right place without a special case.
+function OrgBranch({ node, childrenOf, optionsFor, savingRole, onRequestChange, pending }) {
+  const kids = childrenOf[node.role] ?? [];
+  return (
+    <li>
+      <OrgCard
+        node={node}
+        options={optionsFor(node)}
+        savingRole={savingRole}
+        onRequestChange={onRequestChange}
+        pending={pending}
+      />
+      {kids.length > 0 && (
+        <ul>
+          {kids.map((kid) => (
+            <OrgBranch
+              key={kid.role}
+              node={kid}
+              childrenOf={childrenOf}
+              optionsFor={optionsFor}
+              savingRole={savingRole}
+              onRequestChange={onRequestChange}
+              pending={pending}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+// The reporting tree as an actual tree: the president at the root, each VP
+// beneath, their officers beneath those, and chairs at the leaves. Connector
+// elbows come from the .orgTree rules in styles.css.
 function StructurePanel({ structure, savingRole, onRequestChange, pending }) {
   if (!structure) {
     return <p style={{ margin: "8px 4px", fontSize: "14px", color: "var(--muted)" }}>Loading structure…</p>;
   }
 
-  const byTier = (tier) => structure.filter((n) => n.tier === tier);
-  const vpNames = byTier("vp").map((n) => n.role);
-  const officerNames = byTier("officer").map((n) => n.role);
+  const vpNames = structure.filter((n) => n.tier === "vp").map((n) => n.role);
+  const officerNames = structure.filter((n) => n.tier === "officer").map((n) => n.role);
 
-  const groups = [
-    { tier: "president", options: [], indent: 0 },
-    { tier: "vp", options: [], indent: 1 },
-    { tier: "officer", options: vpNames, indent: 2 },
-    { tier: "chair", options: [...vpNames, ...officerNames], indent: 3 },
-  ];
+  // Mirrors valid_supervisors() on the backend; an empty list means the link
+  // is fixed (the president is the root, VPs always report to them).
+  const optionsFor = (node) => {
+    if (node.tier === "officer") return vpNames;
+    if (node.tier === "chair") return [...vpNames, ...officerNames];
+    return [];
+  };
 
-  const unassigned = structure.filter((n) => n.tier !== "president" && !n.supervisor_role).length;
+  const childrenOf = {};
+  for (const node of structure) {
+    if (node.supervisor_role) {
+      (childrenOf[node.supervisor_role] ??= []).push(node);
+    }
+  }
+
+  const root = structure.find((n) => n.tier === "president");
+  // Anything without a supervisor can't hang off the tree — surface it
+  // separately rather than letting it vanish.
+  const orphans = structure.filter((n) => n.tier !== "president" && !n.supervisor_role);
+  const vacant = structure.filter((n) => n.holders.length === 0).length;
 
   return (
     <>
-      <p style={{ margin: "0 4px 14px", fontSize: "13px", color: "var(--muted)" }}>
+      <p style={{ margin: "0 4px 16px", fontSize: "13px", color: "var(--muted)" }}>
         Who oversees whom. Officers report to a vice president; chairs report to a vice
-        president or an officer. This is organizational only — it does not grant anyone
-        permissions.
-        {unassigned > 0 && (
-          <strong style={{ color: "var(--status-ready-text)" }}> {unassigned} role{unassigned === 1 ? "" : "s"} still unassigned.</strong>
+        president or an officer. Use a card's dropdown to move it. This is organizational
+        only — it does not grant anyone permissions.
+        {vacant > 0 && (
+          <strong style={{ color: "var(--status-ready-text)" }}> {vacant} seat{vacant === 1 ? "" : "s"} vacant.</strong>
         )}
       </p>
 
-      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflowX: "auto", background: "#fff" }}>
-        {groups.map(({ tier, options, indent }) => (
-          <div key={tier}>
-            <div style={{ padding: "10px 16px", background: "var(--surface-muted)", borderBottom: "1px solid var(--border)", fontSize: "11px", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted-soft)", minWidth: "620px" }}>
-              {TIER_LABELS[tier]}
-            </div>
-            {byTier(tier).map((node) => (
-              <StructureRow
-                key={node.role}
-                node={node}
-                options={options}
-                savingRole={savingRole}
-                onRequestChange={onRequestChange}
-                pending={pending}
-                indent={indent}
-              />
-            ))}
-          </div>
-        ))}
+      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", background: "var(--surface-muted)", padding: "18px 20px", overflowX: "auto" }}>
+        <ul className="orgTree" style={{ minWidth: "460px" }}>
+          {root && (
+            <OrgBranch
+              node={root}
+              childrenOf={childrenOf}
+              optionsFor={optionsFor}
+              savingRole={savingRole}
+              onRequestChange={onRequestChange}
+              pending={pending}
+            />
+          )}
+        </ul>
       </div>
+
+      {orphans.length > 0 && (
+        <div style={{ marginTop: "18px", border: "1px solid var(--status-ready-border)", borderRadius: "12px", background: "var(--status-ready-bg)", padding: "14px 16px" }}>
+          <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: 700, color: "var(--status-ready-text)" }}>
+            Not in the chart yet ({orphans.length})
+          </p>
+          <p style={{ margin: "0 0 10px", fontSize: "12px", color: "var(--ink-soft)" }}>
+            These roles have no supervisor, so they don't appear above. Pick one to place them.
+          </p>
+          {orphans.map((node) => (
+            <OrgCard
+              key={node.role}
+              node={node}
+              options={optionsFor(node)}
+              savingRole={savingRole}
+              onRequestChange={onRequestChange}
+              pending={pending}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

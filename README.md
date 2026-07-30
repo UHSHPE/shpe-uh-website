@@ -355,7 +355,7 @@ The **President** role is the site-wide admin: shop manager access, every commit
 
 ### Reporting structure
 
-The **Structure** tab is the chapter org chart. The president sits at the top and both VPs report to them (fixed). Each e-board officer reports to one VP, and each committee chair reports to a VP or an officer — the president and both VPs can rearrange either.
+The **Structure** tab draws the chapter org chart as a tree — the president at the top, each VP branching beneath, their officers below that, and the chairs as leaves, with each card showing who currently holds the role (or **Vacant**). Change a reporting line with the dropdown on any card. The president sits at the top and both VPs report to them (fixed). Each e-board officer reports to one VP, and each committee chair reports to a VP or an officer — the president and both VPs can rearrange either.
 
 It links **roles rather than people**: "Academic Chair reports to Treasurer" keeps working when a new person is elected, so nothing needs re-entering after a handover. Co-chairs of one committee share a role and therefore share a supervisor.
 
