@@ -11,7 +11,9 @@ class Event(SQLModel, table=True):
     start_time: datetime
     end_time: datetime | None = None
     points_value: int = Field(default=0, ge=0)
-    event_type: str | None = None
+    event_type: str | None = None #aka projects, professional, eboard, etc
+    sign_in_code: str | None = Field(default=None, index=True, unique=True)
+    sign_out_code: str | None = Field(default=None, index=True, unique=True)
 
 
 class EventOut(SQLModel):

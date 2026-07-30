@@ -12,10 +12,17 @@ logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 SHEET_TZ = ZoneInfo("America/Chicago")
-COLUMNS = {"date":"DATE","name":"EVENT NAME","description":"DESCRIPTION","location":"LOCATION","start_time":"START TIME","end_time":"END TIME","owners":"OWNER(S)","sign_in_form":"SIGN IN FORM"}
+COLUMNS = {"date":"DATE",
+           "name":"EVENT NAME",
+           "description":"DESCRIPTION",
+           "location":"LOCATION",
+           "start_time":"START TIME",
+           "end_time":"END TIME",
+           "owners":"OWNER(S)",
+           "collab(s)": "COLLAB(S)?",}
 
 # Event names (normalized: lowercased, whitespace-collapsed) to keep off the public calendar
-EXCLUDED_EVENTS = {"c&e retreat"}
+EXCLUDED_EVENTS = {"c&e retreat", "national convention", "thanksgiving break"}
 
 def is_configured() -> bool:
     return bool(os.getenv("CREDENTIALS") and os.getenv("SHEET_ID"))
@@ -50,6 +57,9 @@ def event_key(local_date, title: str) -> str:
     # normalize so trivial edits (extra spaces, casing) don't fork the key
     norm_title = " ".join(title.split()).lower()
     return f"{local_date.isoformat()}|{norm_title}"     # e.g. "2026-08-05|gbm 1"
+
+def get_event_type():
+    
 
 def parse_row(row: dict) -> dict | None:
     name = " ".join((row.get(COLUMNS["name"]) or "").split())
