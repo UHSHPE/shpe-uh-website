@@ -223,7 +223,7 @@ Re-running `python seed.py` is safe — every seeder skips what already exists, 
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
-> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, login-lockout, and event-sync features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
+> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, login-lockout, event-sync, or event sign-in-code features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
 >
 > ```bash
 > sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
@@ -233,6 +233,10 @@ Re-running `python seed.py` is safe — every seeder skips what already exists, 
 > sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN locked_until DATETIME;"
 > sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN source_row_id VARCHAR;"
 > sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_source_row_id ON event (source_row_id);"
+> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN sign_in_code VARCHAR;"
+> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN sign_out_code VARCHAR;"
+> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_sign_in_code ON event (sign_in_code);"
+> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_sign_out_code ON event (sign_out_code);"
 > ```
 >
 > The `UPDATE` matters: existing members default to unverified, and unverified accounts are refused at login.
