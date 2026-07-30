@@ -35,8 +35,8 @@ shpe-uh-website/
     main.py               # FastAPI app: includes routers + background loops (reminder emails every 60s, event-sheet sync daily at 6 AM Central)
     get_drive_refresh_token.py  # One-time helper: mints the OAuth refresh token AND creates the app-owned resume folder (drive.file scope)
     database.py           # SQLite engine + session factory
-    seed.py               # Seeds two test users (test@ dues-paid via a seeded order, test1@ unpaid), all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the president (Daniel Lopez Gil — full admin), the shop-settings row, 5 shop products (incl. T-Shirt Dues), and sample events — run once: python seed.py. Refuses to run (exit 1) when ENVIRONMENT=production — all seeded accounts share password123
-    routes/               # APIRouters: admin_routes (president-only), auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes, shop_routes
+    seed.py               # Seeds two test users (test@ dues-paid via a seeded order, test1@ unpaid), all 14 committees with their real chairs/co-chairs (22 chair users), a comms director (shop admin), the president (Daniel Lopez Gil — full admin), both VPs (Carlos Alba/vpe + Gabriela Lorenzo/vpi — role assignment, no presidency), the shop-settings row, 5 shop products (incl. T-Shirt Dues), and sample events — run once: python seed.py. Refuses to run (exit 1) when ENVIRONMENT=production — all seeded accounts share password123
+    routes/               # APIRouters: admin_routes (president + VPs), auth_routes, committee_routes, event_routes (incl. reminders), notification_routes, pw_reset_routes, resume_routes, shop_routes
     uploads/resumes/      # Uploaded resume PDFs, one per user (user_<id>.pdf); gitignored, created on first upload
     uploads/products/     # Product images, one per product (product_<id>.<ext>); gitignored, created on first upload
     models/               # SQLModel table definitions (user/ incl. pw_reset_token.py, email_verification.py, shop/ (product.py, order.py, shop_settings.py), committee.py, committee_message.py, notification.py, event.py, event_reminder.py)
@@ -191,7 +191,7 @@ Both jobs must pass before merging into `main`.
 | `/dashboard` | `pages/dashboard.jsx` | Yes (PrivateRoute) |
 | `/committees` | `pages/committees.jsx` | Yes (PrivateRoute) |
 | `/profile` | `pages/profile.jsx` | Yes (PrivateRoute) |
-| `/members` | `pages/members.jsx` (president only; non-presidents → `/dashboard`) | Yes (PrivateRoute) |
+| `/members` | `pages/members.jsx` (president + both VPs; everyone else → `/dashboard`) | Yes (PrivateRoute) |
 | `/shop-manager` | `pages/shop-manager.jsx` (shop admins only; non-managers → `/dashboard`) | Yes (PrivateRoute) |
 
 ## Protected Routes
@@ -238,10 +238,10 @@ Both jobs must pass before merging into `main`.
 | GET | `/shop/admin/products` | Shop admin | All products incl. hidden AND retired (admin table) |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | `{status?, notes?}`; illegal transition → 400; `ready` emails buyer |
-| GET | `/admin/members?search=&paid=&role=` | President | Member directory (AdminMemberOut incl. has_paid_dues); search matches name/either email/PSID |
-| GET | `/admin/stats` | President | Totals: accounts, dues paid/unpaid, national members, dues_period_start, classification/role/shirt-size counts |
-| GET | `/admin/roles` | President | All assignable Role values (frontend dropdown source) |
-| PATCH | `/admin/members/{id}/role` | President | `{role}`; 404 unknown user, 400 changing own role; chair roles sync CommitteeMembership.is_chair |
+| GET | `/admin/members?search=&paid=&role=` | President/VP | Member directory (AdminMemberOut incl. has_paid_dues); search matches name/either email/PSID |
+| GET | `/admin/stats` | President/VP | Totals: accounts, dues paid/unpaid, national members, dues_period_start, classification/role/shirt-size counts |
+| GET | `/admin/roles` | President/VP | Role values the caller may assign (dropdown source); omits President for VPs |
+| PATCH | `/admin/members/{id}/role` | President/VP | `{role}`; 404 unknown user, 400 changing own role, 403 if a VP targets the presidency; chair roles sync CommitteeMembership.is_chair |
 
 ## President role & chapter admin
 - **`Role.president` is the site-wide admin** — it was already in the Role enum; what's wired to it: membership in `SHOP_ADMIN_ROLES` (full shop manager), a bypass in `require_chair` + message access (every committee's chair tools), and the `/admin/*` endpoints (`routes/admin_routes.py`).
@@ -333,6 +333,7 @@ Both jobs must pass before merging into `main`.
 - **Login lockout (per-account):** 10 consecutive failures (`LOCKOUT_THRESHOLD` in `routes/auth_routes.py`) lock the account for 10 minutes (`LOCKOUT_MINUTES`) → **429 "Too many attempts. Try again later."** raised *before* the Argon2 verify (cheap reject; signin.jsx already maps 429 to a "too many attempts" message). Every failure for an existing email increments `User.failed_login_count` and **commits**; an expired lock is cleared (both fields) before the attempt is evaluated; a successful login resets both fields. Wrong credentials stay a generic 401. The two columns (`failed_login_count`, `locked_until`) live on the `User` table model — a pre-existing `database.db` needs a reseed (delete it + re-run `seed.py`) or a manual `ALTER TABLE user ADD COLUMN ...`, since `create_all()` never ALTERs existing tables. Complements (does not replace) slowapi's per-IP 5/minute limit on `/login` — in lockout tests, call `limiter.reset()` between attempts or the IP limit's 429s shadow the lockout's.
 - **JWT invalidation:** `create_access_token` sets `iat`; a successful reset stamps `User.password_changed_at`, and `get_current_user` rejects tokens whose `iat` predates it. PyJWT floors `iat` to whole seconds while `password_changed_at` keeps microseconds, so the comparison is at **whole-second granularity with strict `<`** — a token issued in the same second as the reset stays valid. Tokens without `iat` are rejected once `password_changed_at` is set.
 - **Rate limiting (slowapi):** the `Limiter` lives in `services/rate_limit.py` (NOT `main.py` — route modules import it, and importing from `main` would be circular). `main.py` attaches it to `app.state` and registers the 429 handler. `/login` is `5/minute`, `/signup` is `5/hour`, `/password-reset/request` is `3/hour` (keyed by client IP). slowapi-decorated endpoints must take a `request: Request` parameter, with the `@limiter.limit(...)` decorator **below** the router decorator.
+- **`/login`'s 5/minute bites manual curl verification.** A script that mints a token per check burns the budget in a few calls; login then returns 429, the usual `.get("access_token", "")` yields an empty string, and every following request 401s with "Could not validate credentials" — which reads as wrong credentials, not rate limiting. Mint one token and reuse it across checks, or retry the login until it succeeds.
 - slowapi's counters are in-memory and persist across tests in one process — `tests/conftest.py` has an autouse `reset_rate_limiter` fixture calling `limiter.reset()` so counts don't bleed between tests. Auth tests that must exercise real JWT flow use the `unauth_client` fixture (`client` overrides `get_current_user` and bypasses auth).
 - The `password_changed_at` column lives on the `User` TABLE model (not `UserBase`), same pattern as `resume_filename`. Adding it required a db rebuild (done); new tables like `passwordresettoken` are created by `create_all()` automatically.
 - Frontend: `/forgot-password` (always shows the same "check your email" confirmation) and `/reset-password` (reads `?token=`, new + confirm fields, redirects to `/signin` with `location.state.message` on success — signin renders that message). Sign-in has a "Forgot password?" link and maps 429 to a "too many attempts" error. `api.js`: `requestPasswordReset`, `confirmPasswordReset` — both **public**, no auth headers.
