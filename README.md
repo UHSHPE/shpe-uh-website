@@ -76,7 +76,8 @@ FRONTEND_URL=http://localhost:5173" > .env
 Then seed and run:
 
 ```bash
-# Seed the database with committees, chairs, and test data (run once)
+# Seed the database with committees, chairs, and test data.
+# Safe to re-run: every seeder skips what already exists.
 python seed.py
 
 # Start the development server
@@ -217,6 +218,8 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the third shop admin.
 
 The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
+
+Re-running `python seed.py` is safe — every seeder skips what already exists, so it only fills in what's missing (that's how the E-Board officers were added to an existing database). The flip side: editing seed data in the file has no effect on rows that are already there; clear those rows first.
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
