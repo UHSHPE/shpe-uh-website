@@ -292,10 +292,17 @@ def seed_president(s: Session):
     print("Seeded president user: Daniel Lopez Gil (daniel.lopez.gil@cougarnet.uh.edu).")
 
 
-# Names match the About page E-Board so the seeded data stays consistent.
-VP_ROSTER = [
+# The 2026-2027 E-Board below the president, names matching the About page so
+# the seeded data and the public roster agree. Seeding all of them keeps every
+# officer seat in the reporting tree filled instead of showing "Vacant".
+EBOARD_ROSTER = [
     ("Carlos", "Alba", Role.vpe, 902),
     ("Gabriela", "Lorenzo", Role.vpi, 903),
+    ("Jaden", "Gomez", Role.treasurer, 904),
+    ("Sara", "Sanchez", Role.secretary, 905),
+    ("Santiago", "Gonzalez", Role.new_member_rep, 906),
+    ("Fernando", "Vaca", Role.regional_rep, 907),
+    ("Alejandro", "Castro", Role.dir_int_aff, 908),
 ]
 
 # The chapter's real reporting tree, from the 2026-2027 org chart. Officers
@@ -354,10 +361,12 @@ def seed_structure(s: Session):
     print(f"Seeded reporting structure ({len(DEFAULT_REPORTS)} links).")
 
 
-def seed_vps(s: Session):
-    """Both vice presidents — they share the president's role-assignment
-    tools (ROLE_ADMIN_ROLES) but can't grant or alter the presidency."""
-    for first_name, last_name, role, idx in VP_ROSTER:
+def seed_eboard(s: Session):
+    """The E-Board under the president. Both VPs share the president's
+    role-assignment tools (ROLE_ADMIN_ROLES) but can't grant or alter the
+    presidency; the other officers are ordinary members permission-wise and
+    exist so every seat in the reporting tree has a real person in it."""
+    for first_name, last_name, role, idx in EBOARD_ROSTER:
         slug = f"{first_name}.{last_name}".lower()
         email = f"{slug}@cougarnet.uh.edu"
         if s.exec(select(User).where(User.cougarnet_email == email)).first():
@@ -427,9 +436,19 @@ def seed_products(s: Session):
 
 
 def seed_events(s: Session):
+    """Sample calendar events, dated relative to now.
+
+    Guarded like every other seeder: without this check each seed.py run added
+    another copy of all three (a top-up run for new accounts had piled up 15).
+    The filter is `source_row_id IS NULL` so it only counts hand-seeded rows —
+    events pulled from the Google Sheet carry a key and must not suppress this.
+    """
+    if s.exec(select(Event).where(Event.source_row_id == None)).first():  # noqa: E711
+        print("Skipped events — already seeded.")
+        return
+
     now = datetime.utcnow()
 
-    # Seed events (always add fresh ones relative to now)
     events = [
         Event(
             title="General Meeting",
@@ -471,7 +490,7 @@ def seed():
         seed_committees_and_chairs(s)
         seed_comm_director(s)
         seed_president(s)
-        seed_vps(s)
+        seed_eboard(s)
         seed_structure(s)
         seed_shop_settings(s)
         seed_products(s)

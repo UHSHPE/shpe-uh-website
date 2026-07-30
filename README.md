@@ -201,7 +201,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, both vice presidents, the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the rest of the E-Board (both VPs plus the five officers, named to match the About page), the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
 
 | Account | Email | Role |
 |---|---|---|
@@ -212,6 +212,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 | President | `daniel.lopez.gil@cougarnet.uh.edu` | President (full admin: Members page, shop, all committees) |
 | VP External | `carlos.alba@cougarnet.uh.edu` | Vice President External (Members page; can't touch the presidency) |
 | VP Internal | `gabriela.lorenzo@cougarnet.uh.edu` | Vice President Internal (Members page; can't touch the presidency) |
+| E-Board officers | `jaden.gomez@`, `sara.sanchez@`, `santiago.gonzalez@`, `fernando.vaca@`, `alejandro.castro@` (all `cougarnet.uh.edu`) | Treasurer, Secretary, New Member Rep, Regional Rep, Director of Internal Affairs — no admin powers, they fill the org chart |
 
 The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the third shop admin.
 
