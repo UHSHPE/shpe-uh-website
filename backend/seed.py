@@ -255,6 +255,22 @@ def seed_comm_director(s: Session):
     print("Seeded comms director user.")
 
 
+def seed_president(s: Session):
+    """The chapter president (matches the About page's 2026-2027 E-Board) —
+    full admin: members directory + role assignment (/admin/*), shop manager,
+    and every committee's chair tools."""
+    existing = s.exec(
+        select(User).where(User.cougarnet_email == "daniel.lopez.gil@cougarnet.uh.edu")
+    ).first()
+    if existing:
+        print("Skipped president — already exists.")
+        return
+
+    president = chair_user_create("Daniel", "Lopez Gil", Role.president, 901)
+    create_user(s, president)
+    print("Seeded president user: Daniel Lopez Gil (daniel.lopez.gil@cougarnet.uh.edu).")
+
+
 def seed_shop_settings(s: Session):
     from services.shop_services import get_shop_settings
 
@@ -354,6 +370,7 @@ def seed():
         seed_test_user(s)
         seed_committees_and_chairs(s)
         seed_comm_director(s)
+        seed_president(s)
         seed_shop_settings(s)
         seed_products(s)
         seed_test_dues_order(s)  # after products — needs the dues product

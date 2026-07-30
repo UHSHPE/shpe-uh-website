@@ -4,12 +4,20 @@ export function formatCents(cents) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-// Shop admin rides on these two roles (matches SHOP_ADMIN_ROLES on the
-// backend) — there is no dedicated shop-manager role.
-export const SHOP_ADMIN_ROLES = ["Communication Director", "Marketing Chair"];
+// Shop admin rides on these roles (matches SHOP_ADMIN_ROLES on the backend) —
+// there is no dedicated shop-manager role. The president holds every admin
+// privilege on the site, shop included.
+export const SHOP_ADMIN_ROLES = ["Communication Director", "Marketing Chair", "President"];
 
 export function isShopManager(user) {
   return SHOP_ADMIN_ROLES.includes(user?.role);
+}
+
+// President-only surfaces (the /members directory, role assignment).
+export const PRESIDENT_ROLE = "President";
+
+export function isPresident(user) {
+  return user?.role === PRESIDENT_ROLE;
 }
 
 // Order-status pill styling — tokens defined in styles.css §Shop.

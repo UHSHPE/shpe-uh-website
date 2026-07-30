@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
-import { isShopManager } from "../utils/shop";
+import { isPresident, isShopManager } from "../utils/shop";
 import Avatar from "./Avatar";
 import { CartIcon } from "./shopIcons";
 
@@ -27,16 +27,14 @@ const memberLinks = [
   { label: "Profile", to: "/profile" },
 ];
 
-// Shop admins get an extra tab (after Committees) to the shop-management page.
+// Role-gated extra tabs, inserted after Committees: the president gets the
+// members directory, shop admins (president included) get the shop page.
 function memberLinksFor(user) {
-  if (user && isShopManager(user)) {
-    return [
-      ...memberLinks.slice(0, 2),
-      { label: "Shop Manager", to: "/shop-manager" },
-      ...memberLinks.slice(2),
-    ];
-  }
-  return memberLinks;
+  if (!user) return memberLinks;
+  const extras = [];
+  if (isPresident(user)) extras.push({ label: "Members", to: "/members" });
+  if (isShopManager(user)) extras.push({ label: "Shop Manager", to: "/shop-manager" });
+  return [...memberLinks.slice(0, 2), ...extras, ...memberLinks.slice(2)];
 }
 
 function NavItem({ to, children }) {

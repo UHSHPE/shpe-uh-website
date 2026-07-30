@@ -181,3 +181,24 @@ export function getShopOrders(status) {
 export function updateShopOrder(orderId, data) {
   return api.patch(`/shop/orders/${orderId}`, data, { headers: authHeaders() });
 }
+
+// --- Chapter admin: president only ---
+
+// Member directory. Optional params: { search, paid, role } — the members
+// page filters client-side, but the API supports them for direct use.
+export function getAdminMembers(params = {}) {
+  return api.get("/admin/members", { headers: authHeaders(), params });
+}
+
+export function getAdminStats() {
+  return api.get("/admin/stats", { headers: authHeaders() });
+}
+
+// Every assignable role value (source of truth: the backend Role enum).
+export function getAssignableRoles() {
+  return api.get("/admin/roles", { headers: authHeaders() });
+}
+
+export function updateMemberRole(userId, role) {
+  return api.patch(`/admin/members/${userId}/role`, { role }, { headers: authHeaders() });
+}

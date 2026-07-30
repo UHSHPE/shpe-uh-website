@@ -12,7 +12,8 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
-- **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director and marketing chair manage products, orders, and shop settings from their profile page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
+- **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
+- **President Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools) and an exclusive **Members** page: chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment (e-board, chairs, member). Assigning or removing a chair role automatically updates that committee's chair membership
 - **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
@@ -166,7 +167,7 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
 
 | Account | Email | Role |
 |---|---|---|
@@ -174,8 +175,9 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 | Test member (dues **not paid** — sees the dues banner) | `test1@cougarnet.uh.edu` | Member |
 | Committee chairs | `<first>.<last>@cougarnet.uh.edu` (e.g. `angel.montoya@cougarnet.uh.edu`) | Chair of their committee |
 | Comms director | `comms.director@cougarnet.uh.edu` | Communication Director (shop admin) |
+| President | `daniel.lopez.gil@cougarnet.uh.edu` | President (full admin: Members page, shop, all committees) |
 
-The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the other shop admin.
+The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the third shop admin.
 
 The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
@@ -198,7 +200,7 @@ shpe-uh-website/
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
-    ├── routes/             # APIRouters: auth, committees, events (+ reminders), notifications, password reset, resume, shop
+    ├── routes/             # APIRouters: admin (president), auth, committees, events (+ reminders), notifications, password reset, resume, shop
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
@@ -228,7 +230,8 @@ shpe-uh-website/
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
 | `/profile` | Profile info, PDF resume, and order history | Yes |
-| `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair) | Yes |
+| `/members` | Member directory: chapter stats, dues paid/unpaid counts, member lookup, and role assignment — president only | Yes |
+| `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
 
 ## API Reference
 
@@ -270,8 +273,16 @@ shpe-uh-website/
 | GET | `/shop/admin/products` | Shop admin | All products including sold-out |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
+| GET | `/admin/members?search=&paid=&role=` | President | Member directory with dues status; filter by name/email/PSID search, paid, or role |
+| GET | `/admin/stats` | President | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
+| GET | `/admin/roles` | President | Every assignable role value |
+| PATCH | `/admin/members/{id}/role` | President | Assign a member's role (chair roles also sync the committee's chair membership) |
 
-"Shop admin" = a user whose role is **Communication Director** or **Marketing Chair**.
+"Shop admin" = a user whose role is **Communication Director**, **Marketing Chair**, or **President**.
+
+## President
+
+The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the president-only **Members** page (`/members`) backed by the `/admin/*` endpoints. From there the president can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member. The president can't change their own role (to hand off, promote the incoming president first, then they demote you).
 
 ## Committees & Chairs
 
@@ -291,7 +302,7 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
 - Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
 - **No inventory is tracked.** Products are toggled sold-out/available, and each order is limited to a configurable number of units per item (default 5).
-- Shop administration belongs to the **Communication Director** and **Marketing Chair** roles: they manage products (create/edit, images, sold-out toggle), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** panel on their profile page.
+- Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, sold-out toggle), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page.
 
 ## Running Tests
 

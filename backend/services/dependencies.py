@@ -72,12 +72,26 @@ def get_optional_user(
 
 def require_shop_admin(user=Depends(get_current_user)):
     """Gate for shop-admin endpoints — mirrors the committee require_chair
-    pattern. Shop admin is held by the comms director and marketing chair."""
+    pattern. Shop admin is held by the comms director, marketing chair,
+    and the president."""
     from models.user.user_enums import SHOP_ADMIN_ROLES
 
     if user.role not in SHOP_ADMIN_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only shop admins can do that",
+        )
+    return user
+
+
+def require_president(user=Depends(get_current_user)):
+    """Gate for chapter-admin endpoints (member directory, stats, role
+    assignment). Only the president holds these."""
+    from models.user.user_enums import Role
+
+    if user.role != Role.president:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the chapter president can do that",
         )
     return user

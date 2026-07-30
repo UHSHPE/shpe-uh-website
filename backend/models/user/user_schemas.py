@@ -1,7 +1,7 @@
 import re
 from sqlmodel import SQLModel, Field
 from pydantic import EmailStr, field_validator, model_validator
-from datetime import date
+from datetime import date, datetime
 from .user_enums import Industry, ProfDev, RaceEthnicity, Role, Classification, Colleges, COTMajors, ExpGradDate, EngineerMajors, Gender, GPA, MembershipStatus, NSMMajors, ShirtSize
 
 _SAFE_NAME_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' \-]{2,50}$")
@@ -172,3 +172,41 @@ class UserOut(UserBase, UserMultiSelectedFields):
     # non-cancelled order containing the dues product. Drives the frontend
     # dues banner and the product page's "already paid" state.
     has_paid_dues: bool = False
+
+
+class AdminMemberOut(SQLModel):
+    """Row in the president's member directory (/admin/members) — just the
+    fields the members page lists and filters on, no multi-select rows."""
+    id: int
+    first_name: str
+    last_name: str
+    cougarnet_email: str
+    personal_email: str
+    phone_num: str
+    psid: str
+    role: Role
+    points: int
+    classification: Classification
+    college: Colleges
+    major: str
+    shirt_size: ShirtSize
+    is_national_member: bool
+    has_paid_dues: bool = False
+
+
+class AdminRoleUpdate(SQLModel):
+    role: Role
+
+
+class AdminStatsOut(SQLModel):
+    """Chapter-wide numbers for the president's members page."""
+    total_accounts: int
+    dues_paid: int
+    dues_unpaid: int
+    national_members: int
+    # Start of the current membership year (dues reset every May 30) — lets
+    # the UI say what period the paid/unpaid split covers.
+    dues_period_start: datetime
+    classification_counts: dict[str, int]
+    role_counts: dict[str, int]
+    shirt_size_counts: dict[str, int]

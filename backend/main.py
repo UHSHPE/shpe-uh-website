@@ -13,7 +13,7 @@ from database import create_db, engine
 from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 
-from routes import auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
+from routes import admin_routes, auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
 
 REMINDER_CHECK_SECONDS = 60
 
@@ -50,6 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(admin_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(committee_routes.router)
 app.include_router(event_routes.router)

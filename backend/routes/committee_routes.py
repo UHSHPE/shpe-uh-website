@@ -3,6 +3,7 @@ from models.committee import ChairOut, CommitteeMembership, CommitteeOut, Member
 from models.committee_message import CommitteeMessage, CommitteeMessageCreate, CommitteeMessageOut
 from models.notification import Notification
 from models.user.user import User
+from models.user.user_enums import Role
 from services.committee_services import get_committee_or_404, require_chair
 from services.committee_services import get_all_committees
 from services.committee_services import get_active_memberships_from_user_id
@@ -26,10 +27,13 @@ async def get_committees(
 ):  
     committees = get_all_committees(session)
     memberships = get_active_memberships_from_user_id(user.id, session)
-    
+
     membership_committee_ids = {membership.committee_id for membership in memberships}
     chair_committee_ids = {membership.committee_id for membership in memberships if membership.is_chair}
-    
+    # The president can manage every committee (require_chair lets them
+    # through), so surface the manage panel on every card.
+    is_president = user.role == Role.president
+
     result = []
     for committee in committees:
         chair_users = get_chair_users_from_committee_id(session, committee.id)
@@ -49,7 +53,7 @@ async def get_committees(
                 name=committee.name,
                 description=committee.description,
                 is_member=committee.id in membership_committee_ids,
-                is_chair=committee.id in chair_committee_ids,
+                is_chair=is_president or committee.id in chair_committee_ids,
                 chairs=chairs
             )
         )
@@ -212,7 +216,8 @@ async def get_committee_messages(
     session: SessionDependencies,
 ):
     chair_users = get_chair_users_from_committee_id(session, committee_id)
-    is_chair = any(chair.id == user.id for chair in chair_users)
+    # The president can read any committee's messages, like a chair.
+    is_chair = user.role == Role.president or any(chair.id == user.id for chair in chair_users)
 
     if not is_chair and not is_active_member(session, committee_id, user.id):
         raise HTTPException(status_code=403, detail="You are not a member of this committee")

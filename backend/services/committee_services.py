@@ -44,6 +44,9 @@ def get_committee_or_404(session, committee_id: int) -> Committee:
 
 
 def require_chair(committee: Committee, user: User) -> None:
+    # The president holds every admin privilege — chair tools included.
+    if user.role == Role.president:
+        return
     if committee.chair_role is None or user.role != committee.chair_role:
         raise HTTPException(status_code=403, detail="Only this committee's chair can do that")
 

@@ -83,6 +83,23 @@ def has_paid_dues(session: Session, user_id: int) -> bool:
     return row is not None
 
 
+def dues_paid_user_ids(session: Session) -> set[int]:
+    """User ids with a non-cancelled dues order in the current membership
+    period — the batch version of has_paid_dues for the president's member
+    directory and stats (avoids one query per member)."""
+    rows = session.exec(
+        select(Order.user_id)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .where(
+            Order.user_id != None,  # noqa: E711
+            Order.status != OrderStatus.cancelled,
+            OrderItem.product_name == DUES_PRODUCT_NAME,
+            Order.created_at >= current_dues_period_start(),
+        )
+    ).all()
+    return set(rows)
+
+
 def enforce_dues_rules(
     session: Session,
     lines: list[tuple[Product, str | None, int]],

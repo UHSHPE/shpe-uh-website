@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { uploadResume, getResumeBlob, deleteResume } from '../api/api';
 import MyOrders from '../components/MyOrders';
-import { isShopManager } from '../utils/shop';
+import { isPresident, isShopManager } from '../utils/shop';
 
 function yesNo(v) {
   return v ? 'Yes' : 'No';
@@ -168,7 +168,8 @@ export default function Profile() {
               fontSize: '12px',
               fontWeight: 700,
             }}>
-              ★ Shop Manager
+              {/* The president is a shop admin too — one badge, the bigger title. */}
+              ★ {isPresident(user) ? 'President' : 'Shop Manager'}
             </span>
           )}
         </div>

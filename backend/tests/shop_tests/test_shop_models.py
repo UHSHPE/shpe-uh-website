@@ -6,8 +6,8 @@ from models.shop.shop_settings import ShopSettings
 from models.user.user_enums import Role, SHOP_ADMIN_ROLES
 
 
-def test_shop_admin_roles_are_comm_director_and_marketing_chair():
-    assert SHOP_ADMIN_ROLES == {Role.comm_director, Role.marketing_chair}
+def test_shop_admin_roles_are_comm_director_marketing_chair_and_president():
+    assert SHOP_ADMIN_ROLES == {Role.comm_director, Role.marketing_chair, Role.president}
     assert not hasattr(Role, "shop_manager")
 
 
