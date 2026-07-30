@@ -291,6 +291,30 @@ def seed_president(s: Session):
     print("Seeded president user: Daniel Lopez Gil (daniel.lopez.gil@cougarnet.uh.edu).")
 
 
+# Names match the About page E-Board so the seeded data stays consistent.
+VP_ROSTER = [
+    ("Carlos", "Alba", Role.vpe, 902),
+    ("Gabriela", "Lorenzo", Role.vpi, 903),
+]
+
+
+def seed_vps(s: Session):
+    """Both vice presidents — they share the president's role-assignment
+    tools (ROLE_ADMIN_ROLES) but can't grant or alter the presidency."""
+    for first_name, last_name, role, idx in VP_ROSTER:
+        slug = f"{first_name}.{last_name}".lower()
+        email = f"{slug}@cougarnet.uh.edu"
+        if s.exec(select(User).where(User.cougarnet_email == email)).first():
+            print(f"Skipped {role.value} — already exists.")
+            continue
+
+        created = create_user(s, chair_user_create(first_name, last_name, role, idx))
+        created.email_verified = True  # seeded accounts skip email verification
+        s.add(created)
+        s.commit()
+        print(f"Seeded {role.value}: {first_name} {last_name} ({email}).")
+
+
 def seed_shop_settings(s: Session):
     from services.shop_services import get_shop_settings
 
@@ -391,6 +415,7 @@ def seed():
         seed_committees_and_chairs(s)
         seed_comm_director(s)
         seed_president(s)
+        seed_vps(s)
         seed_shop_settings(s)
         seed_products(s)
         seed_test_dues_order(s)  # after products — needs the dues product

@@ -1,4 +1,8 @@
-"""President-only chapter admin — member directory, stats, role assignment."""
+"""Chapter admin — member directory, stats, role assignment.
+
+Reachable by the president and both VPs (ROLE_ADMIN_ROLES); VP-specific
+limits around the presidency are covered at the bottom of this file.
+"""
 
 from models.committee import Committee, CommitteeMembership
 from models.user.user_enums import Classification, Role, ShirtSize
@@ -29,7 +33,7 @@ def make_committee(session, name="Academic", chair_role=Role.academic_chair):
 
 # --- access control ---
 
-def test_admin_endpoints_require_president(client):
+def test_admin_endpoints_reject_plain_members(client):
     # `client` is signed in as a plain member — every /admin call is 403.
     assert client.get("/admin/members").status_code == 403
     assert client.get("/admin/stats").status_code == 403
@@ -174,3 +178,85 @@ def test_president_cannot_change_own_role(president_client, president):
 def test_assign_role_unknown_member_is_404(president_client):
     res = president_client.patch("/admin/members/9999/role", json={"role": "Member"})
     assert res.status_code == 404
+
+
+def test_president_can_assign_the_presidency(president_client, session):
+    # Handoff: two presidents coexist briefly, then the successor demotes you.
+    member = make_member(session, 1)
+
+    res = president_client.patch(f"/admin/members/{member.id}/role", json={"role": "President"})
+
+    assert res.status_code == 200
+    session.refresh(member)
+    assert member.role == Role.president
+
+
+# --- vice presidents share the tools, but not the presidency ---
+
+def test_vp_can_use_the_directory(vp_client, session):
+    make_member(session, 1)
+
+    assert vp_client.get("/admin/members").status_code == 200
+    assert vp_client.get("/admin/stats").status_code == 200
+    assert vp_client.get("/admin/roles").status_code == 200
+
+
+def test_vp_can_assign_an_ordinary_role(vp_client, session):
+    member = make_member(session, 1)
+
+    res = vp_client.patch(f"/admin/members/{member.id}/role", json={"role": "Treasurer"})
+
+    assert res.status_code == 200
+    session.refresh(member)
+    assert member.role == Role.treasurer
+
+
+def test_vp_assigning_chair_role_still_syncs_membership(vp_client, session):
+    member = make_member(session, 1)
+    committee = make_committee(session)
+
+    res = vp_client.patch(f"/admin/members/{member.id}/role", json={"role": "Academic Chair"})
+
+    assert res.status_code == 200
+    membership = session.get(CommitteeMembership, (member.id, committee.id))
+    assert membership is not None
+    assert membership.is_chair is True
+
+
+def test_vp_cannot_grant_the_presidency(vp_client, session):
+    member = make_member(session, 1)
+
+    res = vp_client.patch(f"/admin/members/{member.id}/role", json={"role": "President"})
+
+    assert res.status_code == 403
+    session.refresh(member)
+    assert member.role == Role.member
+
+
+def test_vp_cannot_change_the_sitting_president(vp_client, session):
+    # Otherwise a VP could demote the president and leave nobody with full admin.
+    from tests.admin_tests.conftest import make_president
+
+    sitting = make_president(session)
+
+    res = vp_client.patch(f"/admin/members/{sitting.id}/role", json={"role": "Member"})
+
+    assert res.status_code == 403
+    session.refresh(sitting)
+    assert sitting.role == Role.president
+
+
+def test_vp_cannot_change_own_role(vp_client, vp):
+    res = vp_client.patch(f"/admin/members/{vp.id}/role", json={"role": "President"})
+    assert res.status_code == 400
+
+
+def test_roles_list_hides_president_from_vps(vp_client):
+    roles = vp_client.get("/admin/roles").json()
+
+    assert "President" not in roles
+    assert "Treasurer" in roles
+
+
+def test_roles_list_includes_president_for_the_president(president_client):
+    assert "President" in president_client.get("/admin/roles").json()

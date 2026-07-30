@@ -32,6 +32,11 @@ class Role(str, Enum):
 # The president holds every admin privilege on the site, shop included.
 SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair, Role.president}
 
+# Roles allowed to assign other members' roles (the /admin/* endpoints).
+# VPs are restricted further in admin_routes: they can neither grant the
+# President role nor modify whoever currently holds it.
+ROLE_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi}
+
 class Gender(str, Enum):
     female = "Female"
     male = "Male"

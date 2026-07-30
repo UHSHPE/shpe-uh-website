@@ -22,6 +22,19 @@ def make_president(session, **overrides):
     return make_user(session, **fields)
 
 
+def make_vp(session, **overrides):
+    fields = dict(
+        first_name="Vice",
+        last_name="President",
+        cougarnet_email="vp@cougarnet.uh.edu",
+        personal_email="vp@gmail.com",
+        psid="7777777",
+        role=Role.vpi,
+    )
+    fields.update(overrides)
+    return make_user(session, **fields)
+
+
 def make_dues_order(session, user):
     """A paid dues order for `user` — the minimal rows has_paid_dues matches
     (non-cancelled order + OrderItem whose name snapshot is the dues product)."""
@@ -71,5 +84,23 @@ def president_client(session, president):
 
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_current_user] = lambda: president
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def vp(session):
+    return make_vp(session)
+
+
+@pytest.fixture
+def vp_client(session, vp):
+    """Auth'd as a VP — same directory access as the president, minus the
+    presidency. Don't mix with `president_client`/`client` in one test: they
+    all override get_current_user on the same app and the last one wins."""
+    from main import app
+
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_current_user] = lambda: vp
     yield TestClient(app)
     app.dependency_overrides.clear()

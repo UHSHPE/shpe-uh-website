@@ -5,18 +5,33 @@ import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { getAdminMembers, getAdminStats, getAssignableRoles, updateMemberRole } from "../api/api";
-import { isPresident } from "../utils/shop";
+import { canAssignRoles, isPresident, PRESIDENT_ROLE } from "../utils/shop";
 
-// President-only members directory: chapter-wide stats (accounts, dues paid vs
-// not), member lookup, and role assignment (e-board, chairs, member…).
-// Backed by the /admin/* endpoints — anyone else gets a 403 there, and
-// signed-in non-presidents are bounced to the dashboard here.
+// Members directory for the president and both VPs: chapter-wide stats
+// (accounts, dues paid vs not), member lookup, and role assignment (e-board,
+// chairs, member…). Backed by the /admin/* endpoints — anyone else gets a 403
+// there, and other signed-in members are bounced to the dashboard here.
 
 const DUES_FILTERS = [
   { key: "all", label: "Everyone" },
   { key: "paid", label: "Dues paid" },
   { key: "unpaid", label: "Not paid" },
 ];
+
+// Every committee chair role's display value ends in "Chair", so gaining or
+// losing one also moves the person on/off that committee's chair listing.
+function isChairRole(role) {
+  return typeof role === "string" && role.endsWith("Chair");
+}
+
+function roleChangeWarning(member, nextRole) {
+  const name = `${member.first_name} ${member.last_name}`;
+  let text = `Change ${name} from "${member.role}" to "${nextRole}"?`;
+  if (isChairRole(member.role) || isChairRole(nextRole)) {
+    text += "\n\nThis also updates that committee's chair listing.";
+  }
+  return text;
+}
 
 function StatTile({ value, label, color }) {
   return (
@@ -99,7 +114,9 @@ export default function MembersPage() {
   const [duesFilter, setDuesFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
 
-  const authorized = user && isPresident(user);
+  // The president and both VPs reach this page; VPs are limited below.
+  const authorized = user && canAssignRoles(user);
+  const viewerIsPresident = isPresident(user);
 
   useEffect(() => {
     if (!authorized) return;
@@ -299,6 +316,9 @@ export default function MembersPage() {
 
         {visible.map((m) => {
           const isSelf = m.id === user.id;
+          // Only the president may change the president's role — the backend
+          // 403s a VP here, so don't offer a select that can't succeed.
+          const locked = isSelf || (!viewerIsPresident && m.role === PRESIDENT_ROLE);
           return (
             <div key={m.id} style={{ ...memberRow, borderBottom: "1px solid var(--surface-soft)" }}>
               <div style={{ minWidth: 0 }}>
@@ -317,8 +337,9 @@ export default function MembersPage() {
               <span style={{ fontSize: "13px", color: "var(--ink-soft)" }}>{m.classification}</span>
               <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>{m.points}</span>
               <span><DuesPill paid={m.has_paid_dues} /></span>
-              {isSelf ? (
-                // The backend blocks changing your own role (no self-lockout).
+              {locked ? (
+                // Your own role (no self-lockout), or the president's when a
+                // VP is viewing — both are refused by the backend.
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--muted)" }}>{m.role}</span>
               ) : (
                 <select
@@ -326,7 +347,7 @@ export default function MembersPage() {
                   disabled={savingId === m.id}
                   onChange={(e) => {
                     const role = e.target.value;
-                    if (!window.confirm(`Make ${m.first_name} ${m.last_name} "${role}"?`)) {
+                    if (!window.confirm(roleChangeWarning(m, role))) {
                       // Controlled value didn't change, so React won't repaint
                       // the cancelled pick — reset the DOM select directly.
                       e.target.value = m.role;
@@ -359,7 +380,8 @@ export default function MembersPage() {
       {members !== null && (
         <p style={{ margin: "12px 4px 0", fontSize: "12px", color: "var(--muted-soft)" }}>
           Showing {visible.length} of {members.length} accounts. Changing a chair role also
-          updates that committee's chair automatically.
+          updates that committee's chair automatically. The About page roster is maintained
+          by hand and does not change.
         </p>
       )}
     </div>

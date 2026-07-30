@@ -14,7 +14,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
-- **President Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools) and an exclusive **Members** page: chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment (e-board, chairs, member). Assigning or removing a chair role automatically updates that committee's chair membership
+- **President & VP Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools). The president and both vice presidents share a **Members** page: chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment (e-board, chairs, member). Assigning or removing a chair role automatically updates that committee's chair membership. VPs can assign every role except President, and can't change the sitting president
 - **Email Verification** — signing up creates an account that stays inactive until the member clicks a verification link emailed to their CougarNet address; only then can they log in. This also prevents someone from registering an email they don't control.
 - **Chapter Dues at Signup** — right after verifying their email, new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the Square checkout, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
@@ -200,7 +200,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, both vice presidents, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
 
 | Account | Email | Role |
 |---|---|---|
@@ -209,6 +209,8 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 | Committee chairs | `<first>.<last>@cougarnet.uh.edu` (e.g. `angel.montoya@cougarnet.uh.edu`) | Chair of their committee |
 | Comms director | `comms.director@cougarnet.uh.edu` | Communication Director (shop admin) |
 | President | `daniel.lopez.gil@cougarnet.uh.edu` | President (full admin: Members page, shop, all committees) |
+| VP External | `carlos.alba@cougarnet.uh.edu` | Vice President External (Members page; can't touch the presidency) |
+| VP Internal | `gabriela.lorenzo@cougarnet.uh.edu` | Vice President Internal (Members page; can't touch the presidency) |
 
 The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the third shop admin.
 
@@ -286,7 +288,7 @@ shpe-uh-website/
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
 | `/profile` | Profile info, PDF resume, and order history | Yes |
-| `/members` | Member directory: chapter stats, dues paid/unpaid counts, member lookup, and role assignment — president only | Yes |
+| `/members` | Member directory: chapter stats, dues paid/unpaid counts, member lookup, and role assignment — president and VPs only | Yes |
 | `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
 
 ## API Reference
@@ -331,16 +333,24 @@ shpe-uh-website/
 | GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
-| GET | `/admin/members?search=&paid=&role=` | President | Member directory with dues status; filter by name/email/PSID search, paid, or role |
-| GET | `/admin/stats` | President | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
-| GET | `/admin/roles` | President | Every assignable role value |
-| PATCH | `/admin/members/{id}/role` | President | Assign a member's role (chair roles also sync the committee's chair membership) |
+| GET | `/admin/members?search=&paid=&role=` | President / VP | Member directory with dues status; filter by name/email/PSID search, paid, or role |
+| GET | `/admin/stats` | President / VP | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
+| GET | `/admin/roles` | President / VP | Every role the caller may assign (a VP's list omits President) |
+| PATCH | `/admin/members/{id}/role` | President / VP | Assign a member's role (chair roles also sync the committee's chair membership). A VP can't assign President or change the sitting president |
 
 "Shop admin" = a user whose role is **Communication Director**, **Marketing Chair**, or **President**.
 
-## President
+## President & role assignment
 
-The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the president-only **Members** page (`/members`) backed by the `/admin/*` endpoints. From there the president can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member. The president can't change their own role (to hand off, promote the incoming president first, then they demote you).
+The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the **Members** page (`/members`) backed by the `/admin/*` endpoints. From there they can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member.
+
+**Both Vice Presidents share the Members page**, so role fixes don't wait on one person. Two limits keep the presidency out of reach: a VP can't assign the President role (it isn't even in their dropdown), and a VP can't change the role of whoever currently is president. Without that second rule a VP could demote the president and leave the chapter with nobody holding full admin.
+
+Nobody can change their own role. To hand off the presidency, the sitting president promotes their successor first — two presidents can coexist briefly — and the successor then demotes them.
+
+Every role change asks for confirmation, naming both the old and new role, and warns when the change will also move someone on or off a committee's chair listing.
+
+> **Assigning a chair role updates the Committees page, not the About page.** The new chair appears on their committee card automatically, keeping the shared committee address (e.g. `academics@shpeuhchair.org`) rather than their personal one. The About page roster is maintained by hand — update `frontend/src/pages/about.jsx` after a chair handover.
 
 ## Committees & Chairs
 

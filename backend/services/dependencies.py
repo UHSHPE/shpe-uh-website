@@ -84,14 +84,16 @@ def require_shop_admin(user=Depends(get_current_user)):
     return user
 
 
-def require_president(user=Depends(get_current_user)):
+def require_role_admin(user=Depends(get_current_user)):
     """Gate for chapter-admin endpoints (member directory, stats, role
-    assignment). Only the president holds these."""
-    from models.user.user_enums import Role
+    assignment) — mirrors require_shop_admin. Held by the president and both
+    VPs; the VP-specific limits (no granting President, no touching the
+    sitting president) are enforced per-request in admin_routes."""
+    from models.user.user_enums import ROLE_ADMIN_ROLES
 
-    if user.role != Role.president:
+    if user.role not in ROLE_ADMIN_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the chapter president can do that",
+            detail="Only the president or a vice president can do that",
         )
     return user

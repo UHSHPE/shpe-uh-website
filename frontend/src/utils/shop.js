@@ -20,6 +20,20 @@ export function isPresident(user) {
   return user?.role === PRESIDENT_ROLE;
 }
 
+// Who can reach the members directory and assign roles (matches
+// ROLE_ADMIN_ROLES on the backend). VPs can assign every role except
+// President, and can't change the sitting president — the backend enforces
+// both; the UI just avoids offering picks that would 403.
+export const ROLE_ADMIN_ROLES = [
+  PRESIDENT_ROLE,
+  "Vice President External",
+  "Vice President Internal",
+];
+
+export function canAssignRoles(user) {
+  return ROLE_ADMIN_ROLES.includes(user?.role);
+}
+
 // Order-status pill styling — tokens defined in styles.css §Shop.
 export const STATUS_META = {
   paid: {

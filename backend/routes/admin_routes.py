@@ -9,7 +9,7 @@ from models.user.user import User
 from models.user.user_enums import Role
 from models.user.user_schemas import AdminMemberOut, AdminRoleUpdate, AdminStatsOut
 from services import shop_services
-from services.dependencies import SessionDependencies, require_president
+from services.dependencies import SessionDependencies, require_role_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -22,13 +22,13 @@ def _member_out(user: User, paid: bool) -> AdminMemberOut:
 
 @router.get("/members", response_model=list[AdminMemberOut])
 def list_members(
-    president: Annotated[User, Depends(require_president)],
+    actor: Annotated[User, Depends(require_role_admin)],
     session: SessionDependencies,
     search: str | None = None,
     paid: bool | None = None,
     role: Role | None = None,
 ):
-    """The president's member directory — every account, with dues status.
+    """The chapter member directory — every account, with dues status.
     `search` matches name, either email, or PSID; `paid` filters on dues."""
     query = select(User).order_by(User.last_name, User.first_name)
     if role is not None:
@@ -54,7 +54,7 @@ def list_members(
 
 @router.get("/stats", response_model=AdminStatsOut)
 def member_stats(
-    president: Annotated[User, Depends(require_president)],
+    actor: Annotated[User, Depends(require_role_admin)],
     session: SessionDependencies,
 ):
     """Chapter-wide account numbers for the members page tiles."""
@@ -75,10 +75,14 @@ def member_stats(
 
 
 @router.get("/roles", response_model=list[str])
-def list_assignable_roles(president: Annotated[User, Depends(require_president)]):
-    """Every assignable role value — keeps the frontend dropdown in sync
-    with the Role enum instead of hardcoding the list."""
-    return [role.value for role in Role]
+def list_assignable_roles(actor: Annotated[User, Depends(require_role_admin)]):
+    """Every role the caller may assign — keeps the frontend dropdown in sync
+    with the Role enum instead of hardcoding the list. VPs don't get President,
+    so the dropdown can't offer a pick that assign_role would reject."""
+    roles = [role.value for role in Role]
+    if actor.role != Role.president:
+        roles = [role for role in roles if role != Role.president.value]
+    return roles
 
 
 def _sync_chair_memberships(session: Session, user: User, old_role: Role, new_role: Role) -> None:
@@ -112,24 +116,43 @@ def _sync_chair_memberships(session: Session, user: User, old_role: Role, new_ro
             ))
 
 
+def _assert_may_assign(actor: User, target: User, new_role: Role) -> None:
+    """The president may assign anything. A VP may not grant the presidency
+    nor modify whoever currently holds it — otherwise any VP could demote the
+    president unilaterally and leave the chapter with no full admin."""
+    if actor.role == Role.president:
+        return
+    if new_role == Role.president:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the president can assign the President role",
+        )
+    if target.role == Role.president:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the president can change the president's role",
+        )
+
+
 @router.patch("/members/{user_id}/role", response_model=AdminMemberOut)
 def assign_role(
     user_id: int,
     payload: AdminRoleUpdate,
-    president: Annotated[User, Depends(require_president)],
+    actor: Annotated[User, Depends(require_role_admin)],
     session: SessionDependencies,
 ):
     """Assign any role (e-board, chairs, member…). Chair-role changes also
-    sync the committee's is_chair membership row. The president can't change
-    their own role — hand off by promoting the incoming president first."""
+    sync the committee's is_chair membership row. Nobody can change their own
+    role — hand off by promoting the incoming president first."""
     target = session.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    if target.id == president.id:
+    if target.id == actor.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You can't change your own role. To hand off, promote the incoming president first.",
         )
+    _assert_may_assign(actor, target, payload.role)
 
     old_role = target.role
     target.role = payload.role
