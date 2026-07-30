@@ -20,7 +20,16 @@ def test_order_status_values():
 
 
 def test_product_out_fields():
-    expected = {"id", "name", "description", "price_cents", "product_type", "sizes", "is_active"}
+    expected = {
+        "id",
+        "name",
+        "description",
+        "price_cents",
+        "product_type",
+        "sizes",
+        "is_active",
+        "retired_at",
+    }
     assert expected <= set(ProductOut.model_fields)
 
 

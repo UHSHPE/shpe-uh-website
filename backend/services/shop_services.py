@@ -1,9 +1,8 @@
 import secrets
 from datetime import datetime
-
+from collections import defaultdict
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
-
 from models.notification import Notification
 from models.shop.order import Order, OrderCreate, OrderItem, OrderItemOut, OrderOut, OrderStatus
 from models.shop.product import Product, ProductType
@@ -136,17 +135,21 @@ def validate_order_items(
     Persists nothing — the route charges the card between this and
     create_order, so no order row ever exists for a failed charge."""
     item_cap = get_shop_settings(session).order_item_cap
-
     lines: list[tuple[Product, str | None, int]] = []
+    qty_by_product: dict[int, int] = defaultdict(int)
+
     for item in payload.items:
-        if item.quantity > item_cap:
+        qty_by_product[item.product_id] += item.quantity
+        if qty_by_product[item.product_id] > item_cap:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Orders are limited to {item_cap} of each item.",
             )
 
         product = session.get(Product, item.product_id)
-        if product is None or not product.is_active:
+        # Retired (soft-deleted) products are as unorderable as hidden ones —
+        # same generic detail either way, never say which.
+        if product is None or product.retired_at is not None or not product.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="One of the products is unavailable.",

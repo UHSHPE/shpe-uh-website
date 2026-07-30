@@ -26,6 +26,8 @@ export default function SignIn() {
     } catch (err) {
       if (err.response?.status === 401) {
         setError("Incorrect email or password.");
+      } else if (err.response?.status === 403) {
+        setError("Please verify your email first. Check your inbox for the verification link.");
       } else if (err.response?.status === 429) {
         setError("Too many attempts. Please wait a minute and try again.");
       } else {

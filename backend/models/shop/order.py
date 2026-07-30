@@ -62,7 +62,7 @@ class OrderCreate(SQLModel):
     buyer_name: str = Field(min_length=1)
     buyer_email: str
     buyer_phone: str = ""
-    items: list[OrderItemIn] = Field(min_length=1)
+    items: list[OrderItemIn] = Field(min_length=1, max_length=20)
     # One-time card token from the Square Web Payments SDK. None is only
     # accepted in dev mode (no SQUARE_* config), where checkout is simulated.
     payment_token: str | None = None

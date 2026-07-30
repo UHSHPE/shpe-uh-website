@@ -216,26 +216,7 @@ export default function Shop() {
                 flexDirection: "column",
               }}
             >
-              <div style={{ position: "relative" }}>
-                <ProductImage product={product} />
-                {!product.is_active && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "12px",
-                      left: "12px",
-                      borderRadius: "999px",
-                      padding: "4px 10px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      background: "var(--ink)",
-                      color: "#fff",
-                    }}
-                  >
-                    Sold out
-                  </span>
-                )}
-              </div>
+              <ProductImage product={product} />
               <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
                 <span
                   style={{
@@ -251,16 +232,13 @@ export default function Shop() {
                 <p style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "var(--ink)", lineHeight: 1.25 }}>
                   {product.name}
                 </p>
+                {/* Every listed product is orderable — GET /shop/products
+                    filters out hidden and retired ones, and the chapter
+                    fulfils per order, so nothing is ever "sold out". */}
                 <div style={{ marginTop: "auto", paddingTop: "8px" }}>
-                  {product.is_active ? (
-                    <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--shpe-blue)" }}>
-                      {formatCents(product.price_cents)}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--muted-soft)" }}>
-                      Sold out
-                    </span>
-                  )}
+                  <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--shpe-blue)" }}>
+                    {formatCents(product.price_cents)}
+                  </span>
                 </div>
               </div>
             </Link>

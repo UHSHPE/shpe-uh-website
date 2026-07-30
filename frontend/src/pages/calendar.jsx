@@ -16,7 +16,7 @@ const EVENT_TYPE_COLORS = {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function eventColor(type) {
-  return EVENT_TYPE_COLORS[type] ?? '#374151';
+  return EVENT_TYPE_COLORS[type] ?? '#0070C0';
 }
 
 // Stored datetimes are naive UTC — append 'Z' so the browser reads them as UTC.

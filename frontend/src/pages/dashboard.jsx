@@ -46,7 +46,7 @@ function formatEventTime(startStr, endStr) {
   };
 }
 
-const EVENT_TYPE_COLORS = {
+const EVENT_TYPE_COLORS = { // why these color mappings ? idk i didnt come up with these
   'General Meeting': '#0070C0',
   'Professional': '#005A9C',
   'Outreach': '#D33A02',
@@ -57,7 +57,7 @@ const EVENT_TYPE_COLORS = {
 function EventCard({ event }) {
   const { day, time } = formatEventTime(event.start_time, event.end_time);
   const [dayLabel, ...dateParts] = day.split(', ');
-  const typeColor = EVENT_TYPE_COLORS[event.event_type] ?? '#374151';
+  const typeColor = EVENT_TYPE_COLORS[event.event_type] ?? '#0070C0';
 
   return (
     <div style={{

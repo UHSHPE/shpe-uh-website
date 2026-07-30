@@ -22,10 +22,16 @@ class Product(SQLModel, table=True):
     sizes: list[str] | None = Field(default=None, sa_column=Column(JSON))
     # Disk filename under uploads/products/ (product_<id>.<ext>); None = no image.
     image_filename: str | None = Field(default=None)
-    # Soft delete / sold-out toggle: False hides the product from the public
-    # storefront; admins still see it. No numeric inventory is tracked — the
-    # only purchase limit is the per-order item cap in ShopSettings.
+    # Currently-offered toggle: True lists the product on the storefront,
+    # False hides it while keeping it in the admin Products table (an admin
+    # can flip it back any time). NOT a delete — see retired_at. No numeric
+    # inventory is tracked; the only purchase limit is ShopSettings' item cap.
     is_active: bool = Field(default=True)
+    # Soft delete: NULL = live, a timestamp = retired. Retired products are
+    # gone from the storefront and unorderable, and live in the admin's
+    # Retired section until restored. Rows are never destroyed, so order-line
+    # history and the image file always survive.
+    retired_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -38,6 +44,9 @@ class ProductOut(SQLModel):
     sizes: list[str] | None
     image_filename: str | None
     is_active: bool
+    # Always null on public responses (retired products never reach them) —
+    # it's the admin Products table that splits live vs retired on this.
+    retired_at: datetime | None
 
 
 class ProductCreate(SQLModel):

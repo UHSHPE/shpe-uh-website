@@ -9,5 +9,5 @@ def authenticate_user(session: Session, email: str, password: str) -> User | Non
 
     if not user or not verify_password(password, user.hashed_password):
         return None
-    
+
     return user

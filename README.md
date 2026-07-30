@@ -4,9 +4,10 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 
 ## Features
 
-- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing
+- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins
 - **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
+- **Event Sheet Sync** — The calendar populates itself from the chapter's event-tracker Google Sheet, re-read once a day, so officers add events in the sheet they already maintain and never touch the website
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
 - **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder
@@ -14,7 +15,8 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
 - **President Tools** — The chapter president has full admin access everywhere (shop manager plus every committee's chair tools) and an exclusive **Members** page: chapter-wide stats (total accounts, dues paid vs. not, national members, classification and shirt-size breakdowns), member lookup by name/email/PSID, and role assignment (e-board, chairs, member). Assigning or removing a chair role automatically updates that committee's chair membership
-- **Chapter Dues at Signup** — new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the same Square checkout right after creating an account, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
+- **Email Verification** — signing up creates an account that stays inactive until the member clicks a verification link emailed to their CougarNet address; only then can they log in. This also prevents someone from registering an email they don't control.
+- **Chapter Dues at Signup** — right after verifying their email, new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the Square checkout, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **reset every May 30**, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
@@ -110,6 +112,7 @@ Frontend runs at **http://localhost:5173**.
 | `ALGORITHM` | Yes | JWT signing algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes | `30` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
+| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
 | `SMTP_PORT` | No | SMTP port | `587` |
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
@@ -118,6 +121,8 @@ Frontend runs at **http://localhost:5173**.
 | `SQUARE_ACCESS_TOKEN` | No | Square API access token for shop card payments. **Unset = dev mode:** checkout is simulated, no real charge | `EAAA...` |
 | `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
 | `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted | `sandbox` |
+| `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
+| `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
 
 #### Square shop payments (optional, one-time setup)
 
@@ -134,7 +139,7 @@ Start in the **Sandbox** (fake money, test cards), then switch to Production:
 3. Get the sandbox **Location ID**: open the app's **Locations** page (or Default Test Account) and copy the id.
 4. Set `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT=sandbox`) in `backend/.env`, and `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID` in `frontend/.env.local`. Restart both servers.
 5. Test with Square's sandbox card: `4111 1111 1111 1111`, any future expiry, any CVV, any ZIP. Charges appear in the [Sandbox Seller Dashboard](https://squareupsandbox.com/dashboard).
-6. **Go live:** swap in the app's **Production** Application ID + Access Token, the real store's Location ID, and set `SQUARE_ENVIRONMENT=production`.
+6. **Go live:** swap in the app's **Production** Application ID + Access Token, the real store's Location ID, and set `SQUARE_ENVIRONMENT=production`. Also set `ENVIRONMENT=production` — the backend will then refuse to start if any of this is missing, so a config mistake can never silently turn checkout into free simulated orders.
 | `GDRIVE_RESUME_FOLDER_ID` | No | Drive folder that resume PDFs are synced to — must be the **app-created** folder id printed by `get_drive_refresh_token.py` (a hand-made folder isn't reachable under the `drive.file` scope). **Unset = dev mode:** resumes stay local only | `1AbC...xyz` |
 | `GDRIVE_OAUTH_CLIENT_ID` | No | OAuth client id for Drive resume sync (see setup below) | `...apps.googleusercontent.com` |
 | `GDRIVE_OAUTH_CLIENT_SECRET` | No | OAuth client secret for Drive resume sync | — |
@@ -154,6 +159,26 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 4. From `backend/`, run `.venv/bin/python get_drive_refresh_token.py <client_id> <client_secret> [folder name]` (folder name defaults to "SHPE Resume Book") — a browser opens; sign in with your Google account and approve. The script mints the refresh token and creates (or reuses) the resume folder.
 5. Paste the four printed `GDRIVE_*` lines into `backend/.env` and restart the backend.
 
+#### Event tracker sheet sync (optional, one-time setup)
+
+When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, or location in the sheet updates the calendar entry in place on the next sync.
+
+> **Moving an event to a different day, or renaming it, creates a second calendar entry** rather than replacing the first — the old one has to be removed by hand. The sync only ever adds and updates; it never deletes, so removing a row from the sheet also leaves its calendar entry in place.
+
+> Unlike the Drive resume sync above, a **service account is the right choice here** — it only needs read access to a sheet you share with it, so the personal-Drive storage limitation doesn't apply.
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create (or pick) a project and enable the **Google Sheets API**.
+2. **APIs & Services → Credentials → Create Credentials → Service account** — create one, then open it, go to **Keys → Add key → Create new key → JSON**, and download the file.
+3. Open the downloaded JSON and copy the `client_email` value (ends in `.iam.gserviceaccount.com`).
+4. In the event-tracker spreadsheet, click **Share** and give that address **Viewer** access.
+5. Set `CREDENTIALS` to the JSON file's path and `SHEET_ID` to the id from the sheet's URL (`docs.google.com/spreadsheets/d/<SHEET_ID>/edit`) in `backend/.env`, then restart the backend.
+
+> Keep the service-account JSON out of version control — treat it like a password.
+
+> **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1**; if the fall sheet is still configured when the year rolls over, its events get re-read as next year's and appear on the calendar a second time.
+
+**Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `SIGN IN FORM`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
+
 ### `frontend/.env.local`
 
 | Variable | Required | Description | Example |
@@ -167,7 +192,7 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
 
 | Account | Email | Role |
 |---|---|---|
@@ -183,6 +208,12 @@ The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
 > **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
 
+> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire feature needs this once (then restart the backend). A freshly seeded database already has it.
+>
+> ```bash
+> sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
+> ```
+
 ## Project Structure
 
 ```
@@ -196,7 +227,7 @@ shpe-uh-website/
 │       ├── pages/          # One file per route
 │       └── App.jsx         # Route definitions
 └── backend/
-    ├── main.py             # FastAPI app: routers + background reminder-email loop
+    ├── main.py             # FastAPI app: routers + background loops (reminder emails, daily event-sheet sync)
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # SQLite engine and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
@@ -204,7 +235,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment services, rate limiter
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync services, rate limiter, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -224,7 +255,8 @@ shpe-uh-website/
 | `/shop/checkout` | Two-step checkout: contact details, then payment (Square card element + Apple Pay / Google Pay where supported; simulated when Square isn't configured) | No |
 | `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
-| `/signup` | Sign up (multi-step; ends by routing into chapter-dues checkout) | No |
+| `/signup` | Sign up (multi-step; ends on a "check your email" screen) | No |
+| `/verify-email` | Confirm a new account from the emailed link, then route into chapter-dues checkout | No |
 | `/forgot-password` | Request a password-reset email | No |
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |
@@ -237,8 +269,9 @@ shpe-uh-website/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute) |
-| POST | `/signup` | No | Register a new account |
+| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
+| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited: 5/hour) |
+| POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
@@ -259,8 +292,8 @@ shpe-uh-website/
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark a notification as read |
 | GET | `/shop/settings` | No | Shop settings (storefront tagline + per-order item cap) |
-| GET | `/shop/products` | No | Active shop products |
-| GET | `/shop/products/{id}` | No | One active product (type, sizes, price) |
+| GET | `/shop/products` | No | Shop products that are active and not retired |
+| GET | `/shop/products/{id}` | No | One product (type, sizes, price); 404 if unknown, hidden, or retired |
 | GET | `/shop/products/{id}/image` | No | Product image |
 | POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited: 10/minute) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
@@ -268,9 +301,10 @@ shpe-uh-website/
 | PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |
 | POST | `/shop/products` | Shop admin | Create a product |
 | PATCH | `/shop/products/{id}` | Shop admin | Edit a product / toggle availability |
-| DELETE | `/shop/products/{id}` | Shop admin | Remove a product |
+| DELETE | `/shop/products/{id}` | Shop admin | Retire a product — hides it from the shop and keeps it restorable (nothing is deleted); the dues product can't be retired |
+| POST | `/shop/products/{id}/restore` | Shop admin | Restore a retired product (it comes back hidden) |
 | POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤5 MB) |
-| GET | `/shop/admin/products` | Shop admin | All products including sold-out |
+| GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
 | GET | `/admin/members?search=&paid=&role=` | President | Member directory with dues status; filter by name/email/PSID search, paid, or role |
@@ -301,8 +335,9 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **Payment is simulated in v1** — the "Pay" step instantly succeeds and no real money moves. A real Square checkout is planned and will replace only that step.
 - **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
 - Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
-- **No inventory is tracked.** Products are toggled sold-out/available, and each order is limited to a configurable number of units per item (default 5).
-- Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, sold-out toggle), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page.
+- **No inventory is tracked.** Each product is either **Active** (listed in the shop) or **Hidden** (kept in the admin table, off the storefront), and every order is limited to a configurable number of units per item (default 5).
+- **Products are never deleted.** Retiring one takes it off the storefront and files it under **Retired** in the Shop Manager, where it can be restored at any time (a restored product comes back Hidden, so an admin republishes it deliberately). Past orders keep showing exactly what was bought, and the product image is kept too. The **T-Shirt Dues** product can't be retired — newly verified members are sent straight to it.
+- Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, show/hide, retire/restore), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page at `/shop-manager`.
 
 ## Running Tests
 

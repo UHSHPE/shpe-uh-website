@@ -13,6 +13,7 @@ import SignIn from './pages/signin';
 import SignUp from './pages/signup';
 import ForgotPassword from './pages/forgot-password';
 import ResetPassword from './pages/reset-password';
+import VerifyEmail from './pages/verify-email';
 import Dashboard from './pages/dashboard';
 import Committees from './pages/committees';
 import Calendar from './pages/calendar';
@@ -48,6 +49,7 @@ export default function App() {
 					<Route path="/signup" element={<SignUp />} />
 					<Route path="/forgot-password" element={<ForgotPassword />} />
 					<Route path="/reset-password" element={<ResetPassword />} />
+					<Route path="/verify-email" element={<VerifyEmail />} />
 					<Route
 						path="/dashboard"
 						element={

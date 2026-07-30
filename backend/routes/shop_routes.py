@@ -17,6 +17,7 @@ from services.dependencies import (
     require_shop_admin,
 )
 from services.rate_limit import limiter
+from services.time_services import utcnow
 from validators.email import normalize_email
 
 router = APIRouter(prefix="/shop", tags=["Shop"])
@@ -34,8 +35,10 @@ IMAGE_TYPES = {
 
 
 def get_active_product_or_404(session, product_id: int) -> Product:
+    """Public reads only see products that are live (never retired) AND
+    currently offered."""
     product = session.get(Product, product_id)
-    if product is None or not product.is_active:
+    if product is None or product.retired_at is not None or not product.is_active:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
@@ -68,7 +71,9 @@ def update_settings(payload: ShopSettingsUpdate, session: SessionDependencies):
 @router.get("/products", response_model=list[ProductOut])
 def list_products(session: SessionDependencies):
     return session.exec(
-        select(Product).where(Product.is_active == True).order_by(Product.created_at)  # noqa: E712
+        select(Product)
+        .where(Product.is_active == True, Product.retired_at.is_(None))  # noqa: E712
+        .order_by(Product.created_at)
     ).all()
 
 
@@ -226,17 +231,56 @@ def update_product(product_id: int, payload: ProductUpdate, session: SessionDepe
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_shop_admin)],
 )
-def delete_product(product_id: int, session: SessionDependencies):
+def retire_product(product_id: int, session: SessionDependencies):
+    """Retire (soft-delete) a product: it leaves the storefront and can't be
+    ordered, but the row and its image file stay so order history keeps
+    resolving and an admin can restore it. Nothing is ever destroyed.
+    Idempotent — retiring an already-retired product is a no-op."""
     product = session.get(Product, product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    if product.image_filename:
-        (PRODUCT_IMAGE_DIR / product.image_filename).unlink(missing_ok=True)
+    # Dues checkout finds this product BY NAME (see shop_services and the
+    # frontend's utils/dues.js) — retiring it would silently break the
+    # post-email-verification dues redirect with no other symptom.
+    if product.name == shop_services.DUES_PRODUCT_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f'"{shop_services.DUES_PRODUCT_NAME}" can\'t be retired — new members '
+                "are sent to it right after verifying their email. Hide it instead if "
+                "you need it off the storefront."
+            ),
+        )
 
-    session.delete(product)
+    if product.retired_at is None:
+        product.retired_at = utcnow()
+    product.is_active = False
+
+    session.add(product)
     session.commit()
     return None
+
+
+@router.post(
+    "/products/{product_id}/restore",
+    response_model=ProductOut,
+    dependencies=[Depends(require_shop_admin)],
+)
+def restore_product(product_id: int, session: SessionDependencies):
+    """Bring a retired product back. It returns Hidden (is_active is left
+    alone) so the admin republishes it deliberately. Idempotent on a product
+    that was never retired."""
+    product = session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.retired_at = None
+
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
 
 
 @router.post("/products/{product_id}/image", dependencies=[Depends(require_shop_admin)])
@@ -284,7 +328,8 @@ async def upload_product_image(
     dependencies=[Depends(require_shop_admin)],
 )
 def list_all_products(session: SessionDependencies):
-    """Admin catalog view — includes inactive (sold out) products."""
+    """Admin catalog view — includes hidden AND retired products; the panel
+    splits them on retired_at."""
     return session.exec(select(Product).order_by(Product.created_at)).all()
 
 

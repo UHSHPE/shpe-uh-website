@@ -14,6 +14,14 @@ from models.user.user_schemas import UserCreate
 from models.user.user_enums import ProfDev, RaceEthnicity, Role, Gender, Colleges, Classification, GPA, ExpGradDate, MembershipStatus, ShirtSize, Industry
 from services.user_services import create_user
 
+import os, sys
+from dotenv import load_dotenv
+
+load_dotenv()
+if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
+    print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)
+    sys.exit(1)
+
 # Official committee roster. Each committee has exactly one chair role;
 # co-chairs share that role and each get a CommitteeMembership with is_chair=True.
 # Format: (committee name, description, chair role, [chair full names])
@@ -98,7 +106,10 @@ def seed_test_user(s: Session):
             ],
         )
 
-        create_user(s, test_user)
+        created = create_user(s, test_user)
+        created.email_verified = True  # seeded accounts skip email verification
+        s.add(created)
+        s.commit()
         print(f"Seeded test user {cougarnet_email}.")
 
 
@@ -218,6 +229,9 @@ def seed_committees_and_chairs(s: Session):
             ).first()
             if not user:
                 user = create_user(s, user_data)
+                user.email_verified = True  # seeded accounts skip email verification
+                s.add(user)
+                s.commit()
                 print(f"Seeded chair user: {full_name} ({chair_role.value})")
             else:
                 print(f"Skipped chair user — {full_name} already exists.")
@@ -251,7 +265,10 @@ def seed_comm_director(s: Session):
         return
 
     comms = chair_user_create("Comms", "Director", Role.comm_director, 900)
-    create_user(s, comms)
+    created = create_user(s, comms)
+    created.email_verified = True  # seeded accounts skip email verification
+    s.add(created)
+    s.commit()
     print("Seeded comms director user.")
 
 
@@ -267,7 +284,10 @@ def seed_president(s: Session):
         return
 
     president = chair_user_create("Daniel", "Lopez Gil", Role.president, 901)
-    create_user(s, president)
+    created = create_user(s, president)
+    created.email_verified = True  # seeded accounts skip email verification
+    s.add(created)
+    s.commit()
     print("Seeded president user: Daniel Lopez Gil (daniel.lopez.gil@cougarnet.uh.edu).")
 
 

@@ -1,7 +1,9 @@
+import asyncio
 import os
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import field_validator
+from services import hibp_services
 from services.dependencies import SessionDependencies
 from services.rate_limit import limiter
 from validators.email import normalize_email
@@ -90,6 +92,16 @@ async def confirm_password_reset(req: PasswordResetConfirm, session: SessionDepe
     member = get_user_by_user_id(session, db_token.user_id)
     if member is None:
         raise invalid_token
+
+    # Breached-password check (fail-open) — BEFORE marking the token used, so a
+    # rejected password leaves the link redeemable. 422 (not 400: the reset page
+    # shows "invalid link" for 400). Module attribute for test monkeypatching;
+    # to_thread because httpx's sync client would block the event loop.
+    if await asyncio.to_thread(hibp_services.is_password_pwned, req.new_password):
+        raise HTTPException(
+            status_code=422,
+            detail="This password has appeared in a data breach — choose a different one.",
+        )
 
     member.hashed_password = get_password_hash(req.new_password)
     member.password_changed_at = utcnow()

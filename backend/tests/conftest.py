@@ -46,6 +46,18 @@ def disable_square_payments(monkeypatch):
 
     for var in ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT"):
         monkeypatch.delenv(var, raising=False)
+# The breached-password check hits the Have I Been Pwned API from /signup and
+# /password-reset/confirm — stub it out so tests never touch the network.
+# Route code calls it as a module attribute (hibp_services.is_password_pwned),
+# so patching the module works. Tests that need a "pwned" answer monkeypatch
+# it again to True in their own body (fixtures apply before the test runs).
+@pytest.fixture(autouse=True)
+def disable_hibp_check(monkeypatch):
+    from services import hibp_services
+
+    monkeypatch.setattr(hibp_services, "is_password_pwned", lambda password: False)
+
+
 # Drive sync reads GDRIVE_* env vars at call time — clear them so tests are
 # always in dev-mode no-op and never hit the real Google Drive API, no matter
 # what the developer's backend/.env contains.
@@ -57,6 +69,15 @@ def disable_drive_sync(monkeypatch):
         "GDRIVE_OAUTH_CLIENT_SECRET",
         "GDRIVE_OAUTH_REFRESH_TOKEN",
     ):
+        monkeypatch.delenv(var, raising=False)
+
+
+# Event tracker sync reads CREDENTIALS / SHEET_ID env vars at call time —
+# clear them so tests are always in dev-mode no-op and never hit the real
+# Google Sheet, no matter what the developer's backend/.env contains.
+@pytest.fixture(autouse=True)
+def disable_event_tracker_sync(monkeypatch):
+    for var in ("CREDENTIALS", "SHEET_ID"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -100,6 +121,7 @@ def make_user(session, **overrides):
         is_national_member=True,
         shirt_size=ShirtSize.m,
         hashed_password="not-a-real-hash",
+        email_verified=True,
     )
     fields.update(overrides)
     user = User(**fields)

@@ -26,6 +26,12 @@ export function confirmPasswordReset(token, newPassword) {
   return api.post("/password-reset/confirm", { token, new_password: newPassword });
 }
 
+// Public — confirms a signup with the token from the verification email.
+// Returns a login token on success (the account is now usable).
+export function verifyEmail(token) {
+  return api.post("/verify-email", { token });
+}
+
 export function getMe(token) {
   return api.get("/me", {
     headers: { Authorization: `Bearer ${token}` },
@@ -161,8 +167,15 @@ export function updateProduct(productId, data) {
   return api.patch(`/shop/products/${productId}`, data, { headers: authHeaders() });
 }
 
-export function deleteProduct(productId) {
+// Soft delete — the product is hidden from the shop but kept in the admin's
+// Retired list (nothing is destroyed, so order history stays readable).
+export function retireProduct(productId) {
   return api.delete(`/shop/products/${productId}`, { headers: authHeaders() });
+}
+
+// Undo a retire. The product comes back hidden until an admin sets it Active.
+export function restoreProduct(productId) {
+  return api.post(`/shop/products/${productId}/restore`, {}, { headers: authHeaders() });
 }
 
 export function uploadProductImage(productId, file) {
