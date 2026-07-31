@@ -10,6 +10,8 @@
 # No test here ever reaches the network: the autouse disable_event_tracker_sync
 # fixture in tests/conftest.py clears CREDENTIALS/SHEET_ID for every test.
 
+import logging
+
 import pytest
 from datetime import date, datetime
 
@@ -17,7 +19,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 import services.event_tracker_services as event_tracker_services
+from models.committee import Committee
 from models.event import Event
+from models.event_host import EventHost
+from models.user.user_enums import Role
 from services.event_tracker_services import event_key, fetch_sheet_events, sync_events
 from tests.conftest import make_event
 from tests.event_tracker_tests.test_event_parsing import sheet_row
@@ -49,6 +54,11 @@ def fake_sheet_event(**overrides):
     returns for one row. NOT a DB row (contrast with make_event, which
     persists a real Event): this is the input sync_events reconciles
     against the DB.
+
+    Call this again for each _stub_fetch if a test syncs more than once and
+    cares about host_roles: sync_events pops "host_roles" off the dict it's
+    given (mutating it in place), so reusing one dict/list across two
+    sync_events() calls silently hands the second call host_roles=[].
     """
     fields = dict(
         source_row_id="2026-08-05|gbm 1",
@@ -60,6 +70,17 @@ def fake_sheet_event(**overrides):
     )
     fields.update(overrides)
     return fields
+
+
+def make_committee(session, name="Social", chair_role=Role.social_chair):
+    """A Committee row for EventHost reconciliation tests -- not from
+    seed.py, so tests stay independent of the real roster.
+    """
+    committee = Committee(name=name, description="Test committee", chair_role=chair_role)
+    session.add(committee)
+    session.commit()
+    session.refresh(committee)
+    return committee
 
 
 # --- schema constraint: source_row_id unique index ---
@@ -160,11 +181,11 @@ def test_in_place_edit_keeps_the_same_row_id(session, monkeypatch):
     assert event.id == original_id
     assert event.location == "PGH 240"
 
-def test_points_value_and_event_type_survive_an_update(session, monkeypatch):
-    # points_value and event_type aren't in the sheet at all -- an update
-    # must not clobber whatever a chair has set for them in the dashboard.
+def test_points_value_survives_an_update(session, monkeypatch):
+    # points_value isn't in the sheet at all -- an update must not clobber
+    # whatever a chair has set for it in the dashboard.
     key = event_key(date(2026, 8, 5), "GBM 1")
-    make_event(session, source_row_id=key, title="GBM 1", points_value=50, event_type="Workshop")
+    make_event(session, source_row_id=key, title="GBM 1", points_value=50)
 
     _stub_fetch(monkeypatch, [fake_sheet_event(source_row_id=key, title="GBM 1", location="New Location")])
     created, updated = sync_events(session)
@@ -173,7 +194,26 @@ def test_points_value_and_event_type_survive_an_update(session, monkeypatch):
     event = session.exec(select(Event).where(Event.source_row_id == key)).one()
     assert event.location == "New Location"
     assert event.points_value == 50
-    assert event.event_type == "Workshop"
+
+
+def test_event_type_is_overwritten_from_the_sheet(session, monkeypatch):
+    # Unlike points_value, event_type IS sheet-derived now -- parse_row
+    # always returns it, so an update must overwrite whatever was there
+    # before, even a hand-set value like "Workshop" that predates this
+    # feature. (This is the half of the old combined test whose premise
+    # flipped: event_type used to survive updates same as points_value: now
+    # it doesn't, on purpose.)
+    key = event_key(date(2026, 8, 5), "GBM 1")
+    make_event(session, source_row_id=key, title="GBM 1", event_type="Workshop")
+
+    _stub_fetch(monkeypatch, [
+        fake_sheet_event(source_row_id=key, title="GBM 1", event_type="social"),
+    ])
+    created, updated = sync_events(session)
+
+    assert (created, updated) == (0, 1)
+    event = session.exec(select(Event).where(Event.source_row_id == key)).one()
+    assert event.event_type == "social"
 
 def test_rows_with_no_source_row_id_are_untouched_by_sync(session, monkeypatch):
     manual_event = make_event(session, source_row_id=None, title="Hand-Added Social")
@@ -249,3 +289,163 @@ def test_resyncing_unchanged_sheet_does_not_raise_integrity_error(session, monke
     created, updated = sync_events(session)   # would raise IntegrityError if this mistakenly re-inserted
 
     assert (created, updated) == (0, 1)
+
+
+# --- event_type backfill ---
+
+def test_sync_sets_event_type_on_a_new_event(session, monkeypatch):
+    _stub_fetch(monkeypatch, [fake_sheet_event(event_type="social")])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    assert event.event_type == "social"
+
+def test_sync_backfills_event_type_on_an_existing_event(session, monkeypatch):
+    # An event synced before this feature shipped has event_type=None
+    # forever unless a later sync backfills it. event_type now rides the
+    # same dict as every other sheet field, so the existing setattr update
+    # loop does this for free -- no special-case code needed.
+    key = event_key(date(2026, 8, 5), "GBM 1")
+    make_event(session, source_row_id=key, title="GBM 1", event_type=None)
+
+    _stub_fetch(monkeypatch, [fake_sheet_event(source_row_id=key, title="GBM 1", event_type="social")])
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == key)).one()
+    assert event.event_type == "social"
+
+
+# --- EventHost reconciliation ---
+
+def test_sync_creates_one_host_for_owner_only(session, monkeypatch):
+    make_committee(session, name="Social", chair_role=Role.social_chair)
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert len(hosts) == 1
+
+def test_sync_creates_two_hosts_for_owner_plus_committee_collab(session, monkeypatch):
+    make_committee(session, name="Social", chair_role=Role.social_chair)
+    make_committee(session, name="EEC", chair_role=Role.eec_chair)
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair, Role.eec_chair])])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert len(hosts) == 2
+
+def test_sync_ignores_an_outside_org_collab(session, monkeypatch):
+    # An outside-org collab (e.g. "NSBE") never resolves to a Role --
+    # resolve_committee already dropped it by the time parse_row built
+    # host_roles, so sync_events only ever sees the owner's role here. That
+    # makes this mechanically identical to the owner-only case above; the
+    # point is documenting that the org contributes no host row.
+    make_committee(session, name="Social", chair_role=Role.social_chair)
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert len(hosts) == 1
+
+def test_resyncing_does_not_duplicate_hosts_or_raise(session, monkeypatch):
+    # The landmine this reconciliation exists to defuse: sync_events has no
+    # per-row try/except (that isolation lives in fetch_sheet_events), so a
+    # blind session.add(EventHost(...)) on the second sync would raise
+    # IntegrityError on the composite PK at commit and kill the ENTIRE sync,
+    # not just one row. The wanted - existing_hosts set difference is what
+    # prevents that.
+    #
+    # Re-stub with a FRESH fake_sheet_event() call for the second sync rather
+    # than reusing the first list: sync_events pops "host_roles" off the dict
+    # it's handed, which mutates that dict in place. Reusing the same dict
+    # object across two sync_events() calls would silently hand the second
+    # call an already-stripped host_roles=[] and this test would prove
+    # nothing (it would "pass" by deleting the host, not by leaving it alone).
+    make_committee(session, name="Social", chair_role=Role.social_chair)
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+    sync_events(session)
+
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+    sync_events(session)   # would raise IntegrityError if hosts were re-added blindly
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert len(hosts) == 1
+
+def test_sync_removes_a_host_dropped_from_the_sheet(session, monkeypatch):
+    # Host reconciliation deletes stale rows -- a deliberate, narrow
+    # exception to this file's no-delete rule (EventHost has no dependents,
+    # unlike Event, where deleting orphans EventReminder rows and resets
+    # points_value). Without this, a collab pulled from the sheet would keep
+    # that chair able to see and mint QR codes for an event they no longer run.
+    social = make_committee(session, name="Social", chair_role=Role.social_chair)
+    make_committee(session, name="EEC", chair_role=Role.eec_chair)
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair, Role.eec_chair])])
+    sync_events(session)
+
+    # EEC collab removed from the sheet on the next pull.
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost.committee_id).where(EventHost.event_id == event.id)).all()
+    assert hosts == [social.id]
+
+def test_sync_eboard_event_has_no_hosts(session, monkeypatch):
+    _stub_fetch(monkeypatch, [fake_sheet_event(event_type="eboard", host_roles=[])])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert event.event_type == "eboard"
+    assert hosts == []
+
+def test_sync_skips_a_host_role_with_no_committee_row(session, monkeypatch, caplog):
+    # No Committee row exists for Role.social_chair here -- committee_ids
+    # simply has no entry for it. This must not crash the sync; the event
+    # itself still gets created, just with no host row for the missing role.
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+
+    with caplog.at_level(logging.WARNING):
+        created, updated = sync_events(session)
+
+    assert (created, updated) == (1, 0)
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert hosts == []
+    assert caplog.records
+
+
+# --- host_roles must never reach the Event model ---
+
+def test_host_roles_never_reaches_the_event_model_on_create(session, monkeypatch):
+    # host_roles is a different table (EventHost) -- Event has no such
+    # column, so it must be popped off before Event(**data).
+    _stub_fetch(monkeypatch, [fake_sheet_event(host_roles=[Role.social_chair])])
+
+    sync_events(session)   # must not raise
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    assert not hasattr(event, "host_roles")
+
+def test_host_roles_never_reaches_the_event_model_on_update(session, monkeypatch):
+    # This is the branch that actually proves the pop is load-bearing:
+    # setattr(existing, "host_roles", ...) raises ValueError on a SQLModel
+    # instance ("... object has no field ...") -- unlike the Event(**data)
+    # constructor exercised above, which silently drops an unrecognized kwarg.
+    key = event_key(date(2026, 8, 5), "GBM 1")
+    make_event(session, source_row_id=key, title="GBM 1")
+
+    _stub_fetch(monkeypatch, [fake_sheet_event(source_row_id=key, host_roles=[Role.social_chair])])
+    sync_events(session)   # must not raise ValueError
+
+    event = session.exec(select(Event).where(Event.source_row_id == key)).one()
+    assert not hasattr(event, "host_roles")

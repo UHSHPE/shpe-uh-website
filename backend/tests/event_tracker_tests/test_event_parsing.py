@@ -7,16 +7,23 @@
 # end_time on the wrong day. The user confirmed no SHPE events run past
 # midnight, so that case is intentionally not exercised below.
 
+import logging
+
 import pytest
 from datetime import date, datetime, time
 
+from models.user.user_enums import CHAIR_ROLES, Role
 from services.event_tracker_services import (
     COLUMNS,
+    COMMITTEE_ROLES,
+    EBOARD,
     SHEET_TZ,
     event_key,
+    get_event_type,
     parse_date,
     parse_row,
     parse_time,
+    resolve_committee,
     to_utc,
 )
 
@@ -36,8 +43,9 @@ def sheet_row(**overrides):
         location="PGH 232",
         start_time="6:00 PM",
         end_time="7:00 PM",
-        owners="Marketing",
+        owners="Marketing Chair - Valeria Zabala",
     )
+    fields["collab(s)"] = ""
     fields.update(overrides)
     return {COLUMNS[key]: value for key, value in fields.items()}
 
@@ -94,7 +102,7 @@ def test_event_key_differs_when_only_the_date_changes():
 
 # --- parse_row ---
 
-def test_parse_row_happy_path_maps_all_six_fields():
+def test_parse_row_happy_path_maps_all_eight_fields():
     year = datetime.now(SHEET_TZ).year
     row = sheet_row(
         name="GBM 1",
@@ -109,6 +117,7 @@ def test_parse_row_happy_path_maps_all_six_fields():
 
     assert set(parsed.keys()) == {
         "source_row_id", "title", "description", "location", "start_time", "end_time",
+        "event_type", "host_roles",
     }
     assert parsed["source_row_id"] == event_key(date(year, 8, 5), "GBM 1")
     assert parsed["title"] == "GBM 1"
@@ -116,6 +125,10 @@ def test_parse_row_happy_path_maps_all_six_fields():
     assert parsed["location"] == "PGH 232"
     assert parsed["start_time"] == to_utc(datetime(year, 8, 5, 18, 0))
     assert parsed["end_time"] == to_utc(datetime(year, 8, 5, 19, 0))
+    # owners defaults to a Marketing Chair value and collab(s) to blank --
+    # see sheet_row().
+    assert parsed["event_type"] == "marketing"
+    assert parsed["host_roles"] == [Role.marketing_chair]
 
 def test_parse_row_blank_name_returns_none():
     assert parse_row(sheet_row(name="")) is None
@@ -175,3 +188,114 @@ def test_excluded_event_with_a_garbage_date_is_dropped_without_raising():
     # otherwise raise on it.
     row = sheet_row(name="C&E Retreat", date="not-a-date")
     assert parse_row(row) is None
+
+
+# --- get_event_type: OWNER(S) values -> event_type ---
+#
+# get_event_type and resolve_committee share one normalizer
+# (_normalize_owner) and both lookup tables (COMMITTEE_ROLES, EBOARD), so
+# they're exercised together in this section rather than split in two.
+
+@pytest.mark.parametrize("raw, expected_type", [
+    ("Social Chair - Anahi Salinas", "social"),
+    ("MentorSHPE Chairs - Nicolas Horton", "mentorshpe"),               # plural "Chairs"
+    ("MentorSHPE Chair - Nicolas Horton | Mia Flores", "mentorshpe"),   # co-chairs, pipe after the dash
+    ("EEC Chair - David Cohen", "eec"),
+    ("Wellness & Athletics Chair - Smiley Trenton", "athletic"),        # "&" preserved, not normalized
+    ("SHPE Jr. Chair - Isabela Morales", "shpe_jr"),                    # trailing "." preserved
+    ("CFC Chair - Sara Romero", "career_fair"),
+    ("  social   chair  -  x  ", "social"),                             # case + whitespace tolerance
+    ("Social Chair – X", "social"),                                     # en dash (Sheets autocorrects to this)
+])
+def test_get_event_type_owner_values(raw, expected_type):
+    assert get_event_type(raw) == expected_type
+
+
+@pytest.mark.parametrize("raw", ["", None])
+def test_get_event_type_blank_is_none_and_logs_nothing(raw, caplog):
+    # An unfilled OWNER(S) cell isn't a positive claim about E-Board -- it
+    # must not be silently filed under "eboard". It's also not anomalous
+    # enough to warn about.
+    with caplog.at_level(logging.WARNING):
+        assert get_event_type(raw) is None
+    assert caplog.records == []
+
+
+# --- resolve_committee: bare COLLAB(S)? values -> Role ---
+
+@pytest.mark.parametrize("raw, expected_role", [
+    ("eec", Role.eec_chair),
+    ("academic", Role.academic_chair),
+])
+def test_resolve_committee_bare_collab_value(raw, expected_role):
+    # A bare COLLAB(S)? value has neither a dash nor a "Chair" suffix, so
+    # both _normalize_owner strips are no-ops and it falls straight through
+    # to the lookup -- the same function that serves the OWNER(S) column.
+    assert resolve_committee(raw) == expected_role
+
+
+def test_resolve_committee_project_spelling_variants_agree():
+    # OWNER(S) offers "Project"; COLLAB(S)? offers "Projects" -- the two
+    # dropdowns disagree on spelling, and both must resolve to the same Role.
+    assert resolve_committee("project") == Role.projects_chair
+    assert resolve_committee("Projects") == Role.projects_chair
+
+
+def test_resolve_committee_shpe_jr_spelling_variants_agree():
+    # Same divergence: OWNER(S)'s trailing "." vs COLLAB(S)?'s bare "SHPE Jr".
+    assert resolve_committee("SHPE Jr.") == Role.shpe_jr_chair
+    assert resolve_committee("SHPE Jr") == Role.shpe_jr_chair
+
+
+# --- E-Board and the unknown case ---
+
+@pytest.mark.parametrize("raw", sorted(EBOARD))
+def test_get_event_type_eboard_values_log_nothing(raw, caplog):
+    # All ten EBOARD members are expected, positively-whitelisted values --
+    # none of them should ever trip the "unrecognized owner" warning.
+    with caplog.at_level(logging.WARNING):
+        assert get_event_type(raw) == "eboard"
+    assert caplog.records == []
+
+
+def test_get_event_type_eboard_with_dash_and_name():
+    # Not just the bare value -- an officer's OWNER(S) cell looks like a
+    # chair's, dash and name included.
+    assert get_event_type("VPE - Carlos Alba") == "eboard"
+
+
+@pytest.mark.parametrize("raw", ["NSBE", "SWE"])
+def test_resolve_committee_outside_org_is_none_and_logs_nothing(raw, caplog):
+    # An outside org in COLLAB(S)? is the NORMAL case, not an anomaly -- a
+    # warning here would be noise on every collab event. All logging lives
+    # in get_event_type, not resolve_committee.
+    with caplog.at_level(logging.WARNING):
+        assert resolve_committee(raw) is None
+    assert caplog.records == []
+
+
+def test_get_event_type_unlisted_owner_files_under_eboard_with_a_warning(caplog):
+    # The pair with the NSBE/SWE test above: a genuinely unrecognized
+    # OWNER(S) value (a new dropdown option next semester, a typo, ...) is
+    # loud where an outside collab is silent. It still files under "eboard"
+    # rather than None so the event stays reachable by someone likely to
+    # notice the mistake.
+    with caplog.at_level(logging.WARNING):
+        result = get_event_type("Robotics Club")
+    assert result == "eboard"
+    assert len(caplog.records) == 1
+    assert "Robotics Club" in caplog.records[0].getMessage()
+
+
+# --- table completeness ---
+
+def test_committee_roles_table_is_complete_and_disjoint_from_eboard():
+    # Every value maps to one of the 14 real chair roles...
+    assert set(COMMITTEE_ROLES.values()) <= CHAIR_ROLES
+    # ...and every chair role is reachable through at least one key -- this
+    # is exactly what would auto-catch the next CFC-style omission (a
+    # committee with a Role but no dropdown key pointing at it).
+    assert set(COMMITTEE_ROLES.values()) == CHAIR_ROLES
+    # No sheet spelling can be classified two different ways depending on
+    # which lookup table runs first.
+    assert not (set(COMMITTEE_ROLES) & EBOARD)

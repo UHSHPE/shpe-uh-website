@@ -163,7 +163,7 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 
 #### Event tracker sheet sync (optional, one-time setup)
 
-When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, or location in the sheet updates the calendar entry in place on the next sync.
+When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, location, or owning committee in the sheet updates the calendar entry in place on the next sync.
 
 > **Moving an event to a different day, or renaming it, creates a second calendar entry** rather than replacing the first — the old one has to be removed by hand. The sync only ever adds and updates; it never deletes, so removing a row from the sheet also leaves its calendar entry in place.
 
@@ -187,7 +187,9 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 > **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1**; if the fall sheet is still configured when the year rolls over, its events get re-read as next year's and appear on the calendar a second time.
 
-**Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `SIGN IN FORM`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
+**Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `COLLAB(S)?`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
+
+`OWNER(S)` and `COLLAB(S)?` are dropdowns, and they decide which committee an event is filed under. `OWNER(S)` is either `<Committee> Chair - <name>` or an E-Board position; `COLLAB(S)?` optionally names one more committee co-hosting the event, or an outside organization, which is ignored. Both are matched against the sheet's own spelling of each committee name, so **adding a new option to either dropdown needs a matching entry in `COMMITTEE_ROLES`** (`backend/services/event_tracker_services.py`) — otherwise the event is quietly filed under the E-Board instead.
 
 ### `frontend/.env.local`
 

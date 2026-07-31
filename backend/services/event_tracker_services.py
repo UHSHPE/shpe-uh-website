@@ -1,11 +1,15 @@
-import os, logging
+import os, logging, re
 from datetime import datetime, date, time
 from zoneinfo import ZoneInfo
 import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from sqlmodel import select
+from models.committee import Committee
 from models.event import Event
+from models.event_host import EventHost
+from models.user.user_enums import Role   # leaf enum module -- no circular import
+
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -23,6 +27,49 @@ COLUMNS = {"date":"DATE",
 
 # Event names (normalized: lowercased, whitespace-collapsed) to keep off the public calendar
 EXCLUDED_EVENTS = {"c&e retreat", "national convention", "thanksgiving break"}
+
+# OWNER(S) / COLLAB(S)? -> chair Role. Keys are the SHEET's spelling
+# (lowercased, whitespace-collapsed), deliberately not Committee.name --
+# "wellness & athletics", "project", "shpe jr.", "eec", "cfc" all differ from
+# the DB names in seed.py. Role is the anchor because Committee.chair_role
+# and require_chair already key on it, so a committee rename in seed.py
+# can't break this link. "&" and the trailing "." are NOT normalized away --
+# they're part of the correct key.
+#
+# "project"/"projects" and "shpe jr."/"shpe jr" are the tell that the two
+# dropdowns (OWNER(S) vs COLLAB(S)?) are independently maintained option
+# lists that don't always agree -- two divergences in fourteen committees is
+# a high enough rate that there are probably more. Extra aliases cost
+# nothing; a missing one is a silent misfile.
+COMMITTEE_ROLES = {
+    "academic":             Role.academic_chair,
+    "wellness & athletics": Role.athletic_chair,
+    "cfc":                  Role.career_fair_chair,
+    "eec":                  Role.eec_chair,
+    "marketing":            Role.marketing_chair,
+    "member relations":     Role.member_relations_chair,
+    "mentorshpe":           Role.mentorshpe_chair,
+    "outreach":             Role.outreach_chair,
+    "professional":         Role.professional_chair,
+    "project":              Role.projects_chair,   # OWNER(S) spelling
+    "projects":             Role.projects_chair,   # COLLAB(S)? spelling
+    "shpe jr.":             Role.shpe_jr_chair,    # OWNER(S) spelling
+    "shpe jr":              Role.shpe_jr_chair,    # COLLAB(S)? spelling
+    "shpetina":             Role.shpetina_chair,
+    "social":               Role.social_chair,
+    "web development":      Role.web_dev_chair,
+}
+
+# The sheet's own abbreviations for E-Board positions -- not Role display
+# values ("vpe" vs "Vice President External", "communications" vs
+# "Communication Director"). A set, not a dict like COMMITTEE_ROLES: all ten
+# collapse to the same event_type and none has a Committee row to host, so
+# there's nothing for a value side to carry.
+EBOARD = {
+    "president", "vpe", "vpi", "secretary", "treasurer",
+    "communications", "new member rep", "regional rep",
+    "director of internal affairs", "eboard",
+}
 
 def is_configured() -> bool:
     return bool(os.getenv("CREDENTIALS") and os.getenv("SHEET_ID"))
@@ -58,13 +105,30 @@ def event_key(local_date, title: str) -> str:
     norm_title = " ".join(title.split()).lower()
     return f"{local_date.isoformat()}|{norm_title}"     # e.g. "2026-08-05|gbm 1"
 
-def get_event_type():
-    # TODO: unfinished — landed on dev with an empty body, which made this
-    # module fail to import and took the whole backend down with it. Stubbed
-    # so the app runs; nothing calls it yet. Intended to map a sheet row onto
-    # Event.event_type (projects, professional, eboard, …) for the per-chair
-    # event view.
-    raise NotImplementedError("get_event_type is not implemented yet")
+def _normalize_owner(raw: str | None) -> str:
+    text = " ".join((raw or "").split()).lower()
+    text = re.split(r"[-–—]", text, maxsplit=1)[0]      # drop "- <chair name(s)>"
+    return re.sub(r"\s+chairs?$", "", text.strip()).strip()
+
+
+def resolve_committee(raw: str | None) -> Role | None:
+    """Committee for an OWNER(S) or COLLAB(S)? value, or None.
+
+    Silent by design — an unrecognized COLLAB(S)? is an outside org, which is
+    the normal case. All logging lives in get_event_type().
+    """
+    return COMMITTEE_ROLES.get(_normalize_owner(raw))
+
+
+def get_event_type(raw_owner: str | None) -> str | None:
+    text = _normalize_owner(raw_owner)
+    if not text:
+        return None                     # unfilled cell isn't a positive claim about E-Board
+    if text in COMMITTEE_ROLES:
+        return COMMITTEE_ROLES[text].name.removesuffix("_chair")   # "academic", "eec", "shpe_jr"
+    if text not in EBOARD:
+        logger.warning("Unrecognized event owner %r — filing under eboard", raw_owner)
+    return "eboard"
 
 
 def parse_row(row: dict) -> dict | None:
@@ -86,6 +150,9 @@ def parse_row(row: dict) -> dict | None:
         "location": row.get(COLUMNS["location"]),
         "start_time": to_utc(start_local),
         "end_time": to_utc(end_local) if end_local else None,
+        "event_type": get_event_type(row.get(COLUMNS["owners"])),
+        "host_roles": [r for r in (resolve_committee(row.get(COLUMNS["owners"])),
+                                   resolve_committee(row.get(COLUMNS["collab(s)"]))) if r],
     }
 
 def fetch_sheet_events() -> list[dict]:
@@ -107,7 +174,19 @@ def fetch_sheet_events() -> list[dict]:
 
 def sync_events(session) -> tuple[int, int]:
     created = updated = 0
+    # Role -> Committee.id, built once outside the loop (14 rows, one query,
+    # no N+1). Keyed on chair_role, the same anchor COMMITTEE_ROLES uses, so
+    # a committee rename in seed.py can't break this link.
+    committee_ids = {c.chair_role: c.id for c in session.exec(select(Committee)).all()}
+
     for data in fetch_sheet_events():
+        # Not an Event column -- EventHost is a different table. Must come
+        # out before Event(**data) and, more sharply, before the setattr
+        # update loop below: setattr on an already-built SQLModel instance
+        # raises ValueError on an unrecognized field, unlike the
+        # constructor, which silently drops an unknown kwarg.
+        host_roles = data.pop("host_roles", [])
+
         existing = session.exec(
             select(Event).where(Event.source_row_id == data["source_row_id"])
         ).first()
@@ -115,9 +194,39 @@ def sync_events(session) -> tuple[int, int]:
             for k, v in data.items():
                 setattr(existing, k, v)
             updated += 1
+            event = existing
         else:
-            session.add(Event(**data))
+            event = Event(**data)
+            session.add(event)
+            session.flush()          # a new Event has no .id until this
             created += 1
+
+        # Host reconciliation -- a deliberate, narrow exception to this
+        # file's no-delete rule. EventHost has no dependents (unlike Event,
+        # where deleting orphans EventReminder rows and resets
+        # points_value), so removing a stale row is safe here. Leaving hosts
+        # additive-only would mean a collab pulled from the sheet keeps that
+        # chair able to see and mint QR codes for an event they no longer run.
+        existing_hosts = set(session.exec(
+            select(EventHost.committee_id).where(EventHost.event_id == event.id)
+        ).all())
+        for role in host_roles:
+            if role not in committee_ids:
+                logger.warning(
+                    "No Committee row for chair role %s — skipping host link on %r",
+                    role, event.title,
+                )
+        wanted = {committee_ids[r] for r in host_roles if r in committee_ids}
+        # The wanted - existing_hosts difference is load-bearing: sync_events
+        # has no per-row try/except (that isolation lives in
+        # fetch_sheet_events), so a blind session.add(EventHost(...)) on a
+        # second sync would raise IntegrityError on the composite PK at
+        # commit and kill the entire sync, not just one row.
+        for cid in wanted - existing_hosts:
+            session.add(EventHost(event_id=event.id, committee_id=cid))
+        for cid in existing_hosts - wanted:
+            session.delete(session.get(EventHost, (event.id, cid)))
+
     session.commit()
     logger.info("Event sync: %d created, %d updated", created, updated)
     return created, updated
