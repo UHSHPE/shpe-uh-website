@@ -1,18 +1,40 @@
-from models.event import Event, EventOut
+from models.event import Event, EventChairOut, EventOut
+from models.event_attendance import AttendanceOut, AttendRequest, AttendResult, EventAttendance
 from models.event_reminder import EventReminder, EventReminderOut
 from models.user.user import User
-from services.dependencies import SessionDependencies, get_current_user
+from services import attendance_services
+from services.dependencies import SessionDependencies, get_current_user, require_event_host
+from services.rate_limit import limiter
 from services.reminder_services import compute_remind_at
+from services.time_services import utcnow
 
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import select
 
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Annotated
 
 router = APIRouter(prefix="/events", tags=["Events"])
+
+
+def _event_out(event: Event) -> EventOut:
+    """EventOut with points_value computed from the rule (no per-event
+    overrides, nothing new stored on Event) instead of the raw, always-0 DB
+    column."""
+    sign_in_points, _ = attendance_services.default_points(event)
+    return EventOut(
+        id=event.id,
+        title=event.title,
+        description=event.description,
+        location=event.location,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        points_value=sign_in_points,
+        event_type=event.event_type,
+    )
+
 
 @router.get('/upcoming', response_model=list[EventOut])
 async def get_upcoming_events(
@@ -20,19 +42,152 @@ async def get_upcoming_events(
     session: SessionDependencies,
     days: int = 7,
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     cutoff = now + timedelta(days=days)
     stmt = (
         select(Event)
         .where(Event.start_time >= now, Event.start_time <= cutoff)
         .order_by(Event.start_time)
     )
-    return session.exec(stmt).all()
+    return [_event_out(e) for e in session.exec(stmt).all()]
 
 
 @router.get('/', response_model=list[EventOut])
 async def get_all_events(session: SessionDependencies):
-    return session.exec(select(Event).order_by(Event.start_time)).all()
+    return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
+
+
+# --- QR attendance & points ---
+
+@router.post('/attend', response_model=AttendResult)
+@limiter.limit("20/minute")
+async def attend_event(
+    request: Request,
+    payload: AttendRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    session: SessionDependencies,
+):
+    resolved = attendance_services.resolve_code(session, payload.code)
+    if resolved is None:
+        # Generic 404 -- don't distinguish "no such code" from anything else.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid code")
+    event, action = resolved
+
+    if attendance_services.is_expired(event):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="This code has expired")
+
+    if action == "in":
+        attendance, points = attendance_services.record_sign_in(
+            session,
+            user,
+            event,
+            brought_new_member=payload.brought_new_member,
+            new_member_name=payload.new_member_name,
+        )
+    else:
+        attendance, points = attendance_services.record_sign_out(session, user, event)
+        if attendance is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sign in before signing out",
+            )
+
+    session.refresh(user)
+    return AttendResult(
+        action="sign_in" if action == "in" else "sign_out",
+        status="recorded" if points > 0 else "already_recorded",
+        event_id=event.id,
+        event_title=event.title,
+        points_awarded=points,
+        total_points=user.points,
+    )
+
+
+@router.get('/mine', response_model=list[EventChairOut])
+async def get_my_hosted_events(
+    user: Annotated[User, Depends(require_event_host)],
+    session: SessionDependencies,
+):
+    """Events this chair/E-Board member hosts, WITH sign-in/out codes. Codes
+    are minted on first view (ensure_event_codes is idempotent)."""
+    events = attendance_services.host_scoped_events(session, user)
+
+    out = []
+    for event in events:
+        attendance_services.ensure_event_codes(session, event)
+        sign_in_points, _ = attendance_services.default_points(event)
+        attendee_count = len(session.exec(
+            select(EventAttendance).where(EventAttendance.event_id == event.id)
+        ).all())
+        out.append(EventChairOut(
+            id=event.id,
+            title=event.title,
+            description=event.description,
+            location=event.location,
+            start_time=event.start_time,
+            end_time=event.end_time,
+            points_value=sign_in_points,
+            event_type=event.event_type,
+            sign_in_code=event.sign_in_code,
+            sign_out_code=event.sign_out_code,
+            attendee_count=attendee_count,
+        ))
+    return out
+
+
+@router.get('/all', response_model=list[EventOut])
+async def get_all_events_for_chairs(
+    user: Annotated[User, Depends(require_event_host)],
+    session: SessionDependencies,
+):
+    """Every chapter event, read-only, no codes. Not public — same gate as
+    /events/mine. Lets a chair/E-Board member see the full calendar (not
+    just what they personally host) without leaking any codes."""
+    return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
+
+
+@router.get('/{event_id}/attendance', response_model=list[AttendanceOut])
+async def get_event_attendance(
+    event_id: int,
+    user: Annotated[User, Depends(require_event_host)],
+    session: SessionDependencies,
+):
+    """Roster for one event, plus who claimed a new member and their names.
+    Scoped through EventHost (attendance_services.host_scoped_events) —
+    same as /events/mine — so a chair can't read another committee's
+    roster. The president bypasses, same as everywhere else."""
+    event = session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    hosted_ids = {e.id for e in attendance_services.host_scoped_events(session, user)}
+    if event_id not in hosted_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this event's attendance",
+        )
+
+    rows = session.exec(
+        select(EventAttendance, User)
+        .join(User, User.id == EventAttendance.user_id)
+        .where(EventAttendance.event_id == event_id)
+        .order_by(EventAttendance.signed_in_at)
+    ).all()
+
+    return [
+        AttendanceOut(
+            user_id=attendee.id,
+            first_name=attendee.first_name,
+            last_name=attendee.last_name,
+            personal_email=attendee.personal_email,
+            signed_in_at=att.signed_in_at,
+            signed_out_at=att.signed_out_at,
+            brought_new_member=att.brought_new_member,
+            new_member_name=att.new_member_name,
+            points_awarded=att.points_awarded,
+        )
+        for att, attendee in rows
+    ]
 
 
 def get_active_reminder(session, user_id: int, event_id: int) -> EventReminder | None:

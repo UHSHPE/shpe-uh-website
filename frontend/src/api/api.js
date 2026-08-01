@@ -87,6 +87,40 @@ export function getMyReminders() {
   return api.get("/events/reminders/me", { headers: authHeaders() });
 }
 
+// --- QR attendance & points ---
+
+// Scans a sign-in or sign-out QR code. brought_new_member/new_member_name
+// only matter on a sign-in scan (harmless — ignored server-side — on a
+// sign-out scan).
+export function attendEvent(code, { broughtNewMember, newMemberName } = {}) {
+  return api.post(
+    "/events/attend",
+    {
+      code,
+      brought_new_member: broughtNewMember ?? false,
+      new_member_name: newMemberName ?? null,
+    },
+    { headers: authHeaders() },
+  );
+}
+
+// Events the signed-in chair/E-Board member hosts, WITH sign-in/out codes
+// (minted on first view). Chair/E-Board only — 403 for a regular member.
+export function getMyEvents() {
+  return api.get("/events/mine", { headers: authHeaders() });
+}
+
+// Every chapter event, read-only — no codes. Same chair/E-Board gate as
+// getMyEvents.
+export function getAllChairEvents() {
+  return api.get("/events/all", { headers: authHeaders() });
+}
+
+// Attendance roster for one event — 403 unless the caller hosts it.
+export function getEventAttendance(eventId) {
+  return api.get(`/events/${eventId}/attendance`, { headers: authHeaders() });
+}
+
 export function getNotifications() {
   return api.get("/notifications", { headers: authHeaders() });
 }

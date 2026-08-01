@@ -254,6 +254,44 @@ def seed_committees_and_chairs(s: Session):
     s.commit()
 
 
+# E-Board "committees" -- not real committees members can join (joinable=
+# False), seeded purely so EventHost can point at an officer position or at
+# the sheet's bare "eboard" owner value (the generic row, chair_role=None).
+# Whoever currently holds a position's Role shows up as its "chair" the same
+# way a real committee's chair does (require_chair / chair_contact_email
+# aren't used here, but _sync_chair_memberships already keys purely off
+# Committee.chair_role with no CHAIR_ROLES restriction, so nothing there
+# needs to change).
+EBOARD_COMMITTEES = [
+    ("President", Role.president),
+    ("Vice President External", Role.vpe),
+    ("Vice President Internal", Role.vpi),
+    ("Secretary", Role.secretary),
+    ("Treasurer", Role.treasurer),
+    ("Communications", Role.comm_director),
+    ("New Member Rep", Role.new_member_rep),
+    ("Regional Rep", Role.regional_rep),
+    ("Director of Internal Affairs", Role.dir_int_aff),
+    ("E-Board", None),
+]
+
+
+def seed_eboard_committees(s: Session):
+    for name, chair_role in EBOARD_COMMITTEES:
+        existing = s.exec(select(Committee).where(Committee.name == name)).first()
+        if existing:
+            print(f"Skipped E-Board committee — {name} already exists.")
+            continue
+        s.add(Committee(
+            name=name,
+            description=f"E-Board — {name}. Not a real committee; exists so events can be linked to it.",
+            chair_role=chair_role,
+            joinable=False,
+        ))
+        print(f"Seeded E-Board committee: {name}")
+    s.commit()
+
+
 def seed_comm_director(s: Session):
     """Shop admin is held by the comms director + marketing chair roles. The
     marketing chair is already in COMMITTEE_ROSTER; comm_director is an
@@ -488,6 +526,7 @@ def seed():
     with Session(engine) as s:
         seed_test_user(s)
         seed_committees_and_chairs(s)
+        seed_eboard_committees(s)
         seed_comm_director(s)
         seed_president(s)
         seed_eboard(s)

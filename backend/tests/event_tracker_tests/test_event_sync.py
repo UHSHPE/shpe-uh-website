@@ -398,6 +398,21 @@ def test_sync_removes_a_host_dropped_from_the_sheet(session, monkeypatch):
     hosts = session.exec(select(EventHost.committee_id).where(EventHost.event_id == event.id)).all()
     assert hosts == [social.id]
 
+def test_sync_creates_host_for_bare_eboard_owner_via_generic_committee(session, monkeypatch):
+    # The bare "eboard" sheet value now resolves to None (not "no match"),
+    # which must reconcile against a Committee row whose chair_role is
+    # genuinely None (seed.py's generic "E-Board" committee) rather than
+    # being dropped like a real non-match (blank cell, outside-org collab).
+    make_committee(session, name="E-Board", chair_role=None)
+    _stub_fetch(monkeypatch, [fake_sheet_event(event_type="eboard", host_roles=[None])])
+
+    sync_events(session)
+
+    event = session.exec(select(Event).where(Event.source_row_id == "2026-08-05|gbm 1")).one()
+    hosts = session.exec(select(EventHost).where(EventHost.event_id == event.id)).all()
+    assert len(hosts) == 1
+
+
 def test_sync_eboard_event_has_no_hosts(session, monkeypatch):
     _stub_fetch(monkeypatch, [fake_sheet_event(event_type="eboard", host_roles=[])])
 

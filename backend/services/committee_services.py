@@ -63,8 +63,10 @@ def is_active_member(session, committee_id: int, user_id: int) -> bool:
 
 
 def get_all_committees(session):
+    # joinable=False filters out the E-Board "committees" seeded solely so
+    # EventHost can point at an officer position — members never see them.
     return session.exec(
-        select(Committee)
+        select(Committee).where(Committee.joinable == True)  # noqa: E712
     ).all()
 
 

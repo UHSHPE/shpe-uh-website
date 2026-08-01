@@ -21,6 +21,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
+- **QR Event Attendance** *(backend ready; member and chair pages still being designed)* — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot: 2 for signing in and 2 for signing out of a regular event, 3 and 2 for a general meeting, plus 2 for bringing a new member. Scanning the same code twice never awards twice, and a code stops working once the event is over. Chairs and E-Board generate the codes for the events they host and can see who attended
 
 ## Tech Stack
 
@@ -272,7 +273,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure services, rate limiter, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
 ```
@@ -320,6 +321,10 @@ shpe-uh-website/
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder |
 | GET | `/events/reminders/me` | Yes | Current user's active reminders |
+| POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice |
+| GET | `/events/mine` | Chair/E-Board | Events they host, with the sign-in/sign-out codes to render as QR |
+| GET | `/events/all` | Chair/E-Board | Every chapter event, read-only (no codes) |
+| GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair) |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |

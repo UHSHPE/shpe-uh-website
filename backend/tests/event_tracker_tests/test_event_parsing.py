@@ -265,12 +265,16 @@ def test_get_event_type_eboard_with_dash_and_name():
 
 
 @pytest.mark.parametrize("raw", ["NSBE", "SWE"])
-def test_resolve_committee_outside_org_is_none_and_logs_nothing(raw, caplog):
+def test_resolve_committee_outside_org_is_no_match_and_logs_nothing(raw, caplog):
     # An outside org in COLLAB(S)? is the NORMAL case, not an anomaly -- a
     # warning here would be noise on every collab event. All logging lives
-    # in get_event_type, not resolve_committee.
+    # in get_event_type, not resolve_committee. NO_MATCH (not None) is the
+    # "nothing matched" signal now that None is a real match (the generic
+    # "E-Board" committee's chair_role) -- see resolve_committee's docstring.
+    from services.event_tracker_services import NO_MATCH
+
     with caplog.at_level(logging.WARNING):
-        assert resolve_committee(raw) is None
+        assert resolve_committee(raw) is NO_MATCH
     assert caplog.records == []
 
 
@@ -297,5 +301,59 @@ def test_committee_roles_table_is_complete_and_disjoint_from_eboard():
     # committee with a Role but no dropdown key pointing at it).
     assert set(COMMITTEE_ROLES.values()) == CHAIR_ROLES
     # No sheet spelling can be classified two different ways depending on
-    # which lookup table runs first.
-    assert not (set(COMMITTEE_ROLES) & EBOARD)
+    # which lookup table runs first. EBOARD is now a dict (keyed the same
+    # way as COMMITTEE_ROLES), so compare key sets.
+    assert not (set(COMMITTEE_ROLES) & set(EBOARD))
+
+
+# --- resolve_committee: E-Board owners (now a dict, not a set) ---
+
+@pytest.mark.parametrize("raw, expected_role", [
+    ("VPE - Carlos Alba", Role.vpe),
+    ("VPI - Gabriela Lorenzo", Role.vpi),
+    ("Secretary - Sara Sanchez", Role.secretary),
+    ("Treasurer - Jaden Gomez", Role.treasurer),
+    ("Communications - Comms Director", Role.comm_director),
+    ("New Member Rep - Santiago Gonzalez", Role.new_member_rep),
+    ("Regional Rep - Fernando Vaca", Role.regional_rep),
+    ("Director of Internal Affairs - Alejandro Castro", Role.dir_int_aff),
+    ("President - Daniel Lopez Gil", Role.president),
+])
+def test_resolve_committee_specific_eboard_position(raw, expected_role):
+    # Specific E-Board positions now resolve to their Role, same shape as a
+    # chair committee, so EventHost rows get written for officer-run events.
+    assert resolve_committee(raw) == expected_role
+
+
+def test_resolve_committee_bare_eboard_is_a_real_match_not_no_match():
+    # The bare "eboard" catch-all resolves to None -- a genuine match to the
+    # generic "E-Board" committee (chair_role=None), NOT "no match at all".
+    from services.event_tracker_services import NO_MATCH
+
+    result = resolve_committee("EBoard")
+    assert result is None
+    assert result is not NO_MATCH
+
+
+def test_resolve_committee_blank_and_outside_org_are_no_match():
+    from services.event_tracker_services import NO_MATCH
+
+    assert resolve_committee("") is NO_MATCH
+    assert resolve_committee(None) is NO_MATCH
+    assert resolve_committee("NSBE") is NO_MATCH
+
+
+def test_parse_row_bare_eboard_owner_keeps_none_in_host_roles():
+    # The critical behavior change: host_roles must NOT filter out the bare
+    # "eboard" resolution just because it's None -- only true non-matches
+    # (NO_MATCH) get dropped.
+    parsed = parse_row(sheet_row(owners="EBoard"))
+    assert parsed["event_type"] == "eboard"
+    assert parsed["host_roles"] == [None]
+
+
+def test_parse_row_outside_org_collab_does_not_pollute_host_roles():
+    row = sheet_row(owners="Social Chair - Anahi Salinas")
+    row[COLUMNS["collab(s)"]] = "NSBE"
+    parsed = parse_row(row)
+    assert parsed["host_roles"] == [Role.social_chair]

@@ -62,14 +62,40 @@ COMMITTEE_ROLES = {
 
 # The sheet's own abbreviations for E-Board positions -- not Role display
 # values ("vpe" vs "Vice President External", "communications" vs
-# "Communication Director"). A set, not a dict like COMMITTEE_ROLES: all ten
-# collapse to the same event_type and none has a Committee row to host, so
-# there's nothing for a value side to carry.
-EBOARD = {
-    "president", "vpe", "vpi", "secretary", "treasurer",
-    "communications", "new member rep", "regional rep",
-    "director of internal affairs", "eboard",
+# "Communication Director"). Now a dict, not a set: each specific position
+# maps onto the Committee row seed.py creates for it (EBOARD_COMMITTEES) so
+# EventHost rows get written -- the same reason COMMITTEE_ROLES is a dict.
+# The bare "eboard" catch-all maps to None deliberately: seed.py also
+# creates one generic "E-Board" committee with chair_role=None for exactly
+# this value. None here is a REAL match (a specific, if generic, committee),
+# never confused with "no match at all" -- see resolve_committee's docstring
+# and the NO_MATCH sentinel below.
+EBOARD: dict[str, Role | None] = {
+    "president": Role.president,
+    "vpe": Role.vpe,
+    "vpi": Role.vpi,
+    "secretary": Role.secretary,
+    "treasurer": Role.treasurer,
+    "communications": Role.comm_director,
+    "new member rep": Role.new_member_rep,
+    "regional rep": Role.regional_rep,
+    "director of internal affairs": Role.dir_int_aff,
+    "eboard": None,
 }
+
+
+class _NoMatch:
+    """Sentinel for resolve_committee: distinguishes 'no host committee at
+    all' (blank cell, an outside-org collab like "NSBE") from a genuine match
+    to the generic "E-Board" catch-all committee, whose chair_role is
+    legitimately None. Plain None can't serve as the "no match" signal
+    anymore because None is now itself a valid resolution."""
+
+    def __repr__(self):
+        return "NO_MATCH"
+
+
+NO_MATCH = _NoMatch()
 
 def is_configured() -> bool:
     return bool(os.getenv("CREDENTIALS") and os.getenv("SHEET_ID"))
@@ -111,13 +137,25 @@ def _normalize_owner(raw: str | None) -> str:
     return re.sub(r"\s+chairs?$", "", text.strip()).strip()
 
 
-def resolve_committee(raw: str | None) -> Role | None:
-    """Committee for an OWNER(S) or COLLAB(S)? value, or None.
+def resolve_committee(raw: str | None):
+    """Committee-linking key for an OWNER(S) or COLLAB(S)? value.
 
-    Silent by design — an unrecognized COLLAB(S)? is an outside org, which is
-    the normal case. All logging lives in get_event_type().
+    Returns a Role for a specific chair/position committee, None for the
+    generic "E-Board" catch-all (a real match -- see EBOARD["eboard"]), or
+    NO_MATCH when the text isn't recognized at all (blank cell, an
+    outside-org collab like "NSBE"). NO_MATCH -- not None -- is what
+    parse_row filters host_roles on, because None is itself a legitimate
+    resolution here (chair_role=None on the generic E-Board committee).
+
+    Silent by design on a miss — an unrecognized COLLAB(S)? is an outside
+    org, which is the normal case. All logging lives in get_event_type().
     """
-    return COMMITTEE_ROLES.get(_normalize_owner(raw))
+    text = _normalize_owner(raw)
+    if text in COMMITTEE_ROLES:
+        return COMMITTEE_ROLES[text]
+    if text in EBOARD:
+        return EBOARD[text]
+    return NO_MATCH
 
 
 def get_event_type(raw_owner: str | None) -> str | None:
@@ -152,7 +190,8 @@ def parse_row(row: dict) -> dict | None:
         "end_time": to_utc(end_local) if end_local else None,
         "event_type": get_event_type(row.get(COLUMNS["owners"])),
         "host_roles": [r for r in (resolve_committee(row.get(COLUMNS["owners"])),
-                                   resolve_committee(row.get(COLUMNS["collab(s)"]))) if r],
+                                   resolve_committee(row.get(COLUMNS["collab(s)"])))
+                       if r is not NO_MATCH],
     }
 
 def fetch_sheet_events() -> list[dict]:

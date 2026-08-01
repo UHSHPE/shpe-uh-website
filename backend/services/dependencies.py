@@ -84,6 +84,27 @@ def require_shop_admin(user=Depends(get_current_user)):
     return user
 
 
+def require_event_host(user=Depends(get_current_user)):
+    """Gate for the QR-attendance endpoints (/events/mine, /events/all,
+    /events/{id}/attendance) — any committee chair or E-Board member.
+    Mirrors require_shop_admin / require_role_admin. This only checks the
+    caller's role; per-event scoping (which specific events a given chair
+    may see codes/roster for) is enforced separately by
+    attendance_services.host_scoped_events — the same relationship
+    require_chair has to committee-specific checks. The president already
+    passes (TOP_TIER_ROLES ⊆ EBOARD_ROLES), so no separate bypass is needed
+    here — host_scoped_events is where the president's full-access bypass
+    actually lives."""
+    from models.user.user_enums import CHAIR_ROLES, EBOARD_ROLES
+
+    if user.role not in CHAIR_ROLES and user.role not in EBOARD_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a committee chair or E-Board member can do that",
+        )
+    return user
+
+
 def require_role_admin(user=Depends(get_current_user)):
     """Gate for chapter-admin endpoints (member directory, stats, role
     assignment) — mirrors require_shop_admin. Held by the president and both

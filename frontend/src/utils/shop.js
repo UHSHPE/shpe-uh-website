@@ -81,6 +81,17 @@ export function isChairRole(role) {
   return CHAIR_ROLES.includes(role);
 }
 
+// Whole-user versions of isChairRole/isEboardRole, mirroring
+// isPresident(user)/isShopManager(user) — gates the My Events page (QR
+// attendance & points) the way shop-manager.jsx gates on isShopManager.
+export function isChair(user) {
+  return isChairRole(user?.role);
+}
+
+export function isEboard(user) {
+  return isEboardRole(user?.role);
+}
+
 // Order-status pill styling — tokens defined in styles.css §Shop.
 export const STATUS_META = {
   paid: {
