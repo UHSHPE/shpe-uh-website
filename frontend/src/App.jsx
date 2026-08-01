@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import PrivateRoute from './components/PrivateRoute';
@@ -24,14 +24,22 @@ import Shop from './pages/shop';
 import ShopProduct from './pages/shop-product';
 import ShopCheckout from './pages/shop-checkout';
 import ShopOrder from './pages/shop-order';
+import Attend from './pages/attend';
+import MyEvents from './pages/my-events';
 import CartDrawer, { ShopToast } from './components/CartDrawer';
 import DuesBanner from './components/DuesBanner';
 
 export default function App() {
+	const { pathname } = useLocation();
+	// The mobile QR check-in flow is reached ONLY by scanning a code — it
+	// renders its own full-bleed shell with zero site chrome (no header, no
+	// footer, no cart overlays). See the implementation plan's Part 2.
+	const bare = pathname.startsWith('/attend/');
+
 	return (
 		<div className="app">
-			<Header />
-			<DuesBanner />
+			{!bare && <Header />}
+			{!bare && <DuesBanner />}
 			<main className="main">
 				<Routes>
 					<Route path="/" element={<Home />} />
@@ -90,6 +98,17 @@ export default function App() {
 							</PrivateRoute>
 						}
 					/>
+					<Route
+						path="/my-events"
+						element={
+							<PrivateRoute>
+								<MyEvents />
+							</PrivateRoute>
+						}
+					/>
+					{/* Not wrapped in PrivateRoute — the page renders its own
+						"Sign in to check in" screen for anonymous scans. */}
+					<Route path="/attend/:code" element={<Attend />} />
 					{/* Redirect old /pages/ routes */}
 					<Route
 						path="/pages/about"
@@ -113,10 +132,14 @@ export default function App() {
 					/>
 				</Routes>
 			</main>
-			<Footer />
+			{!bare && <Footer />}
 			{/* Global shop overlays — the cart drawer can open from any route */}
-			<CartDrawer />
-			<ShopToast />
+			{!bare && (
+				<>
+					<CartDrawer />
+					<ShopToast />
+				</>
+			)}
 		</div>
 	);
 }

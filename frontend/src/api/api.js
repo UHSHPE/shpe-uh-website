@@ -121,6 +121,22 @@ export function getEventAttendance(eventId) {
   return api.get(`/events/${eventId}/attendance`, { headers: authHeaders() });
 }
 
+// Public, read-only preview of a scanned code — the mobile check-in flow
+// shows event name/time/location BEFORE POSTing (POST /events/attend
+// records immediately). authHeaders() returns {} when signed out, which
+// *is* the optional-auth behavior: a token, when present, additionally
+// fills the caller's own signed_in_at/signed_out_at.
+export function getAttendPreview(code) {
+  return api.get(`/events/code/${code}`, { headers: authHeaders() });
+}
+
+// Live scan counter for the QR modal / present view — chair/E-Board only,
+// scoped to events they host. Poll this instead of re-fetching getMyEvents,
+// which would re-mint codes and ship every hosted event's secrets per poll.
+export function getEventScanCount(eventId) {
+  return api.get(`/events/${eventId}/scan-count`, { headers: authHeaders() });
+}
+
 export function getNotifications() {
   return api.get("/notifications", { headers: authHeaders() });
 }

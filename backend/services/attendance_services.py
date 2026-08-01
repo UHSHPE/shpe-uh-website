@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
@@ -83,6 +83,25 @@ def is_expired(event: Event, now: datetime | None = None) -> bool:
     return now > deadline
 
 
+NOT_STARTED_GRACE_MINUTES = 60
+
+
+def is_not_started(event: Event, now: datetime | None = None) -> bool:
+    """True until 60 minutes before event.start_time.
+
+    A hard `now < start_time` would reject nobody for the many events whose
+    start_time is a blank/"All Day"/"TBD" sheet-sync fallback to local
+    midnight (midnight is early, not late) — but it WOULD reject a member
+    who shows up 10 minutes early to a real timed event. The 60-minute grace
+    absorbs early arrivals while still blocking someone who scans a QR a
+    chair posted days in advance, which is the case this state exists for.
+    Deliberately asymmetric with is_expired's end-of-local-day fallback, for
+    the same reason: both err toward letting a real attendee through.
+    """
+    now = now or utcnow()
+    return now < event.start_time - timedelta(minutes=NOT_STARTED_GRACE_MINUTES)
+
+
 def record_sign_in(
     session,
     user: User,
@@ -152,6 +171,20 @@ def record_sign_out(session, user: User, event: Event) -> tuple[EventAttendance 
     session.commit()
     session.refresh(attendance)
     return attendance, sign_out_points
+
+
+def scan_counts(session, event_id: int) -> tuple[int, int]:
+    """(signed_in, signed_out) counts for one event. A dedicated helper
+    instead of re-fetching /events/mine (which would re-mint codes and ship
+    every event's secrets over the wire on each poll) or reusing
+    EventChairOut.attendee_count (sign-ins only -- wrong number in sign-out
+    QR mode)."""
+    rows = session.exec(
+        select(EventAttendance).where(EventAttendance.event_id == event_id)
+    ).all()
+    signed_in = len(rows)
+    signed_out = sum(1 for row in rows if row.signed_out_at is not None)
+    return signed_in, signed_out
 
 
 def host_scoped_events(session, user: User) -> list[Event]:

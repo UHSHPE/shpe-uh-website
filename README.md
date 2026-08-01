@@ -21,7 +21,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
-- **QR Event Attendance** *(backend ready; member and chair pages still being designed)* — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot: 2 for signing in and 2 for signing out of a regular event, 3 and 2 for a general meeting, plus 2 for bringing a new member. Scanning the same code twice never awards twice, and a code stops working once the event is over. Chairs and E-Board generate the codes for the events they host and can see who attended
+- **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot: 2 for signing in and 2 for signing out of a regular event, 3 and 2 for a general meeting, plus 2 for bringing a new member. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host
 
 ## Tech Stack
 
@@ -29,6 +29,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - React 19, React Router v7
 - Vite, Tailwind CSS v4, Framer Motion
 - Axios
+- qrcode.react (renders the sign-in/sign-out QR codes for chairs)
 
 **Backend**
 - FastAPI, SQLModel (SQLAlchemy 2), SQLite
@@ -261,8 +262,8 @@ shpe-uh-website/
 │       ├── api/            # Axios instance + all API call functions (api.js)
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
-│       ├── utils/          # Shared helpers (money formatting, order-status styling)
-│       ├── pages/          # One file per route
+│       ├── utils/          # Shared helpers (money formatting, order-status styling, event colors/labels/duration)
+│       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
 └── backend/
     ├── main.py             # FastAPI app: routers + background loops (reminder emails, daily event-sheet sync)
@@ -302,6 +303,8 @@ shpe-uh-website/
 | `/profile` | Profile info, PDF resume, and order history | Yes |
 | `/members` | Member directory and org chart: chapter stats, member lookup, role assignment, and the reporting structure, across All/E-Board/Chairs/Structure tabs — president and VPs only | Yes |
 | `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
+| `/my-events` | Chair/E-Board Events page: My Events / All Events tabs, a QR modal (Sign in/Sign out, fullscreen "present" view, live scan counter) for each hosted event, and a read-only attendance roster | Yes |
+| `/attend/:code` | Mobile QR check-in flow — reached only by scanning a code, not linked from navigation. No site header/footer/cart; renders its own "sign in to continue" screen if you're signed out | No |
 
 ## API Reference
 
@@ -321,10 +324,12 @@ shpe-uh-website/
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder |
 | GET | `/events/reminders/me` | Yes | Current user's active reminders |
-| POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice |
+| POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice. Too early (more than ~1 hour before the event) is rejected |
+| GET | `/events/code/{code}` | Optional | Preview a scanned code before recording anything — event name/time/location and whether check-in is open yet, expired, or already recorded (fills in with a valid token) |
 | GET | `/events/mine` | Chair/E-Board | Events they host, with the sign-in/sign-out codes to render as QR |
 | GET | `/events/all` | Chair/E-Board | Every chapter event, read-only (no codes) |
 | GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
+| GET | `/events/{id}/scan-count` | Chair only | Live sign-in/sign-out counts for one event, for the QR modal to poll |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair) |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |
@@ -404,6 +409,31 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **No inventory is tracked.** Each product is either **Active** (listed in the shop) or **Hidden** (kept in the admin table, off the storefront), and every order is limited to a configurable number of units per item (default 5).
 - **Products are never deleted.** Retiring one takes it off the storefront and files it under **Retired** in the Shop Manager, where it can be restored at any time (a restored product comes back Hidden, so an admin republishes it deliberately). Past orders keep showing exactly what was bought, and the product image is kept too. The **T-Shirt Dues** product can't be retired — newly verified members are sent straight to it.
 - Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, show/hide, retire/restore), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page at `/shop-manager`.
+
+## QR Event Attendance
+
+Chairs and E-Board members generate QR codes from the **Events** page (`/my-events`) and present them at the door — in a modal, or fullscreen for projecting. Members scan with their phone's regular camera, which opens `/attend/<code>` on the site; there's no in-app scanner and nothing to install.
+
+### Testing a real phone scan
+
+The QR encodes `window.location.origin`, so scanning it on a phone only works if the phone can actually reach that origin — `localhost` on your laptop means nothing to a phone. To test with a real camera on the same Wi-Fi network:
+
+1. Find your computer's LAN IP (e.g. `ipconfig getifaddr en0` on macOS, `ipconfig` on Windows).
+2. Point the frontend at that IP instead of `localhost` in `frontend/.env.local`:
+   ```
+   VITE_API_URL=http://<your-lan-ip>:8000
+   ```
+3. Start both dev servers reachable from other devices on the network — `python main.py` already binds the backend to `0.0.0.0:8000`, so only the frontend needs the flag:
+   ```bash
+   cd backend && python main.py
+   cd frontend && npm run dev -- --host
+   ```
+4. **CORS note:** `backend/main.py`'s `CORSMiddleware` only allows the `http://localhost:5173` origin. A browser hitting the site via your LAN IP sends a different `Origin` header, so API calls will be blocked until you temporarily add it — e.g. `allow_origins=["http://localhost:5173", "http://<your-lan-ip>:5173"]` — and restart the backend. Revert this before committing; it's a local-testing-only change.
+5. On your laptop, sign in as a seeded chair (or the president) and open `/my-events` at `http://<your-lan-ip>:5173/my-events` — opening it via the LAN IP (not `localhost`) matters, since that's what gets baked into the QR.
+6. Click **Show QR** on an event, then scan it with your phone's camera on the same network. Walk the flow: sign in (if needed) → confirm → "Did you bring a new member?" → success.
+7. Scan the same code again to see the "Already checked in" screen, then scan the sign-out code to see the duration + points summary. Check `/dashboard` for the updated points total.
+
+Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local development.
 
 ## Running Tests
 

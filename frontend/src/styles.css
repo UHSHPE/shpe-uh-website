@@ -465,6 +465,26 @@ a{ color:inherit; text-decoration:none; }
 }
 .applePayBtn:disabled { opacity: 0.5; cursor: default; }
 
+/* QR CHECK-IN — mobile flow (pages/attend.jsx). Full-bleed navy-gradient
+   shell; the only bits inline styles can't express are :focus / ::placeholder
+   pseudo-classes, so those live here while everything else on the page stays
+   inline like the rest of the site's pages. */
+.attendInput{
+  width:100%;
+  background:rgba(255,255,255,.12);
+  border:1.5px solid rgba(255,255,255,.3);
+  border-radius:var(--radius-md);
+  padding:14px 16px;
+  font-size:16px;
+  font-family:var(--font-body);
+  color:#fff;
+  outline:none;
+  transition:border-color 0.15s var(--ease-out);
+}
+.attendInput::placeholder{ color:rgba(255,255,255,.55); }
+.attendInput:focus{ border-color:var(--shpe-blue-bright); }
+.attendInput.hasError{ border-color:var(--shpe-red); }
+
 /* Org chart tree (Members > Structure). The elbow connectors need
    ::before/::after, which inline styles can't express — everything else on
    that panel stays inline like the rest of the page. */

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
-import { canAssignRoles, isShopManager } from "../utils/shop";
+import { canAssignRoles, isChair, isEboard, isShopManager } from "../utils/shop";
 import Avatar from "./Avatar";
 import { CartIcon } from "./shopIcons";
 
@@ -29,12 +29,13 @@ const memberLinks = [
 
 // Role-gated extra tabs, inserted after Committees: the president and both
 // VPs get the members directory, shop admins (president included) get the
-// shop page.
+// shop page, and chairs/E-Board get the QR attendance Events page.
 function memberLinksFor(user) {
   if (!user) return memberLinks;
   const extras = [];
   if (canAssignRoles(user)) extras.push({ label: "Members", to: "/members" });
   if (isShopManager(user)) extras.push({ label: "Shop Manager", to: "/shop-manager" });
+  if (isChair(user) || isEboard(user)) extras.push({ label: "Events", to: "/my-events" });
   return [...memberLinks.slice(0, 2), ...extras, ...memberLinks.slice(2)];
 }
 

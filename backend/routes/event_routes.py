@@ -1,9 +1,20 @@
 from models.event import Event, EventChairOut, EventOut
-from models.event_attendance import AttendanceOut, AttendRequest, AttendResult, EventAttendance
+from models.event_attendance import (
+    AttendanceOut,
+    AttendRequest,
+    AttendResult,
+    CodePreviewOut,
+    EventAttendance,
+)
 from models.event_reminder import EventReminder, EventReminderOut
 from models.user.user import User
 from services import attendance_services
-from services.dependencies import SessionDependencies, get_current_user, require_event_host
+from services.dependencies import (
+    SessionDependencies,
+    get_current_user,
+    get_optional_user,
+    require_event_host,
+)
 from services.rate_limit import limiter
 from services.reminder_services import compute_remind_at
 from services.time_services import utcnow
@@ -76,6 +87,15 @@ async def attend_event(
     if attendance_services.is_expired(event):
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="This code has expired")
 
+    # The frontend normally never hits this -- the preview endpoint reports
+    # state: "not_started" and the page renders a screen without POSTing.
+    # This is the backstop against a direct POST.
+    if attendance_services.is_not_started(event):
+        raise HTTPException(
+            status_code=status.HTTP_425_TOO_EARLY,
+            detail="Check-in hasn't opened yet",
+        )
+
     if action == "in":
         attendance, points = attendance_services.record_sign_in(
             session,
@@ -100,6 +120,8 @@ async def attend_event(
         event_title=event.title,
         points_awarded=points,
         total_points=user.points,
+        signed_in_at=attendance.signed_in_at,
+        signed_out_at=attendance.signed_out_at,
     )
 
 
@@ -144,6 +166,94 @@ async def get_all_events_for_chairs(
     /events/mine. Lets a chair/E-Board member see the full calendar (not
     just what they personally host) without leaking any codes."""
     return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
+
+
+@router.get('/code/{code}', response_model=CodePreviewOut)
+@limiter.limit("30/minute")
+async def get_code_preview(
+    request: Request,
+    code: str,
+    session: SessionDependencies,
+    user: Annotated[User | None, Depends(get_optional_user)],
+):
+    """Public, read-only preview of a scanned code -- the mobile flow needs
+    to show event name/time/location BEFORE recording anything, since
+    POST /events/attend records immediately. Anonymous callers get the
+    event; a bearer token additionally fills the caller's own timestamps so
+    the page can jump straight to "Already checked in" without a wasted
+    confirm tap.
+
+    Security: this is a public code oracle, but the only fields it leaks to
+    someone already holding a code (title/time/location) are already public
+    via GET /events -- the incremental leak is zero. Codes are 128-bit
+    secrets.token_urlsafe(16), so enumeration is infeasible; the rate limit
+    is belt-and-braces. Declared BEFORE /{event_id}/attendance for route-
+    ordering discipline, same as /shop/orders/me before /shop/orders/{code}.
+    """
+    resolved = attendance_services.resolve_code(session, code)
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid code")
+    event, action = resolved
+
+    sign_in_points, sign_out_points = attendance_services.default_points(event)
+    points_value = sign_in_points if action == "in" else sign_out_points
+
+    if attendance_services.is_expired(event):
+        state = "ended"
+    elif attendance_services.is_not_started(event):
+        state = "not_started"
+    else:
+        state = "ok"
+
+    signed_in_at = None
+    signed_out_at = None
+    if user is not None:
+        attendance = session.get(EventAttendance, (user.id, event.id))
+        if attendance is not None:
+            signed_in_at = attendance.signed_in_at
+            signed_out_at = attendance.signed_out_at
+
+    return CodePreviewOut(
+        action="sign_in" if action == "in" else "sign_out",
+        event_id=event.id,
+        title=event.title,
+        location=event.location,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        event_type=event.event_type,
+        points_value=points_value,
+        state=state,
+        signed_in_at=signed_in_at,
+        signed_out_at=signed_out_at,
+    )
+
+
+@router.get('/{event_id}/scan-count')
+async def get_event_scan_count(
+    event_id: int,
+    user: Annotated[User, Depends(require_event_host)],
+    session: SessionDependencies,
+):
+    """Live scan counter for the QR modal / present view. Re-fetching
+    /events/mine would re-mint codes and ship every event's secrets over
+    the wire on each poll, and EventChairOut.attendee_count only counts
+    sign-ins (wrong number in sign-out QR mode) -- hence this dedicated,
+    per-event endpoint. Same two-layer guard as /events/{id}/attendance:
+    require_event_host (coarse role gate) plus host_scoped_events
+    (per-event scoping)."""
+    event = session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    hosted_ids = {e.id for e in attendance_services.host_scoped_events(session, user)}
+    if event_id not in hosted_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this event's attendance",
+        )
+
+    signed_in, signed_out = attendance_services.scan_counts(session, event_id)
+    return {"signed_in": signed_in, "signed_out": signed_out}
 
 
 @router.get('/{event_id}/attendance', response_model=list[AttendanceOut])

@@ -1,10 +1,10 @@
-# API tests for GET /events/mine, GET /events/all, and
-# GET /events/{id}/attendance. Uses the chair_client fixture from
-# tests/event_tests/conftest.py (a Role.social_chair user chairing the
-# "Social" committee).
+# API tests for GET /events/mine, GET /events/all,
+# GET /events/{id}/attendance, and GET /events/{id}/scan-count. Uses the
+# chair_client fixture from tests/event_tests/conftest.py (a
+# Role.social_chair user chairing the "Social" committee).
 
 from models.user.user_enums import Role
-from services.attendance_services import record_sign_in
+from services.attendance_services import record_sign_in, record_sign_out
 from tests.conftest import make_event, make_user
 from tests.event_tests.conftest import link_host, make_committee
 
@@ -113,3 +113,43 @@ def test_president_sees_every_event_on_mine(president_client, session):
 
     assert resp.status_code == 200
     assert [e["id"] for e in resp.json()] == [event.id]
+
+
+def test_scan_count_reflects_mixed_sign_in_and_sign_out_state(chair_client, session, committee):
+    event = make_event(session)
+    link_host(session, event, committee)
+    signed_in_only = make_user(
+        session,
+        cougarnet_email="in-only@cougarnet.uh.edu",
+        personal_email="in-only@gmail.com",
+        psid="1111111",
+    )
+    signed_out_too = make_user(
+        session,
+        cougarnet_email="in-and-out@cougarnet.uh.edu",
+        personal_email="in-and-out@gmail.com",
+        psid="2222222",
+    )
+    record_sign_in(session, signed_in_only, event)
+    record_sign_in(session, signed_out_too, event)
+    record_sign_out(session, signed_out_too, event)
+
+    resp = chair_client.get(f"/events/{event.id}/scan-count")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"signed_in": 2, "signed_out": 1}
+
+
+def test_scan_count_403s_for_another_committees_event(chair_client, session):
+    other = make_committee(session, name="EEC", chair_role=Role.eec_chair)
+    other_event = make_event(session, title="Robotics Night")
+    link_host(session, other_event, other)
+
+    resp = chair_client.get(f"/events/{other_event.id}/scan-count")
+
+    assert resp.status_code == 403
+
+
+def test_scan_count_404s_for_unknown_event(chair_client):
+    resp = chair_client.get("/events/999999/scan-count")
+    assert resp.status_code == 404
