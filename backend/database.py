@@ -20,10 +20,15 @@ import models.shop.product  # noqa: F401
 import models.shop.order  # noqa: F401
 import models.shop.shop_settings  # noqa: F401
 
-sqlite_file_name = "database.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+import os
+from dotenv import load_dotenv
 
-engine = create_engine(sqlite_url, echo=True)
+load_dotenv()
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe",
+)
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 
 def create_db():
     SQLModel.metadata.create_all(engine)

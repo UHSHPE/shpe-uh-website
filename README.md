@@ -32,7 +32,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - qrcode.react (renders the sign-in/sign-out QR codes for chairs)
 
 **Backend**
-- FastAPI, SQLModel (SQLAlchemy 2), SQLite
+- FastAPI, SQLModel (SQLAlchemy 2), PostgreSQL 17 (via Docker), psycopg 3
 - PyJWT, pwdlib (Argon2), Pydantic v2, Uvicorn
 - slowapi (rate limiting)
 - squareup (Square Payments API for shop checkout)
@@ -43,6 +43,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Node.js** v18+ and npm
 - **Python** 3.11+
 - **Git**
+- **Docker Desktop** (or another Docker runtime) — runs the PostgreSQL database
 
 ## Getting Started
 
@@ -53,7 +54,16 @@ git clone <repo-url>
 cd shpe-uh-website
 ```
 
-### 2. Backend setup
+### 2. Start the database
+
+```bash
+docker compose up -d
+docker compose exec db createdb -U shpe shpe_test   # one-time: creates the test database
+```
+
+This starts PostgreSQL 17 in Docker, listening on `localhost:5433` (see `docker-compose.yml`). The main `shpe` database is created automatically by the container; `shpe_test` (used only by the test suite) needs the one-time `createdb` above.
+
+### 3. Backend setup
 
 ```bash
 cd backend
@@ -89,7 +99,7 @@ python main.py
 
 Backend runs at **http://localhost:8000**. Interactive API docs at **http://localhost:8000/docs**.
 
-### 3. Frontend setup
+### 4. Frontend setup
 
 ```bash
 cd frontend
@@ -115,6 +125,8 @@ Frontend runs at **http://localhost:5173**.
 | `SECRET_KEY` | Yes | Random hex secret for JWT signing | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ALGORITHM` | Yes | JWT signing algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes | `30` |
+| `DATABASE_URL` | No | Postgres connection string. Defaults to the `docker-compose.yml` credentials/port, so local dev needs nothing here unless those change | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe` |
+| `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
 | `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
@@ -225,38 +237,24 @@ The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
 
 Re-running `python seed.py` is safe — every seeder skips what already exists, so it only fills in what's missing (that's how the E-Board officers were added to an existing database). The flip side: editing seed data in the file has no effect on rows that are already there; clear those rows first.
 
-> **Note:** if you reseed (`rm database.db && python seed.py`) while the backend is running, restart it — the server keeps a handle to the old database file and will serve stale data.
+> **Note:** if you wipe and reseed the database (see below) while the backend is running, restart it — it holds pooled connections from before the wipe and will otherwise serve stale or broken data.
 
-> **Upgrading an existing `database.db`:** new columns are not added to tables that already exist, so a database created before the shop's retire, email-verification, login-lockout, event-sync, or event sign-in-code features needs this once (then restart the backend). A freshly seeded database already has all of it. Back the file up first — `cp backend/database.db backend/database.db.bak`.
+> **Picking up a schema change:** this project doesn't use database migrations yet, so a model change (new column, new enum value, etc.) is picked up by wiping and reseeding rather than an in-place upgrade:
 >
 > ```bash
-> sqlite3 backend/database.db "ALTER TABLE product ADD COLUMN retired_at DATETIME;"
-> sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN email_verified BOOLEAN DEFAULT 0;"
-> sqlite3 backend/database.db "UPDATE user SET email_verified = 1;"   # trust accounts that predate verification
-> sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN failed_login_count INTEGER DEFAULT 0;"
-> sqlite3 backend/database.db "ALTER TABLE user ADD COLUMN locked_until DATETIME;"
-> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN source_row_id VARCHAR;"
-> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_source_row_id ON event (source_row_id);"
-> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN sign_in_code VARCHAR;"
-> sqlite3 backend/database.db "ALTER TABLE event ADD COLUMN sign_out_code VARCHAR;"
-> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_sign_in_code ON event (sign_in_code);"
-> sqlite3 backend/database.db "CREATE UNIQUE INDEX ix_event_sign_out_code ON event (sign_out_code);"
+> docker compose down -v          # -v is essential — drops the database volume
+> docker compose up -d
+> docker compose exec db createdb -U shpe shpe_test
+> cd backend && python seed.py
 > ```
 >
-> The `UPDATE` matters: existing members default to unverified, and unverified accounts are refused at login.
->
-> The `CREATE UNIQUE INDEX` matters too — adding a column does not create the index the column is declared with, and the event sync relies on that index to keep one calendar entry per sheet row. (Entirely new *tables* are fine: `create_all()` builds those with their indexes at startup.)
->
-> Guessing at which columns are missing is how you end up doing this twice. Compare the upgraded database against a fresh one instead — anything the model declares but the file lacks shows up as a `no such column` failure the moment a query touches it:
->
-> ```bash
-> cd backend && sqlite3 database.db ".schema user" ".schema event" ".schema product"
-> ```
+> This is a pre-deploy convenience — once the site is holding real member data, wiping stops being an option and proper migrations will need to be introduced.
 
 ## Project Structure
 
 ```
 shpe-uh-website/
+├── docker-compose.yml  # PostgreSQL 17 dev database container
 ├── frontend/
 │   └── src/
 │       ├── api/            # Axios instance + all API call functions (api.js)
@@ -268,7 +266,7 @@ shpe-uh-website/
 └── backend/
     ├── main.py             # FastAPI app: routers + background loops (reminder emails, daily event-sheet sync)
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
-    ├── database.py         # SQLite engine and session factory
+    ├── database.py         # Postgres engine (DATABASE_URL) and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
     ├── routes/             # APIRouters: admin (president + VPs), auth, committees, events (+ reminders), notifications, password reset, resume, shop
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
@@ -276,7 +274,7 @@ shpe-uh-website/
     ├── security/           # JWT creation and password hashing
     ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
-    └── tests/              # pytest suite (in-memory SQLite fixtures in conftest.py)
+    └── tests/              # pytest suite (runs against a dedicated `shpe_test` Postgres database; requires the database container to be running)
 ```
 
 ## Pages
@@ -378,7 +376,7 @@ It links **roles rather than people**: "Academic Chair reports to Treasurer" kee
 `seed.py` preloads the chapter's current chart: the New Member Representative, Treasurer, and Regional Representative report to the VP External; the Communications Director, Secretary, and Director of Internal Affairs report to the VP Internal; and all 14 chairs sit beneath those officers. Seeding **skips the structure entirely once any link exists**, so re-running `seed.py` never overwrites changes made on the Structure tab. To reload the chart from the file, clear it first:
 
 ```bash
-sqlite3 backend/database.db "DELETE FROM rolereport;" && python backend/seed.py
+docker compose exec db psql -U shpe -d shpe -c "DELETE FROM rolereport;" && python backend/seed.py
 ```
 
 > The structure is organizational only. Being listed as someone's supervisor grants **no** extra permissions — role assignment stays with the president and VPs.
@@ -438,9 +436,10 @@ Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local dev
 ## Running Tests
 
 ```bash
+docker compose up -d   # the database container must be running
 cd backend
 source .venv/bin/activate
 python -m pytest tests/
 ```
 
-Tests run against an in-memory SQLite database (no setup needed) using fixtures from `tests/conftest.py`.
+Tests run against a dedicated `shpe_test` Postgres database (separate from the `shpe` dev database, configured via `TEST_DATABASE_URL` — see [Environment Variables](#environment-variables)) using fixtures from `tests/conftest.py`. The `shpe_test` database needs to exist first — see step 2 of [Getting Started](#getting-started) if you haven't created it yet.

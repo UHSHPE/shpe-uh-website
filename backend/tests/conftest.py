@@ -1,4 +1,5 @@
 import pytest
+import os
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -19,6 +20,11 @@ from models.user.user_enums import (
     MembershipStatus,
     Role,
     ShirtSize,
+)
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test",
 )
 
 
@@ -81,22 +87,27 @@ def disable_event_tracker_sync(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def engine():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    return engine
+    name = TEST_DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
+    if not name.endswith("_test"):
+        pytest.exit(f"refusing to run against {name!r} — database name must end in _test")
+    eng = create_engine(TEST_DATABASE_URL)
+    SQLModel.metadata.drop_all(eng)
+    SQLModel.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
 
 
 @pytest.fixture
 def session(engine):
-    with Session(engine) as session:
-        yield session
-
+    connection = engine.connect()
+    transaction = connection.begin()
+    sess = Session(bind=connection, join_transaction_mode="create_savepoint")
+    yield sess
+    sess.close()
+    transaction.rollback()
+    connection.close()
 
 def make_user(session, **overrides):
     fields = dict(
