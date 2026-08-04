@@ -232,7 +232,7 @@ export default function ShopOrder() {
             </Link>
             {user && (
               <Link
-                to="/profile"
+                to="/profile#orders"
                 className="primaryBtn"
                 style={{ flex: 1, padding: "12px 18px", fontSize: "14px", textAlign: "center", minWidth: "160px" }}
               >

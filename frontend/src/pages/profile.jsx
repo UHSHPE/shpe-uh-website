@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { uploadResume, getResumeBlob, deleteResume } from '../api/api';
 import MyOrders from '../components/MyOrders';
@@ -59,10 +60,20 @@ function Section({ title, children }) {
 
 export default function Profile() {
   const { user } = useAuth();
+  const { hash } = useLocation();
   const fileInputRef = useRef(null);
   const [resumeName, setResumeName] = useState(user?.resume_filename ?? null);
   const [status, setStatus] = useState(null); // { type: 'success' | 'error', msg }
   const [busy, setBusy] = useState(false);
+
+  // React Router doesn't scroll to #hash targets on its own, so arriving from
+  // "View my orders" would otherwise dump you at the top of the profile with
+  // the orders card far below the fold.
+  useEffect(() => {
+    if (!hash) return;
+    const target = document.querySelector(hash);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [hash]);
 
   if (!user) {
     return (
@@ -287,8 +298,12 @@ export default function Profile() {
           </div>
         </Section>
 
-        {/* Order history — latest order up front, the rest behind the toggle */}
-        <MyOrders />
+        {/* Order history — latest order up front, the rest behind the toggle.
+            #orders is the scroll target for "View my orders" on the order
+            confirmation page; the section sits below the whole profile. */}
+        <div id="orders">
+          <MyOrders />
+        </div>
       </motion.div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { getShopSettings } from "../api/api";
+import { useAuth } from "./AuthContext";
 import { DUES_PRODUCT_NAME } from "../utils/dues";
 
 // Cart state shared across the app: line items (persisted to localStorage so
@@ -25,6 +26,9 @@ function lineKey(productId, size) {
 }
 
 export function CartProvider({ children }) {
+  // Safe because main.jsx nests CartProvider inside AuthProvider. Used only
+  // for the dues one-per-member guard in addItem.
+  const { user } = useAuth();
   const [lines, setLines] = useState(loadCart);
   const [isOpen, setIsOpen] = useState(false);
   const [toast, setToast] = useState(null);
@@ -56,6 +60,17 @@ export function CartProvider({ children }) {
   function addItem(product, size, qty = 1, { openDrawer = true } = {}) {
     const cap = lineCap(product.name);
     const isDues = product.name === DUES_PRODUCT_NAME;
+
+    // Dues are one per member per membership year, enforced server-side by
+    // shop_services.enforce_dues_rules. Guard here too — and centrally rather
+    // than per page, because every entry point into the cart needs it: the
+    // product page, the storefront, and MyOrders' re-order shortcut, which
+    // otherwise happily re-adds a previous dues order.
+    if (isDues && user?.has_paid_dues) {
+      setToast("You've already paid your dues this year");
+      return;
+    }
+
     let capped = false;
     setLines((prev) => {
       const key = lineKey(product.id, size);

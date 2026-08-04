@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyShopOrders, getShopProducts } from "../api/api";
+import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import { DUES_PRODUCT_NAME } from "../utils/dues";
 import StatusPill from "./StatusPill";
 import { formatCents, formatOrderDate, orderItemsSummary } from "../utils/shop";
 
@@ -11,6 +13,7 @@ import { formatCents, formatOrderDate, orderItemsSummary } from "../utils/shop";
 export default function MyOrders() {
   const [orders, setOrders] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const { user } = useAuth();
   const { addItem, showToast } = useCart();
 
   useEffect(() => {
@@ -30,9 +33,16 @@ export default function MyOrders() {
       return;
     }
     let added = 0;
+    let skippedPaidDues = false;
     for (const item of order.items) {
       const product = products.find((p) => p.id === item.product_id);
       if (!product) continue;
+      // Dues are one per member per year. addItem refuses them too, but catch
+      // it here so the toast says why instead of "no longer available".
+      if (product.name === DUES_PRODUCT_NAME && user?.has_paid_dues) {
+        skippedPaidDues = true;
+        continue;
+      }
       const size =
         product.product_type === "apparel" && product.sizes?.includes(item.size)
           ? item.size
@@ -43,7 +53,9 @@ export default function MyOrders() {
       addItem(product, size ?? null, item.quantity, { openDrawer: added === 0 });
       added += 1;
     }
-    if (added === 0) showToast("Those items are no longer available");
+    if (added === 0 && skippedPaidDues) showToast("You've already paid your dues this year");
+    else if (added === 0) showToast("Those items are no longer available");
+    else if (skippedPaidDues) showToast("Dues skipped — already paid this year");
     else if (added < order.items.length) showToast("Some items are no longer available");
   }
 
