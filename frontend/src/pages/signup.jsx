@@ -7,6 +7,7 @@ import {
   MEMBERSHIP_STATUSES, SHIRT_SIZES, COLLEGES, MAJORS_BY_COLLEGE,
   RACE_ETHNICITY_OPTIONS, INDUSTRY_OPTIONS, PROF_DEV_OPTIONS,
 } from "../constants/userEnums";
+import { COUNTRIES } from "../constants/countries";
 
 const STEPS = ["Account", "Academic", "Personal", "Background", "Membership"];
 
@@ -19,17 +20,39 @@ const emptyForm = {
   is_returning: "", is_national_member: false, shirt_size: "", in_slack: false,
 };
 
+// Mirrors the backend's _SAFE_NAME_RE (user_schemas.validate_name) — letters,
+// hyphens, apostrophes and spaces only. Kept in sync so a name the form
+// accepts can't be rejected by the API after five steps of typing.
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,50}$/;
+
+// US numbers only, so exactly 10 digits once punctuation is stripped.
+function phoneDigits(value) {
+  return (value || "").replace(/\D/g, "").slice(0, 10);
+}
+
+// Progressive (555) 555-5555 formatting as the member types.
+function formatPhone(value) {
+  const d = phoneDigits(value);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+function nameError(value, label) {
+  const v = (value || "").trim();
+  if (!v) return `${label} is required.`;
+  if (v.length < 2) return `${label} must be at least 2 characters.`;
+  if (!NAME_RE.test(v)) return `${label} can only contain letters, hyphens, and apostrophes.`;
+  return "";
+}
+
 // Returns an error string for a given field, or "" if valid.
 function getFieldError(field, form) {
   switch (field) {
     case "first_name":
-      if (!form.first_name.trim()) return "First name is required.";
-      if (form.first_name.trim().length < 2) return "First name must be at least 2 characters.";
-      return "";
+      return nameError(form.first_name, "First name");
     case "last_name":
-      if (!form.last_name.trim()) return "Last name is required.";
-      if (form.last_name.trim().length < 2) return "Last name must be at least 2 characters.";
-      return "";
+      return nameError(form.last_name, "Last name");
     case "cougarnet_email":
       if (!form.cougarnet_email) return "CougarNet email is required.";
       if (!form.cougarnet_email.toLowerCase().endsWith("@cougarnet.uh.edu"))
@@ -62,15 +85,35 @@ function getFieldError(field, form) {
     case "gender":
       if (!form.gender) return "Please select a gender.";
       return "";
-    case "birthday":
+    case "birthday": {
       if (!form.birthday) return "Birthday is required.";
+      // Guards the two ways a date input goes wrong: a typo'd year like 0202,
+      // and a future date. 13 is the floor because under-13 accounts carry
+      // COPPA obligations the chapter isn't set up for.
+      const dob = new Date(`${form.birthday}T00:00:00`);
+      if (Number.isNaN(dob.getTime())) return "Enter a valid date.";
+      const today = new Date();
+      if (dob > today) return "Birthday can't be in the future.";
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age -= 1;
+      if (age < 13) return "You must be at least 13 to sign up.";
+      if (age > 120) return "Please check the year.";
       return "";
+    }
     case "psid":
       if (!form.psid) return "PSID is required.";
       if (!/^\d{7}$/.test(form.psid)) return "PSID must be exactly 7 digits.";
       return "";
-    case "phone_num":
+    case "phone_num": {
       if (!form.phone_num.trim()) return "Phone number is required.";
+      const digits = phoneDigits(form.phone_num);
+      if (digits.length !== 10) return "Enter a 10-digit US phone number.";
+      if (digits[0] === "0" || digits[0] === "1") return "Area code can't start with 0 or 1.";
+      return "";
+    }
+    case "country_origin":
+      if (form.country_origin.length === 0) return "Please add at least one country.";
       return "";
     case "is_returning":
       if (!form.is_returning) return "Please select your membership status.";
@@ -104,13 +147,21 @@ export default function SignUp() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // `touched` is keyed by STEP, not just by field: { 2: { psid: true } }.
+  //
+  // A flat map meant every transition had to remember to clear it, and any
+  // path that didn't — a stray onBlur, browser autofill, a handler added
+  // later — left a fresh step opening covered in "required" errors before the
+  // member typed anything. Keying by step makes that impossible by
+  // construction: a step the member hasn't interacted with has no entry, so
+  // there is nothing to leak and nothing to reset.
   function touch(field) {
-    setTouched((prev) => ({ ...prev, [field]: true }));
+    setTouched((prev) => ({ ...prev, [step]: { ...prev[step], [field]: true } }));
   }
 
-  // Returns the error only if the field has been touched
+  // Returns the error only if the field has been touched on this step.
   function err(field) {
-    return touched[field] ? getFieldError(field, form) : "";
+    return touched[step]?.[field] ? getFieldError(field, form) : "";
   }
 
   function toggleMulti(field, value) {
@@ -128,75 +179,105 @@ export default function SignUp() {
     if (!trimmed || form.country_origin.includes(trimmed)) return;
     set("country_origin", [...form.country_origin, trimmed]);
     setCountryInput("");
+    touch("country_origin");
   }
 
   function removeCountry(c) {
     set("country_origin", form.country_origin.filter((v) => v !== c));
   }
 
-  // Touch all fields on current step so errors become visible when clicking Next
-  function touchStepFields() {
-    const fieldsByStep = [
-      ["first_name", "last_name", "cougarnet_email", "personal_email", "password"],
-      ["college", "major", "classification", "exp_grad_date"],
-      ["gender", "birthday", "psid", "phone_num"],
-      [],
-      ["is_returning", "shirt_size"],
-    ];
-    const fields = fieldsByStep[step] || [];
-    setTouched((prev) => {
-      const next = { ...prev };
-      fields.forEach((f) => { next[f] = true; });
-      return next;
-    });
+  const FIELDS_BY_STEP = [
+    ["first_name", "last_name", "cougarnet_email", "personal_email", "password"],
+    ["college", "major", "classification", "exp_grad_date"],
+    ["gender", "birthday", "psid", "phone_num"],
+    ["country_origin"],
+    ["is_returning", "shirt_size"],
+  ];
+
+  // Touch every field on a step so its errors become visible — on Next for the
+  // current step, or on the final submit for whichever step is incomplete.
+  function touchAllOnStep(s) {
+    const fields = FIELDS_BY_STEP[s] || [];
+    setTouched((prev) => ({
+      ...prev,
+      [s]: { ...prev[s], ...Object.fromEntries(fields.map((f) => [f, true])) },
+    }));
     return fields;
   }
 
-  function validateStep() {
-    if (step === 0) {
-      if (!form.first_name || !form.last_name || !form.cougarnet_email || !form.personal_email || !form.password)
-        return "Please fill in all required fields.";
-      if (getFieldError("first_name", form)) return getFieldError("first_name", form);
-      if (getFieldError("last_name", form)) return getFieldError("last_name", form);
-      if (getFieldError("cougarnet_email", form)) return getFieldError("cougarnet_email", form);
-      if (getFieldError("personal_email", form)) return getFieldError("personal_email", form);
-      if (getFieldError("password", form)) return getFieldError("password", form);
+  // Rules for one step, by index. Takes the index explicitly (rather than
+  // reading `step`) so the final submit can re-check every earlier step.
+  function validateStepAt(s) {
+    if (s === 0 || s === 2) {
+      for (const f of FIELDS_BY_STEP[s]) {
+        const e = getFieldError(f, form);
+        if (e) return e;
+      }
     }
-    if (step === 1) {
+    if (s === 1) {
       if (!form.college || !form.major || !form.classification || !form.exp_grad_date)
         return "Please fill in all required fields.";
     }
-    if (step === 2) {
-      if (!form.gender) return "Please select a gender.";
-      if (getFieldError("birthday", form)) return getFieldError("birthday", form);
-      if (getFieldError("psid", form)) return getFieldError("psid", form);
-      if (getFieldError("phone_num", form)) return getFieldError("phone_num", form);
-    }
-    if (step === 3) {
+    if (s === 3) {
       if (form.race_and_ethnicity.length === 0) return "Please select at least one race/ethnicity option.";
+      if (form.country_origin.length === 0) return "Please add at least one country of origin.";
       if (form.interested_industries.length === 0) return "Please select at least one interested industry.";
       if (form.prof_dev.length === 0) return "Please select at least one professional development interest.";
     }
-    if (step === 4) {
+    if (s === 4) {
       if (!form.is_returning || !form.shirt_size) return "Please fill in all required fields.";
     }
     return "";
   }
 
+  function validateStep() {
+    return validateStepAt(step);
+  }
+
+  // The earliest step that still fails, or -1. Without this, a field skipped
+  // earlier only surfaces as a 422 from the API after "Create Account".
+  function firstIncompleteStep() {
+    for (let s = 0; s < STEPS.length; s += 1) {
+      if (validateStepAt(s)) return s;
+    }
+    return -1;
+  }
+
+  // `touched` is keyed by step, so a step change needs no reset — only the
+  // banner, which is about the step you were on.
+  function goToStep(next) {
+    setSubmitError("");
+    setStep(next);
+  }
+
   function nextStep() {
-    touchStepFields();
+    touchAllOnStep(step);
     const error = validateStep();
     if (error) { setSubmitError(error); return; }
-    setSubmitError("");
-    setStep((s) => s + 1);
-    setTouched({});
+    goToStep(step + 1);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    touchStepFields();
+
+    // The whole wizard lives in one <form>, so pressing Enter in any text
+    // field fires submit — on an earlier step that used to POST a half-filled
+    // payload and surface the API's validation errors out of nowhere. Treat
+    // Enter as "Next" until the member is actually on the last step.
+    if (step < STEPS.length - 1) { nextStep(); return; }
+
+    touchAllOnStep(step);
     const error = validateStep();
     if (error) { setSubmitError(error); return; }
+
+    // Everything before this step has to hold too, or the API rejects it.
+    const incomplete = firstIncompleteStep();
+    if (incomplete !== -1) {
+      setSubmitError(`Please finish the "${STEPS[incomplete]}" step — ${validateStepAt(incomplete)}`);
+      touchAllOnStep(incomplete);
+      setStep(incomplete);
+      return;
+    }
     setSubmitError("");
     setLoading(true);
 
@@ -484,9 +565,13 @@ export default function SignUp() {
                 <input
                   style={fieldStyle(err("phone_num"))}
                   type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
                   placeholder="(555) 555-5555"
                   value={form.phone_num}
-                  onChange={(e) => set("phone_num", e.target.value)}
+                  // Formats as they type and hard-stops at 10 digits, so a US
+                  // number can't be over-typed and the backend can't see one.
+                  onChange={(e) => set("phone_num", formatPhone(e.target.value))}
                   onBlur={() => touch("phone_num")}
                 />
               </Row>
@@ -498,16 +583,25 @@ export default function SignUp() {
               <Row label="Race / Ethnicity (select all that apply)" required>
                 <MultiCheck options={RACE_ETHNICITY_OPTIONS} selected={form.race_and_ethnicity} onToggle={(v) => toggleMulti("race_and_ethnicity", v)} />
               </Row>
-              <Row label="Country of Origin">
+              <Row label="Country of Origin (select all that apply)" required error={err("country_origin")}>
                 <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-                  <input
-                    style={{ ...inputStyle, flex: 1 }}
-                    placeholder="Type a country and press Add"
+                  <select
+                    style={{ ...fieldStyle(err("country_origin")), flex: 1 }}
                     value={countryInput}
                     onChange={(e) => setCountryInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCountry(); } }}
-                  />
-                  <button type="button" className="primaryBtn" onClick={addCountry} style={{ padding: "8px 14px", fontSize: "13px" }}>
+                  >
+                    <option value="">Select a country…</option>
+                    {COUNTRIES.filter((c) => !form.country_origin.includes(c)).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="primaryBtn"
+                    onClick={addCountry}
+                    disabled={!countryInput}
+                    style={{ padding: "8px 14px", fontSize: "13px", opacity: countryInput ? 1 : 0.5 }}
+                  >
                     Add
                   </button>
                 </div>
@@ -570,7 +664,7 @@ export default function SignUp() {
 
           <div style={{ display: "flex", gap: "12px", marginTop: "28px" }}>
             {step > 0 && (
-              <button type="button" className="ghostBtn" onClick={() => { setSubmitError(""); setTouched({}); setStep((s) => s - 1); }} style={{ flex: 1, padding: "12px" }}>
+              <button type="button" className="ghostBtn" onClick={() => goToStep(step - 1)} style={{ flex: 1, padding: "12px" }}>
                 Back
               </button>
             )}

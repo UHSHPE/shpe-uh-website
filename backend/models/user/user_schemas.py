@@ -99,6 +99,14 @@ class UserBase(SQLModel):
             raise ValueError("Phone number is required.")
         if not _PHONE_RE.match(v):
             raise ValueError("Phone number contains invalid characters.")
+        # US numbers only. The character check above still lets through 7 or 20
+        # digits, so count them: the signup form formats to (555) 555-5555 and
+        # caps at 10, and this is what makes that a rule rather than a hint.
+        digits = re.sub(r"\D", "", v)
+        if digits.startswith("1") and len(digits) == 11:
+            digits = digits[1:]          # tolerate a leading US country code
+        if len(digits) != 10:
+            raise ValueError("Phone number must be 10 digits.")
         return v
 
     @field_validator("major", mode="before")

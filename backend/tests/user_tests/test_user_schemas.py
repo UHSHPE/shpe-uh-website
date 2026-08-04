@@ -256,6 +256,25 @@ def test_create_user_phone_with_dashes_is_valid():
     user = UserCreate(**valid_user_data(phone_num="713-555-1234"))
     assert user.phone_num == "713-555-1234"
 
+# US numbers only — the character check alone accepts 7-20 characters, so
+# these pin the digit count. The signup form caps input at 10 digits; this is
+# what makes that a rule rather than a client-side hint.
+
+def test_create_user_phone_with_nine_digits_raises_error():
+    with pytest.raises(ValidationError):
+        UserCreate(**valid_user_data(phone_num="713-555-123"))
+
+
+def test_create_user_phone_with_eleven_digits_raises_error():
+    with pytest.raises(ValidationError):
+        UserCreate(**valid_user_data(phone_num="713-555-12345"))
+
+
+def test_create_user_phone_formatted_by_the_signup_form_is_valid():
+    # Exactly what the frontend now submits.
+    user = UserCreate(**valid_user_data(phone_num="(713) 555-1234"))
+    assert user.phone_num == "(713) 555-1234"
+
 
 def test_create_user_password_exactly_10_chars_is_valid():
     user = UserCreate(**valid_user_data(password="b7k2m9x4qz"))
