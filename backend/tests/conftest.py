@@ -83,7 +83,10 @@ def disable_drive_sync(monkeypatch):
 # Google Sheet, no matter what the developer's backend/.env contains.
 @pytest.fixture(autouse=True)
 def disable_event_tracker_sync(monkeypatch):
-    for var in ("CREDENTIALS", "SHEET_ID"):
+    # GOOGLE_SERVICE_ACCOUNT_JSON belongs here too: it is the deployment form
+    # of the same credential, so leaving it set would let a developer's real
+    # Sheets key reach the live API from a test run.
+    for var in ("CREDENTIALS", "SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_JSON"):
         monkeypatch.delenv(var, raising=False)
 
 

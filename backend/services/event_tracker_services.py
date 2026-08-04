@@ -1,4 +1,4 @@
-import os, logging, re
+import json, os, logging, re
 from datetime import datetime, date, time
 from zoneinfo import ZoneInfo
 import gspread
@@ -98,12 +98,27 @@ class _NoMatch:
 NO_MATCH = _NoMatch()
 
 def is_configured() -> bool:
-    return bool(os.getenv("CREDENTIALS") and os.getenv("SHEET_ID"))
+    has_creds = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("CREDENTIALS")
+    return bool(has_creds and os.getenv("SHEET_ID"))
+
+def _service_account_credentials():
+    """Credentials from the inline JSON if present, else the file path.
+
+    The inline form exists for deployment: the key file is gitignored, so it
+    is never in the image, and container hosts have no secret-file mount.
+    Service-account JSON already escapes newlines inside private_key as
+    literal \\n, so `jq -c . key.json` yields a safe single-line env value.
+    The file path stays supported for local development (see the README).
+    """
+    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if raw:
+        return Credentials.from_service_account_info(json.loads(raw), scopes=SCOPES)
+    return Credentials.from_service_account_file(os.getenv("CREDENTIALS"), scopes=SCOPES)
 
 def get_worksheet():
     if not is_configured():
         return None
-    creds = Credentials.from_service_account_file(os.getenv("CREDENTIALS"), scopes=SCOPES)
+    creds = _service_account_credentials()
     return gspread.authorize(creds).open_by_key(os.getenv("SHEET_ID")).sheet1
 
 def parse_time(raw: str) -> time | None:

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import field_validator
 from services import hibp_services
 from services.dependencies import SessionDependencies
-from services.rate_limit import limiter
+from services.rate_limit import limiter, PASSWORD_RESET_LIMIT
 from validators.email import normalize_email
 from services.user_services import get_user_by_email, get_user_by_user_id
 from services.pw_reset_services import generate_reset_token, hash_reset_token
@@ -37,7 +37,7 @@ class PasswordResetConfirm(SQLModel):
 router = APIRouter(prefix="/password-reset", tags=["PasswordReset"])
 
 @router.post("/request")
-@limiter.limit("3/hour")
+@limiter.limit(PASSWORD_RESET_LIMIT)
 async def request_password_reset(request: Request, req: PasswordResetRequest, session: SessionDependencies):
     email = normalize_email(req.email)
     member = get_user_by_email(session, email)
@@ -68,8 +68,9 @@ async def request_password_reset(request: Request, req: PasswordResetRequest, se
             "This link expires in 1 hour. "
             "If you didn't request a password reset, you can safely ignore this email."
         )
-        # A failed send must not change the response — never reveal account existence
-        send_email(member.cougarnet_email, subject, body)
+        # A failed send must not change the response — never reveal account existence.
+        # to_thread because smtplib is blocking and this handler is async.
+        await asyncio.to_thread(send_email, member.cougarnet_email, subject, body)
 
     return {"detail": "If an account with that email exists, a reset link has been sent."}
 

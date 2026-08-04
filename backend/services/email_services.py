@@ -27,8 +27,13 @@ def send_email(to: str, subject: str, body: str) -> bool:
     msg["Subject"] = subject
     msg.set_content(body)
 
+    # Without an explicit timeout the socket blocks forever, so one
+    # unresponsive SMTP host hangs the request that triggered it — and, if
+    # that request is on the event loop, the whole server with it.
+    timeout = float(os.getenv("SMTP_TIMEOUT", "10"))
+
     try:
-        with smtplib.SMTP(host, port) as smtp:
+        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
             smtp.starttls()
             if smtp_user and smtp_password:
                 smtp.login(smtp_user, smtp_password)

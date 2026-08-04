@@ -1,5 +1,7 @@
-from pathlib import Path
+import secrets
 from typing import Annotated
+
+import config
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
@@ -16,15 +18,20 @@ from services.dependencies import (
     get_optional_user,
     require_shop_admin,
 )
-from services.rate_limit import limiter
+from services.rate_limit import limiter, ORDER_LIMIT
 from services.time_services import utcnow
 from validators.email import normalize_email
 
 router = APIRouter(prefix="/shop", tags=["Shop"])
 
 # Product images live on disk, one file per product keyed by product id.
-PRODUCT_IMAGE_DIR = Path(__file__).resolve().parent.parent / "uploads" / "products"
-MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+# Re-exported as a module attribute (rather than referenced as
+# config.PRODUCT_IMAGE_DIR) so tests can keep monkeypatching it to a tmp_path.
+PRODUCT_IMAGE_DIR = config.PRODUCT_IMAGE_DIR
+# 2 MB, matching the resume cap. Product images are served to every shop
+# visitor, so an oversized one is the single biggest bandwidth item on the
+# site — a 4.5 MB photo cost ~1.35 GB of origin traffic per 300 viewers.
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
 # content-type -> (extension, magic bytes)
 IMAGE_TYPES = {
@@ -96,13 +103,22 @@ def get_product_image(product_id: int, session: SessionDependencies):
     media_type = next(
         (ct for ct, (e, _) in IMAGE_TYPES.items() if e == ext), "application/octet-stream"
     )
-    return FileResponse(path, media_type=media_type)
+    # Filenames are content-addressed (see upload_product_image), so a given
+    # URL always maps to the same bytes and can be cached forever. Without
+    # this every shop view re-downloads the full image from the origin:
+    # FileResponse does send an ETag, but the 304 short-circuit only exists
+    # in StaticFiles, so conditional requests still transfer the whole body.
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 # --- public: orders ---
 
 @router.post("/orders", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
+@limiter.limit(ORDER_LIMIT)
 def place_order(
     request: Request,
     payload: OrderCreate,
@@ -302,16 +318,19 @@ async def upload_product_image(
     if len(contents) > MAX_IMAGE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Image must be 5 MB or smaller.",
+            detail=f"Image must be {MAX_IMAGE_BYTES // (1024 * 1024)} MB or smaller.",
         )
     if not contents.startswith(magic):
         raise HTTPException(status_code=400, detail="File is not a valid image.")
 
-    # Deterministic name keyed by product id; drop any old image with another ext
+    # Drop the previous image (its name differs, so it would otherwise linger)
     if product.image_filename:
         (PRODUCT_IMAGE_DIR / product.image_filename).unlink(missing_ok=True)
 
-    filename = f"product_{product.id}{ext}"
+    # Random suffix makes every upload a distinct URL, which is what lets the
+    # response above be cached immutably: replacing a product photo changes
+    # the filename, so no browser or CDN can serve the old one.
+    filename = f"product_{product.id}_{secrets.token_hex(4)}{ext}"
     PRODUCT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     (PRODUCT_IMAGE_DIR / filename).write_bytes(contents)
 

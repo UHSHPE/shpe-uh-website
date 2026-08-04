@@ -2,6 +2,8 @@ import asyncio
 from pathlib import Path
 from typing import Annotated
 
+import config
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 
@@ -12,7 +14,9 @@ from services.drive_services import delete_resume_from_drive, upload_resume_to_d
 router = APIRouter(tags=["Resume"])
 
 # Uploaded resumes live on disk, one PDF per user keyed by user id.
-RESUME_DIR = Path(__file__).resolve().parent.parent / "uploads" / "resumes"
+# Re-exported as a module attribute (rather than referenced as
+# config.RESUME_DIR) so tests can keep monkeypatching it to a tmp_path.
+RESUME_DIR = config.RESUME_DIR
 MAX_RESUME_BYTES = 2 * 1024 * 1024  # 2 MB
 PDF_MAGIC = b"%PDF"
 

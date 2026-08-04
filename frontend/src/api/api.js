@@ -4,6 +4,33 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
+// AuthContext registers its own sign-out here so an expired token clears
+// React state too, not just localStorage.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
+
+// On these, a 401 means "wrong credentials", not "your session ended" —
+// signing the user out would wipe the error message the sign-in page is
+// about to render.
+const CREDENTIAL_PATHS = ["/login", "/signup", "/verify-email", "/password-reset"];
+
+// Tokens expire (ACCESS_TOKEN_EXPIRE_MINUTES) and there is no refresh flow,
+// so without this an expired session just fails every request in silence.
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const url = err.config?.url ?? "";
+    const isCredentialCall = CREDENTIAL_PATHS.some((p) => url.startsWith(p));
+    if (err.response?.status === 401 && !isCredentialCall) {
+      localStorage.removeItem("token");
+      onUnauthorized?.();
+    }
+    return Promise.reject(err);
+  }
+);
+
 export function loginUser(email, password) {
   const params = new URLSearchParams();
   params.append("username", email);
@@ -178,9 +205,14 @@ export function getShopProduct(productId) {
 }
 
 // Public image URL — safe to use directly in an <img src>.
+// The response is cached immutably (see get_product_image), so ?v= carries
+// the stored filename: it changes on every upload, which is what makes a
+// replaced photo appear immediately instead of being served stale from a
+// browser or CDN cache.
 export function productImageUrl(product) {
   return product?.image_filename
-    ? `${api.defaults.baseURL}/shop/products/${product.id}/image`
+    ? `${api.defaults.baseURL}/shop/products/${product.id}/image` +
+        `?v=${encodeURIComponent(product.image_filename)}`
     : null;
 }
 

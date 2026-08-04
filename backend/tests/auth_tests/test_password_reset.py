@@ -12,6 +12,7 @@ from models.user.user_enums import Industry, ProfDev, RaceEthnicity
 from models.user.pw_reset_token import PasswordResetToken
 from security.hashing import get_password_hash, verify_password
 from services.pw_reset_services import generate_reset_token
+from services.rate_limit import LOGIN_LIMIT, limit_count
 from services.time_services import utcnow
 from tests.conftest import make_user
 
@@ -210,8 +211,11 @@ def test_token_issued_after_reset_still_works(unauth_client, session):
 
 # --- Rate limiting ---
 
-def test_login_rate_limited_after_five_attempts(unauth_client, session):
-    for _ in range(5):
+def test_login_rate_limited_once_the_ip_budget_is_spent(unauth_client, session):
+    # Derived from the configured limit (RATE_LIMIT_LOGIN) rather than
+    # hardcoded. The address deliberately does not exist, so the per-account
+    # lockout never engages and this exercises only the per-IP limiter.
+    for _ in range(limit_count(LOGIN_LIMIT)):
         res = login(unauth_client, "test@cougarnet.uh.edu", "wrongpassword")
         assert res.status_code == 401
     assert login(unauth_client, "test@cougarnet.uh.edu", "wrongpassword").status_code == 429

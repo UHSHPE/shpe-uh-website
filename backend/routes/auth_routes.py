@@ -16,7 +16,7 @@ from services import hibp_services, shop_services
 from services.auth_user import authenticate_user
 from services.user_services import create_user, get_user_by_user_id
 from services.dependencies import SessionDependencies, get_current_user
-from services.rate_limit import limiter
+from services.rate_limit import limiter, LOGIN_LIMIT, SIGNUP_LIMIT
 from services.user_services import get_user_by_email
 from validators.email import normalize_email
 from fastapi.security import OAuth2PasswordRequestForm
@@ -65,7 +65,7 @@ def _delete_unverified_user(session, user: User) -> None:
     session.commit()
 
 @router.post("/login")
-@limiter.limit("5/minute")
+@limiter.limit(LOGIN_LIMIT)
 async def login_for_token(request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDependencies) -> Token:
     email = normalize_email(form_data.username)
     db_user = get_user_by_email(session, email)
@@ -80,7 +80,10 @@ async def login_for_token(request: Request, form_data: Annotated[OAuth2PasswordR
         session.add(db_user)
         session.commit()
 
-    user = authenticate_user(session, email, form_data.password)
+    # to_thread because verify_password is argon2id (64 MiB, ~100 ms by
+    # design). Run inline it would freeze the event loop for that whole
+    # window — at an event, 300 logins would serialize into a stalled site.
+    user = await asyncio.to_thread(authenticate_user, session, email, form_data.password)
     if not user:
         if db_user:
             db_user.failed_login_count += 1
@@ -126,7 +129,7 @@ async def me(user: Annotated[User, Depends(get_current_user)], session: SessionD
 
 # Creates user form sign up
 @router.post('/signup', status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/hour")
+@limiter.limit(SIGNUP_LIMIT)
 async def signup(request: Request, user_in: UserCreate, session: SessionDependencies):
     # Breached-password check (fail-open) — before any DB mutation. Module
     # attribute so tests can monkeypatch it; to_thread because httpx's sync
@@ -154,8 +157,12 @@ async def signup(request: Request, user_in: UserCreate, session: SessionDependen
     session.commit()
 
     link = f"{FRONTEND_URL}/verify-email?token={raw}"
-    send_email(user_db.cougarnet_email, "Verify your SHPE UH account",
-               f"Hi {user_db.first_name}, confirm your account:\n\n{link}\n\nThis link expires in 24 hours.")
+    # to_thread for the same reason as the HIBP call above: smtplib is
+    # blocking, and a blocking call inside an async handler stalls the event
+    # loop for every other request, not just this one.
+    await asyncio.to_thread(
+        send_email, user_db.cougarnet_email, "Verify your SHPE UH account",
+        f"Hi {user_db.first_name}, confirm your account:\n\n{link}\n\nThis link expires in 24 hours.")
 
     return {"detail": "Check your CougarNet email to verify your account."}
 

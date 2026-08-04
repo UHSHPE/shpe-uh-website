@@ -72,8 +72,9 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (requirements-dev.txt adds the test tooling
+# and pulls in requirements.txt itself)
+pip install -r requirements-dev.txt
 ```
 
 Create `backend/.env` (see [Environment Variables](#environment-variables)):
@@ -81,7 +82,7 @@ Create `backend/.env` (see [Environment Variables](#environment-variables)):
 ```bash
 echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=720
 FRONTEND_URL=http://localhost:5173" > .env
 ```
 
@@ -124,9 +125,10 @@ Frontend runs at **http://localhost:5173**.
 |---|---|---|---|
 | `SECRET_KEY` | Yes | Random hex secret for JWT signing | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ALGORITHM` | Yes | JWT signing algorithm | `HS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes | `30` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes. Defaults to `720` (12 h): there is no refresh-token flow, so a short lifetime makes members re-authenticate constantly, and every re-auth is an expensive password hash | `720` |
 | `DATABASE_URL` | No | Postgres connection string. Defaults to the `docker-compose.yml` credentials/port, so local dev needs nothing here unless those change | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe` |
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
+| `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
 | `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
@@ -138,7 +140,24 @@ Frontend runs at **http://localhost:5173**.
 | `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
 | `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted | `sandbox` |
 | `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | No | The same service-account key as a single-line JSON string (`jq -c . key.json`), for hosts with no way to mount a file. Takes precedence over `CREDENTIALS` | `{"type":"service_account",...}` |
 | `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
+
+##### Deployment-only
+
+Leave these unset for local development.
+
+| Variable | Description | Example |
+|---|---|---|
+| `CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API. Falls back to `FRONTEND_URL`, then the Vite dev server. Under `ENVIRONMENT=production` the app **refuses to start** if this still points at localhost | `https://example.org,https://www.example.org` |
+| `CORS_ORIGIN_REGEX` | Extra origins by pattern — useful for preview deployments | `https://.*\.vercel\.app` |
+| `ALLOWED_HOSTS` | Comma-separated `Host` header allowlist. Set it to your API domain so the raw platform hostname stops answering | `api.example.org` |
+| `TRUST_PROXY_IP_HEADERS` | Set to `1` when the app runs behind a proxy or load balancer. **Without it every rate limit becomes one global bucket** shared by all visitors, because every request appears to come from the proxy's address | `1` |
+| `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
+| `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
+| `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
+| `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
+| `DATABASE_URL` | Full SQLAlchemy URL. Leave unset to use SQLite under `DATA_DIR` | — |
 
 #### Square shop payments (optional, one-time setup)
 
@@ -264,10 +283,14 @@ shpe-uh-website/
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
 └── backend/
-    ├── main.py             # FastAPI app: routers + background loops (reminder emails, daily event-sheet sync)
+    ├── main.py             # FastAPI app: routers, health checks + background loops (reminder emails, daily event-sheet sync)
+    ├── config.py           # DATA_DIR — where the database and uploads are written
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL) and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
+    ├── Dockerfile          # Container image used for deployment
+    ├── requirements.txt    # Runtime dependencies
+    ├── requirements-dev.txt # Test tooling (includes requirements.txt)
     ├── routes/             # APIRouters: admin (president + VPs), auth, committees, events (+ reminders), notifications, password reset, resume, shop
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
@@ -308,10 +331,12 @@ shpe-uh-website/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/login` | No | Authenticate and receive a JWT token (rate limited: 5/minute); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
-| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited: 5/hour) |
+| GET | `/health` | No | Liveness probe for the hosting platform. Deliberately does not query the database, so a momentary lock can't get a healthy server restarted |
+| GET | `/health/db` | No | Readiness check that does query the database — for manual verification after a deploy |
+| POST | `/login` | No | Authenticate and receive a JWT token (rate limited, configurable via `RATE_LIMIT_LOGIN`); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
+| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`) |
 | POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
-| POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited: 3/hour) |
+| POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited, configurable via `RATE_LIMIT_PASSWORD_RESET`) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
@@ -340,7 +365,7 @@ shpe-uh-website/
 | GET | `/shop/products` | No | Shop products that are active and not retired |
 | GET | `/shop/products/{id}` | No | One product (type, sizes, price); 404 if unknown, hidden, or retired |
 | GET | `/shop/products/{id}/image` | No | Product image |
-| POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited: 10/minute) |
+| POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited, configurable via `RATE_LIMIT_ORDER`) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
 | GET | `/shop/orders/me` | Yes | Signed-in member's order history |
 | PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |
@@ -348,7 +373,7 @@ shpe-uh-website/
 | PATCH | `/shop/products/{id}` | Shop admin | Edit a product / toggle availability |
 | DELETE | `/shop/products/{id}` | Shop admin | Retire a product — hides it from the shop and keeps it restorable (nothing is deleted); the dues product can't be retired |
 | POST | `/shop/products/{id}/restore` | Shop admin | Restore a retired product (it comes back hidden) |
-| POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤5 MB) |
+| POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤2 MB) |
 | GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
@@ -426,12 +451,38 @@ The QR encodes `window.location.origin`, so scanning it on a phone only works if
    cd backend && python main.py
    cd frontend && npm run dev -- --host
    ```
-4. **CORS note:** `backend/main.py`'s `CORSMiddleware` only allows the `http://localhost:5173` origin. A browser hitting the site via your LAN IP sends a different `Origin` header, so API calls will be blocked until you temporarily add it — e.g. `allow_origins=["http://localhost:5173", "http://<your-lan-ip>:5173"]` — and restart the backend. Revert this before committing; it's a local-testing-only change.
+4. **CORS note:** the allowed origins come from the `CORS_ORIGINS` env var (falling back to `FRONTEND_URL`, then `http://localhost:5173`). A browser hitting the site via your LAN IP sends a different `Origin`, so add it in `backend/.env` and restart the backend — no code change needed:
+   ```
+   CORS_ORIGINS=http://localhost:5173,http://<your-lan-ip>:5173
+   ```
 5. On your laptop, sign in as a seeded chair (or the president) and open `/my-events` at `http://<your-lan-ip>:5173/my-events` — opening it via the LAN IP (not `localhost`) matters, since that's what gets baked into the QR.
 6. Click **Show QR** on an event, then scan it with your phone's camera on the same network. Walk the flow: sign in (if needed) → confirm → "Did you bring a new member?" → success.
 7. Scan the same code again to see the "Already checked in" screen, then scan the sign-out code to see the duration + points summary. Check `/dashboard` for the updated points total.
 
 Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local development.
+
+## Deployment
+
+The frontend deploys to **Vercel** (paid tier — the free Hobby plan does not permit commercial use, and the site sells merch) and the backend to **Railway**, with DNS at the registrar.
+
+**Frontend.** Import the repo in Vercel with root directory `frontend`; the framework, build command (`npm run build`), and output directory (`dist`) are detected automatically. Set `VITE_API_URL` (no trailing slash), `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID`, and `VITE_BEHOLD_FEED_URL` for **both** Production and Preview — these are baked in at build time, so changing one needs a redeploy rather than a restart. `frontend/vercel.json` supplies the single-page-app fallback (needed so emailed `/verify-email` and `/reset-password` links resolve) plus security and caching headers.
+
+**Backend.** Railway builds `backend/Dockerfile`. Add a **managed Postgres** service and set `DATABASE_URL` to its connection string — the `docker-compose.yml` container is for local development only and must not be used in production. Railway injects `PORT` automatically. Point the health check at `/health`.
+
+Uploads still live on disk, so attach a volume mounted at `/data` and set `DATA_DIR=/data`. Without it, every resume and product image is written to the container filesystem and destroyed on the next deploy. The database is unaffected by this — it's in Postgres.
+
+Run exactly **one worker**. Rate-limit counters live in slowapi's process memory, so a second worker makes every limit twice as loose, non-deterministically. (The database no longer constrains this — moving off SQLite removed that half of the reason. Multiple workers become viable once the limiter is backed by Redis, and the uploads volume is shared or moved to object storage.)
+
+**Going live checklist**
+
+1. Generate a fresh `SECRET_KEY` — do not reuse the development one.
+2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost.
+3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
+4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
+5. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
+6. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
+7. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
+8. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
 
 ## Running Tests
 

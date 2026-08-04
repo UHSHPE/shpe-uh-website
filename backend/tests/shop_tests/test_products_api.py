@@ -256,6 +256,52 @@ def test_upload_product_image_as_manager(manager_client, session, tmp_path, monk
     assert served.content == PNG_BYTES
 
 
+def test_image_is_cached_immutably(manager_client, session, tmp_path, monkeypatch):
+    """Product images are the heaviest thing the API serves. Without a cache
+    header every shop view re-downloads them from the origin."""
+    from routes import shop_routes
+
+    monkeypatch.setattr(shop_routes, "PRODUCT_IMAGE_DIR", tmp_path)
+    product = make_product(session)
+    manager_client.post(
+        f"/shop/products/{product.id}/image",
+        files={"file": ("shirt.png", PNG_BYTES, "image/png")},
+    )
+
+    served = manager_client.get(f"/shop/products/{product.id}/image")
+
+    assert "immutable" in served.headers["cache-control"]
+    assert "max-age=31536000" in served.headers["cache-control"]
+
+
+def test_replacing_an_image_changes_the_filename(manager_client, session, tmp_path, monkeypatch):
+    """The filename is what makes immutable caching safe: if a replacement
+    reused the name, every cache would keep serving the old photo forever."""
+    from routes import shop_routes
+
+    monkeypatch.setattr(shop_routes, "PRODUCT_IMAGE_DIR", tmp_path)
+    product = make_product(session)
+
+    manager_client.post(
+        f"/shop/products/{product.id}/image",
+        files={"file": ("shirt.png", PNG_BYTES, "image/png")},
+    )
+    session.refresh(product)
+    first = product.image_filename
+
+    manager_client.post(
+        f"/shop/products/{product.id}/image",
+        files={"file": ("shirt.png", PNG_BYTES, "image/png")},
+    )
+    session.refresh(product)
+    second = product.image_filename
+
+    assert first != second
+    # The superseded file is removed rather than left orphaned on the volume.
+    assert not (tmp_path / first).exists()
+    assert (tmp_path / second).exists()
+
+
 def test_upload_non_image_400(manager_client, session, tmp_path, monkeypatch):
     from routes import shop_routes
 

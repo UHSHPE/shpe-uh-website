@@ -1,11 +1,22 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { getMe } from "../api/api";
+import { getMe, setUnauthorizedHandler } from "../api/api";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("token"));
   const [user, setUser] = useState(null);
+
+  // Any 401 from an authenticated call means the token expired — drop the
+  // session so PrivateRoute redirects to /signin instead of leaving the user
+  // on a page whose requests all silently fail.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setToken(null);
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   useEffect(() => {
     if (!token) return;

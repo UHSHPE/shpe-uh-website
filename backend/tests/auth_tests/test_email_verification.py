@@ -8,6 +8,7 @@ from models.user.user import User
 from models.user.email_verification import EmailVerificationToken
 from models.user.multi_selections.user_country_origin import UserCountryOrigin
 from services.pw_reset_services import hash_reset_token
+from services.rate_limit import SIGNUP_LIMIT, limit_count
 
 
 def signup_payload(**overrides):
@@ -153,19 +154,21 @@ def test_unverified_squat_is_reclaimed_by_later_signup(unauth_client, session, s
 
 
 def test_signup_is_rate_limited(unauth_client, session, sent_emails):
-    # 5/hour — the sixth distinct signup attempt from one IP is throttled.
-    for i in range(5):
+    # The limit is configurable (RATE_LIMIT_SIGNUP), so derive the count
+    # rather than hardcoding it: attempt N+1 from one IP is throttled.
+    allowed = limit_count(SIGNUP_LIMIT)
+    for i in range(allowed):
         res = signup(
             unauth_client,
             cougarnet_email=f"user{i}.test@cougarnet.uh.edu",
             personal_email=f"user{i}.test@gmail.com",
-            psid=f"100000{i}",
+            psid=f"{2000000 + i}",
         )
         assert res.status_code == 201
     throttled = signup(
         unauth_client,
-        cougarnet_email="user6.test@cougarnet.uh.edu",
-        personal_email="user6.test@gmail.com",
-        psid="1000006",
+        cougarnet_email=f"user{allowed}.test@cougarnet.uh.edu",
+        personal_email=f"user{allowed}.test@gmail.com",
+        psid=f"{2000000 + allowed}",
     )
     assert throttled.status_code == 429

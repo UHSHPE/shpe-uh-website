@@ -7,13 +7,15 @@ from services import square_services
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlmodel import Session
+from sqlmodel import Session, text
 
 from database import create_db, engine
+from services.dependencies import SessionDependencies
 from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 from services.event_tracker_services import sync_events
@@ -41,11 +43,12 @@ def dispatch_event_sync():
     with Session(engine) as session:
         sync_events(session)
 
-def seconds_until_next_sync() -> float:
+def seconds_until(hour: int) -> float:
+    """Seconds from now until the next occurrence of `hour` Central."""
     now = datetime.now(SYNC_TZ)
-    target = now.replace(hour=SYNC_HOUR, minute=0, second=0, microsecond=0)
+    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
     if target <= now:
-        target += timedelta(days=1)   # already past sync time today → aim for tomorrow
+        target += timedelta(days=1)   # already past that hour today → aim for tomorrow
     return (target - now).total_seconds()
 
 async def event_sync_loop():
@@ -54,7 +57,7 @@ async def event_sync_loop():
             await asyncio.to_thread(dispatch_event_sync)
         except Exception:
             logging.exception("Event sheet sync failed")
-        await asyncio.sleep(seconds_until_next_sync())
+        await asyncio.sleep(seconds_until(SYNC_HOUR))
 
 # Inits the DB and starts the background loops (reminder emails + daily event-sheet sync)
 @asynccontextmanager
@@ -67,16 +70,36 @@ async def lifespan(app):
     reminder_task.cancel()
     event_sync_task.cancel()
 
+def cors_origins() -> list[str]:
+    """Browser origins allowed to call the API.
+
+    CORS_ORIGINS is a comma-separated allowlist; it falls back to
+    FRONTEND_URL (already set for the links in verification/reset emails) and
+    finally to the Vite dev server, so local development is unchanged.
+    """
+    raw = (
+        os.getenv("CORS_ORIGINS")
+        or os.getenv("FRONTEND_URL")
+        or "http://localhost:5173"
+    )
+    return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
 def assert_production_config():
     if os.getenv("ENVIRONMENT", "").lower() != "production":
         return
     missing = []
+    if not os.getenv("SECRET_KEY"):
+        missing.append("SECRET_KEY")
     if not square_services.is_configured():
         missing.append("SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID")
     if not os.getenv("SMTP_HOST"):
         missing.append("SMTP_HOST")
     if os.getenv("SQUARE_ENVIRONMENT", "sandbox").lower() != "production":
         missing.append("SQUARE_ENVIRONMENT=production")
+    # A forgotten allowlist otherwise deploys green and then fails every
+    # browser call with an opaque CORS error that leaves nothing in the logs.
+    if any("localhost" in o or "127.0.0.1" in o for o in cors_origins()):
+        missing.append("CORS_ORIGINS/FRONTEND_URL (still points at localhost)")
     if missing:
         raise RuntimeError(
             f"ENVIRONMENT=production but required config is missing: {', '.join(missing)}"
@@ -87,13 +110,37 @@ app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Rejects requests whose Host header isn't ours, so nobody can reach the API
+# through the raw platform hostname and bypass the intended edge (which is
+# also where the rate limiter gets its client IP from). Unset locally.
+_allowed_hosts = os.getenv("ALLOWED_HOSTS")
+if _allowed_hosts:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[h.strip() for h in _allowed_hosts.split(",") if h.strip()],
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=cors_origins(),
+    # Lets Vercel preview deployments (*.vercel.app) reach the API.
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX") or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health", include_in_schema=False)
+def health():
+    """Liveness probe. Deliberately does NOT touch the database — a transient
+    lock or a slow query must not make the platform kill a healthy container."""
+    return {"status": "ok"}
+
+@app.get("/health/db", include_in_schema=False)
+def health_db(session: SessionDependencies):
+    """Readiness check, for manual verification rather than the platform."""
+    session.exec(text("SELECT 1"))
+    return {"status": "ok", "db": "ok"}
 
 app.include_router(admin_routes.router)
 app.include_router(auth_routes.router)
@@ -106,4 +153,13 @@ app.include_router(shop_routes.router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # The container image invokes uvicorn directly, so this block is the
+    # local-dev entrypoint the README documents. Reload is forced off in
+    # production so this can never start a reloading server on a live host.
+    uvicorn.run(
+        "main:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        reload=os.getenv("ENVIRONMENT", "").lower() != "production",
+        proxy_headers=True,
+    )

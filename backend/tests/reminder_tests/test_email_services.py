@@ -9,16 +9,20 @@ def test_canary():
 
 
 def _clear_smtp_env(monkeypatch):
-    for var in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_FROM"):
+    for var in (
+        "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
+        "EMAIL_FROM", "SMTP_TIMEOUT",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
 class FakeSMTP:
     instances = []
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, timeout=None):
         self.host = host
         self.port = port
+        self.timeout = timeout
         self.tls_started = False
         self.logins = []
         self.sent_messages = []
@@ -74,6 +78,30 @@ def test_with_smtp_config_sends_message(monkeypatch):
     assert msg["To"] == "member@gmail.com"
     assert msg["Subject"] == "Reminder"
     assert "Event coming up" in msg.get_content()
+
+def test_smtp_always_gets_a_timeout(monkeypatch):
+    """smtplib defaults to no timeout, i.e. an infinite socket wait. Every
+    send_email caller is either an async handler (where a hang freezes the
+    whole event loop) or a background loop, so the timeout must never be None."""
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
+
+    send_email("member@gmail.com", "Reminder", "Event coming up")
+
+    assert FakeSMTP.instances[0].timeout == 10.0
+
+def test_smtp_timeout_is_configurable(monkeypatch):
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+    monkeypatch.setenv("SMTP_TIMEOUT", "3.5")
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
+
+    send_email("member@gmail.com", "Reminder", "Event coming up")
+
+    assert FakeSMTP.instances[0].timeout == 3.5
 
 def test_from_defaults_to_smtp_user(monkeypatch):
     _clear_smtp_env(monkeypatch)

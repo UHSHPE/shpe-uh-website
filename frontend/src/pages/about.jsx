@@ -258,7 +258,13 @@ function MemberCard({ name, position, email, img, className = '' }) {
     <div className={`flex flex-col items-center ${className}`}>
       <div className="relative w-40 h-40 rounded-full overflow-hidden mb-4 border-4 border-[#c2410c] bg-[#1a2858] flex items-center justify-center">
         {img ? (
-          <img src={img} alt={name} className="w-full h-full object-cover" />
+          <img
+            src={img}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
         ) : (
           <span className="text-4xl font-bold text-white">{getInitials(name)}</span>
         )}

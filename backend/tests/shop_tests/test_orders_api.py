@@ -6,6 +6,7 @@ from models.shop.order import Order, OrderItem
 from models.shop.product import ProductType
 from sqlmodel import select
 
+from services.rate_limit import ORDER_LIMIT, limit_count
 from tests.shop_tests.conftest import make_product, order_payload
 
 
@@ -258,7 +259,9 @@ def test_list_orders_filters_by_status(manager_client, unauth_client, session, s
 def test_order_creation_rate_limited(unauth_client, session, sent_emails):
     product = make_product(session)
 
-    for _ in range(10):
+    # Derived from the configured limit (RATE_LIMIT_ORDER) rather than
+    # hardcoded, so retuning the limit doesn't break this test.
+    for _ in range(limit_count(ORDER_LIMIT)):
         assert unauth_client.post("/shop/orders", json=order_payload(product)).status_code == 201
 
     assert unauth_client.post("/shop/orders", json=order_payload(product)).status_code == 429
