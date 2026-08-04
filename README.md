@@ -4,7 +4,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 
 ## Features
 
-- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins
+- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins. The five-step signup form validates each step before letting you continue, so every rule the API enforces (name characters, 7-digit PSID, 10-digit US phone, at least one country of origin) is caught where the field is, not as a server error at the end
 - **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Event Sheet Sync** — The calendar populates itself from the chapter's event-tracker Google Sheet, re-read once a day, so officers add events in the sheet they already maintain and never touch the website
@@ -194,6 +194,20 @@ When configured, every resume upload is mirrored to the Drive folder, re-uploads
 4. From `backend/`, run `.venv/bin/python get_drive_refresh_token.py <client_id> <client_secret> [folder name]` (folder name defaults to "SHPE Resume Book") — a browser opens; sign in with your Google account and approve. The script mints the refresh token and creates (or reuses) the resume folder.
 5. Paste the four printed `GDRIVE_*` lines into `backend/.env` and restart the backend.
 
+**If resumes stop appearing in Drive**, the refresh token has almost certainly expired — the usual cause is step 2 being skipped, since tokens minted while the consent screen is in "Testing" die after 7 days. Sync is best-effort by design (uploads still succeed locally; the failure only goes to the server log), so it fails quietly. Confirm it from `backend/`:
+
+```bash
+.venv/bin/python -c "
+from services import drive_services
+import google.auth.transport.requests as gt
+cfg = drive_services._drive_config()
+print('configured:', bool(cfg))
+if cfg: cfg[0].refresh(gt.Request()); print('token OK')
+"
+```
+
+`invalid_grant: Token has been expired or revoked` means exactly that. Set the consent screen to **In production** first (or it recurs in a week), re-run step 4, and replace `GDRIVE_OAUTH_REFRESH_TOKEN` in `backend/.env`. Keep the existing `GDRIVE_RESUME_FOLDER_ID` — the script reuses the folder when the name matches, and the id is what sync depends on.
+
 #### Event tracker sheet sync (optional, one-time setup)
 
 When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, location, or owning committee in the sheet updates the calendar entry in place on the next sync.
@@ -278,6 +292,7 @@ shpe-uh-website/
 │   └── src/
 │       ├── api/            # Axios instance + all API call functions (api.js)
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
+│       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
 │       ├── utils/          # Shared helpers (money formatting, order-status styling, event colors/labels/duration)
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
@@ -315,7 +330,7 @@ shpe-uh-website/
 | `/shop/checkout` | Two-step checkout: contact details, then payment (Square card element + Apple Pay / Google Pay where supported; simulated when Square isn't configured) | No |
 | `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
-| `/signup` | Sign up (multi-step; ends on a "check your email" screen) | No |
+| `/signup` | Sign up — five steps (Account, Academic, Personal, Background, Membership), each validated before you can continue; ends on a "check your email" screen | No |
 | `/verify-email` | Confirm a new account from the emailed link, then route into chapter-dues checkout | No |
 | `/forgot-password` | Request a password-reset email | No |
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
