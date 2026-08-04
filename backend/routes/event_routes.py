@@ -15,7 +15,7 @@ from services.dependencies import (
     get_optional_user,
     require_event_host,
 )
-from services.rate_limit import limiter
+from services.rate_limit import limiter, ATTEND_LIMIT, CODE_PREVIEW_LIMIT
 from services.reminder_services import compute_remind_at
 from services.time_services import utcnow
 
@@ -71,7 +71,7 @@ async def get_all_events(session: SessionDependencies):
 # --- QR attendance & points ---
 
 @router.post('/attend', response_model=AttendResult)
-@limiter.limit("20/minute")
+@limiter.limit(ATTEND_LIMIT)
 async def attend_event(
     request: Request,
     payload: AttendRequest,
@@ -169,7 +169,7 @@ async def get_all_events_for_chairs(
 
 
 @router.get('/code/{code}', response_model=CodePreviewOut)
-@limiter.limit("30/minute")
+@limiter.limit(CODE_PREVIEW_LIMIT)
 async def get_code_preview(
     request: Request,
     code: str,
