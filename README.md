@@ -155,6 +155,7 @@ Leave these unset for local development.
 | `TRUST_PROXY_IP_HEADERS` | Set to `1` when the app runs behind a proxy or load balancer. **Without it every rate limit becomes one global bucket** shared by all visitors, because every request appears to come from the proxy's address | `1` |
 | `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
 | `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
+| `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
 | `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
 | `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
 | `DATABASE_URL` | Full SQLAlchemy URL. Leave unset to use SQLite under `DATA_DIR` | — |
