@@ -37,7 +37,7 @@ shpe-uh-website/
     main.py               # FastAPI app: routers, /health + /health/db, CORS/TrustedHost from env, background loops (reminder emails every 60s, event-sheet sync daily at 6 AM Central)
     config.py             # DATA_DIR → RESUME_DIR / PRODUCT_IMAGE_DIR — the one knob for every writable path (see "Deployment")
     Dockerfile            # python:3.12-slim, DATA_DIR=/data, uvicorn --workers 1 --proxy-headers
-    .dockerignore         # keeps .env, secrets/, database.db out of the image — see "Deployment"
+    .dockerignore         # keeps .env, secrets/ and leftover local *.db files out of the image — see "Deployment"
     requirements-dev.txt  # test-only deps (pulls in requirements.txt via -r); CI installs this one
     get_drive_refresh_token.py  # One-time helper: mints the OAuth refresh token AND creates the app-owned resume folder (drive.file scope)
     database.py           # Postgres engine (DATABASE_URL env var, psycopg 3 driver, pool_pre_ping) + session factory
@@ -178,7 +178,7 @@ Target: frontend on **Vercel Pro** (paid tier — the free Hobby tier bans comme
 - **A Railway volume attaches to exactly one service**, so a separate cron service cannot read `/data` — backups have to run in-process. It also means deploys are **not zero-downtime** (the old container must release the volume first). Don't deploy during an event.
 - `GET /health` is the platform liveness probe and deliberately **does not touch the DB**, so a transient lock can't get a healthy container killed. `GET /health/db` is the manual readiness check.
 - `assert_production_config()` also rejects a CORS origin still containing `localhost`. Without that check a forgotten `CORS_ORIGINS` deploys **green** and then fails every browser call with an opaque CORS error that leaves nothing in the server logs.
-- **Secrets on disk that must never enter an image:** `backend/.env`, `backend/secrets/*.json`, `database.db`, and the `database.db.bak-*` files all exist locally and are gitignored — invisible to a Git-triggered build, but copied verbatim by a local `docker build` / `railway up`. `backend/.dockerignore` is what prevents that; `database.db` contains every seeded admin account sharing `password123`.
+- **Secrets on disk that must never enter an image:** `backend/.env`, `backend/secrets/*.json`, and the leftover pre-Postgres `database.db` / `database.db.bak-*` files all still exist locally and are gitignored — invisible to a Git-triggered build, but copied verbatim by a local `docker build` / `railway up`. `backend/.dockerignore` is what prevents that. The old `database.db` still contains every seeded admin account sharing `password123`, so it stays excluded until it's deleted.
 - Google Sheets credentials support `GOOGLE_SERVICE_ACCOUNT_JSON` (one-line JSON via `jq -c .`) for deployment, falling back to the `CREDENTIALS` file path for local dev. The autouse `disable_event_tracker_sync` fixture clears **both**.
 
 ## Key Rules & Lessons Learned

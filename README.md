@@ -158,7 +158,6 @@ Leave these unset for local development.
 | `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
 | `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
 | `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
-| `DATABASE_URL` | Full SQLAlchemy URL. Leave unset to use SQLite under `DATA_DIR` | — |
 
 #### Square shop payments (optional, one-time setup)
 
@@ -285,7 +284,7 @@ shpe-uh-website/
 │       └── App.jsx         # Route definitions
 └── backend/
     ├── main.py             # FastAPI app: routers, health checks + background loops (reminder emails, daily event-sheet sync)
-    ├── config.py           # DATA_DIR — where the database and uploads are written
+    ├── config.py           # DATA_DIR — where uploaded files are written
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL) and session factory
     ├── seed.py             # Committees, chair roster, and dev seed data
