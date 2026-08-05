@@ -37,7 +37,7 @@ class UserBase(SQLModel):
     points: int = Field(default=0, ge=0)
 
     phone_num: str
-    psid: str
+    psid: str = Field(index=True, unique=True)
     birthday: date
 
     gender: Gender

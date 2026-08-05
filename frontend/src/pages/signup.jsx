@@ -290,9 +290,10 @@ export default function SignUp() {
       // address; verification is where they'll be routed into dues checkout.
       setSubmittedEmail(form.cougarnet_email);
     } catch (err) {
-      if (err.response?.status === 409) {
-        setSubmitError("An account with that email already exists.");
-      } else if (err.response?.data?.detail) {
+      if (err.response?.data?.detail) {
+        // Covers both the email-conflict and PSID-conflict 409s (and any
+        // other detail-bearing error) — surface the server's message
+        // verbatim rather than guessing which field it was about.
         const detail = err.response.data.detail;
         setSubmitError(Array.isArray(detail) ? detail.map((d) => d.msg).join(" ") : String(detail));
       } else {

@@ -18,6 +18,8 @@ from services.user_services import create_user
 import os, sys
 from dotenv import load_dotenv
 
+# nuke & reseed command for local dev: docker compose down -v && docker compose up -d && docker compose exec db createdb -U shpe shpe_test
+
 load_dotenv()
 if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
     print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)

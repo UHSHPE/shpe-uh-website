@@ -4,7 +4,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 
 ## Features
 
-- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins. The five-step signup form validates each step before letting you continue, so every rule the API enforces (name characters, 7-digit PSID, 10-digit US phone, at least one country of origin) is caught where the field is, not as a server error at the end
+- **Authentication** — Secure sign-up and login with JWT tokens and Argon2 password hashing. Passwords must be 10–128 characters and are checked against the Have I Been Pwned breached-password database (no composition rules, no forced expiry — per NIST guidance); accounts lock temporarily after repeated failed logins. The five-step signup form validates each step before letting you continue, so every format rule the API enforces (name characters, 7-digit PSID, 10-digit US phone, at least one country of origin) is caught where the field is, not as a server error at the end. Uniqueness — one account per CougarNet email and one per PSID — can only be checked against the database, so those two are reported when you submit the form
 - **Password Reset** — "Forgot password?" flow: a single-use reset link (valid 1 hour) is emailed to the member's CougarNet address; resetting signs out all existing sessions. Login and reset requests are rate-limited
 - **Events Calendar** — Public calendar displaying upcoming chapter events
 - **Event Sheet Sync** — The calendar populates itself from the chapter's event-tracker Google Sheet, re-read once a day, so officers add events in the sheet they already maintain and never touch the website
@@ -349,7 +349,7 @@ shpe-uh-website/
 | GET | `/health` | No | Liveness probe for the hosting platform. Deliberately does not query the database, so a momentary lock can't get a healthy server restarted |
 | GET | `/health/db` | No | Readiness check that does query the database — for manual verification after a deploy |
 | POST | `/login` | No | Authenticate and receive a JWT token (rate limited, configurable via `RATE_LIMIT_LOGIN`); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
-| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`) |
+| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`). CougarNet email and PSID are each unique to one account — a conflict with a verified account is rejected, while a conflict with an unverified one replaces that pending signup and sends a fresh link |
 | POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited, configurable via `RATE_LIMIT_PASSWORD_RESET`) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |

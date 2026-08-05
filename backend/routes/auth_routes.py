@@ -17,7 +17,7 @@ from services.auth_user import authenticate_user
 from services.user_services import create_user, get_user_by_user_id
 from services.dependencies import SessionDependencies, get_current_user
 from services.rate_limit import limiter, LOGIN_LIMIT, SIGNUP_LIMIT
-from services.user_services import get_user_by_email
+from services.user_services import get_user_by_email, get_user_by_psid
 from validators.email import normalize_email
 from fastapi.security import OAuth2PasswordRequestForm
 from services.pw_reset_services import generate_reset_token, hash_reset_token
@@ -147,6 +147,20 @@ async def signup(request: Request, user_in: UserCreate, session: SessionDependen
         # Unverified squat: discard the pending account (and its child rows) and
         # re-issue a fresh token. Re-submitting signup doubles as "resend link".
         _delete_unverified_user(session, existing)
+
+    # PSID is checked SECOND, after the email branch has already run. Order is
+    # load-bearing: in the common case (the same person re-submitting signup to
+    # get a fresh verification link) one account holds both the email and the
+    # PSID, so deleting it above makes this branch a no-op (the row is already
+    # gone). When the two lookups instead resolve to two DIFFERENT unverified
+    # accounts, both get deleted here — that's still correct, since both are
+    # dead pending rows squatting on identifiers this signup needs.
+    existing_by_psid = get_user_by_psid(session, user_in.psid)
+
+    if existing_by_psid:
+        if existing_by_psid.email_verified:
+            raise HTTPException(status_code=409, detail="That PSID is already registered.")
+        _delete_unverified_user(session, existing_by_psid)
 
     user_db = create_user(session, user_in)
     raw, hashed = generate_reset_token()
