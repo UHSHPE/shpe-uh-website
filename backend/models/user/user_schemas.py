@@ -33,9 +33,6 @@ class UserBase(SQLModel):
     cougarnet_email: EmailStr = Field(index=True, unique=True)
     personal_email: EmailStr = Field(index=True, unique=True)
 
-    role: Role = Field(default=Role.member)
-    points: int = Field(default=0, ge=0)
-
     phone_num: str
     psid: str = Field(index=True, unique=True)
     birthday: date
@@ -186,6 +183,8 @@ class UserCreate(UserBase, UserMultiSelectedFields):
 
 class UserOut(UserBase, UserMultiSelectedFields):
     id: int
+    role: Role
+    points: int
     resume_filename: str | None = None
     # Computed in /me (not a DB column): True when the user has a
     # non-cancelled order containing the dues product. Drives the frontend

@@ -4,15 +4,22 @@ from models.user.multi_selections.user_prof_dev import UserProfDev
 from models.user.multi_selections.user_race_ethnicity import UserRaceEthnicity
 from models.user.user import User
 from models.user.user_schemas import UserCreate
+from models.user.user_enums import Role
 from security.hashing import get_password_hash
 
 
 from sqlmodel import Session, select
 
 
-def create_user(session: Session, user_data: UserCreate):
-    excluded_fields = {"password", "country_origin", "interested_industries", "prof_dev", "race_and_ethnicity"}
-    user_db = User(**user_data.model_dump(exclude=excluded_fields), hashed_password=get_password_hash(user_data.password))
+def create_user(session: Session, user_data: UserCreate, role: Role = Role.member):
+    # role/points are set here, never taken from the request schema — a signup
+    # body must never be able to choose its own role. Kept in the exclude set as
+    # defense-in-depth in case either is ever re-added to UserBase.
+    excluded_fields = {"password", "country_origin", "interested_industries",
+                       "prof_dev", "race_and_ethnicity", "role", "points"}
+    user_db = User(**user_data.model_dump(exclude=excluded_fields),
+                   role=role,
+                   hashed_password=get_password_hash(user_data.password))
 
     session.add(user_db)
     session.commit()

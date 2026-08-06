@@ -74,9 +74,6 @@ def seed_test_user(s: Session):
 
             password="password123",
 
-            role=Role.member,
-            points=0,
-
             phone_num=phone_num,
             psid=psid,
             birthday=date(2000, 1, 1),
@@ -162,7 +159,7 @@ def seed_test_dues_order(s: Session):
     print(f"Seeded paid T-Shirt Dues order ({order.order_code}) for test@cougarnet.uh.edu.")
 
 
-def chair_user_create(first_name: str, last_name: str, role: Role, idx: int) -> UserCreate:
+def chair_user_create(first_name: str, last_name: str, idx: int) -> UserCreate:
     slug = f"{first_name}.{last_name}".lower().replace(" ", ".").replace("'", "")
     return UserCreate(
         first_name=first_name,
@@ -172,9 +169,6 @@ def chair_user_create(first_name: str, last_name: str, role: Role, idx: int) -> 
         personal_email=f"{slug}@gmail.com",
 
         password="password123",
-
-        role=role,
-        points=0,
 
         phone_num=f"713555{1000 + idx}",
         psid=f"{2000001 + idx}",
@@ -224,14 +218,14 @@ def seed_committees_and_chairs(s: Session):
 
         for full_name in chair_names:
             first_name, last_name = full_name.rsplit(" ", 1)
-            user_data = chair_user_create(first_name, last_name, chair_role, idx)
+            user_data = chair_user_create(first_name, last_name, idx)
             idx += 1
 
             user = s.exec(
                 select(User).where(User.cougarnet_email == user_data.cougarnet_email)
             ).first()
             if not user:
-                user = create_user(s, user_data)
+                user = create_user(s, user_data, role=chair_role)
                 user.email_verified = True  # seeded accounts skip email verification
                 s.add(user)
                 s.commit()
@@ -305,8 +299,8 @@ def seed_comm_director(s: Session):
         print("Skipped comms director — already exists.")
         return
 
-    comms = chair_user_create("Comms", "Director", Role.comm_director, 900)
-    created = create_user(s, comms)
+    comms = chair_user_create("Comms", "Director", 900)
+    created = create_user(s, comms, role=Role.comm_director)
     created.email_verified = True  # seeded accounts skip email verification
     s.add(created)
     s.commit()
@@ -324,8 +318,8 @@ def seed_president(s: Session):
         print("Skipped president — already exists.")
         return
 
-    president = chair_user_create("Daniel", "Lopez Gil", Role.president, 901)
-    created = create_user(s, president)
+    president = chair_user_create("Daniel", "Lopez Gil", 901)
+    created = create_user(s, president, role=Role.president)
     created.email_verified = True  # seeded accounts skip email verification
     s.add(created)
     s.commit()
@@ -413,7 +407,7 @@ def seed_eboard(s: Session):
             print(f"Skipped {role.value} — already exists.")
             continue
 
-        created = create_user(s, chair_user_create(first_name, last_name, role, idx))
+        created = create_user(s, chair_user_create(first_name, last_name, idx), role=role)
         created.email_verified = True  # seeded accounts skip email verification
         s.add(created)
         s.commit()

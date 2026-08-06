@@ -12,10 +12,7 @@ def valid_user_data(**overrides):
         
         "cougarnet_email": "abc@cougarnet.uh.edu",
         "personal_email": "abc@gmail.com",
-        
-        "role": Role.member,
-        "points": 0,
-        
+
         "phone_num": "1234562323",
         "psid": "1234567",
         "birthday": date(2000, 1, 1),
