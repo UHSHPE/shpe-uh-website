@@ -15,6 +15,17 @@ from models.user.user_schemas import UserCreate
 from models.user.user_enums import ProfDev, RaceEthnicity, Role, Gender, Colleges, Classification, GPA, ExpGradDate, MembershipStatus, ShirtSize, Industry
 from services.user_services import create_user
 
+# Real chapter structure lives in chapter_data so bootstrap.py can create it in
+# production without dragging in the fake accounts below. Edit committees, the
+# org chart, or the dues product THERE — both seeders read from it.
+from chapter_data import (
+    APPAREL_SIZES,
+    COMMITTEE_ROSTER,
+    DEFAULT_REPORTS,
+    DUES_PRODUCT,
+    EBOARD_COMMITTEES,
+)
+
 import os, sys
 from dotenv import load_dotenv
 
@@ -24,27 +35,6 @@ load_dotenv()
 if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
     print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)
     sys.exit(1)
-
-# Official committee roster. Each committee has exactly one chair role;
-# co-chairs share that role and each get a CommitteeMembership with is_chair=True.
-# Format: (committee name, description, chair role, [chair full names])
-COMMITTEE_ROSTER = [
-    ("Academic", "Study sessions, tutoring, and academic support for members.", Role.academic_chair, ["Angel Montoya", "Sophia Rodriguez"]),
-    ("Athletics and Wellness", "Intramural sports, fitness events, and wellness activities.", Role.athletic_chair, ["Smiley Trenton", "Ean Plasencia"]),
-    ("CFC", "Plans and runs the SHPE UH career fair and recruiter relations.", Role.career_fair_chair, ["Sara Romero"]),
-    ("Engineering Events Coordinator", "Coordinates engineering competitions and technical events.", Role.eec_chair, ["David Cohen", "Ethan Lopez"]),
-    ("Marketing", "Social media, branding, and chapter promotion.", Role.marketing_chair, ["Valeria Zabala"]),
-    ("MentorSHPE", "Peer mentorship program pairing upperclassmen with freshmen.", Role.mentorshpe_chair, ["Nicolas Horton", "Mia Flores"]),
-    ("Outreach", "STEM outreach programs to K-12 schools in the Houston area.", Role.outreach_chair, ["Khris Flores"]),
-    ("Professional", "Resume workshops, networking events, and professional development.", Role.professional_chair, ["Rhonmar Joseph Marges"]),
-    ("Projects", "Hands-on technical projects and competition teams.", Role.projects_chair, ["Lorenzo Ramos", "Alfonso Salas"]),
-    ("SHPE Jr", "Mentors local high school SHPE Jr chapters.", Role.shpe_jr_chair, ["Isabela Morales", "Blake Weaver"]),
-    ("Social", "Events that build community and celebrate our culture.", Role.social_chair, ["Anahi Salinas", "Samuel Avendano"]),
-    ("SHPEtina", "Empowering Latinas in STEM through community and professional growth.", Role.shpetina_chair, ["Alexi Urbina", "Marylin Uriostegui"]),
-    ("Web Development", "Builds and maintains the chapter website.", Role.web_dev_chair, ["Elvin Paz"]),
-    ("Member Relations", "Member engagement, feedback, and retention.", Role.member_relations_chair, ["Gabriela Barreno"]),
-]
-
 
 def seed_test_user(s: Session):
     # Two test members: test@ gets a PAID T-Shirt Dues order (see
@@ -250,28 +240,6 @@ def seed_committees_and_chairs(s: Session):
     s.commit()
 
 
-# E-Board "committees" -- not real committees members can join (joinable=
-# False), seeded purely so EventHost can point at an officer position or at
-# the sheet's bare "eboard" owner value (the generic row, chair_role=None).
-# Whoever currently holds a position's Role shows up as its "chair" the same
-# way a real committee's chair does (require_chair / chair_contact_email
-# aren't used here, but _sync_chair_memberships already keys purely off
-# Committee.chair_role with no CHAIR_ROLES restriction, so nothing there
-# needs to change).
-EBOARD_COMMITTEES = [
-    ("President", Role.president),
-    ("Vice President External", Role.vpe),
-    ("Vice President Internal", Role.vpi),
-    ("Secretary", Role.secretary),
-    ("Treasurer", Role.treasurer),
-    ("Communications", Role.comm_director),
-    ("New Member Rep", Role.new_member_rep),
-    ("Regional Rep", Role.regional_rep),
-    ("Director of Internal Affairs", Role.dir_int_aff),
-    ("E-Board", None),
-]
-
-
 def seed_eboard_committees(s: Session):
     for name, chair_role in EBOARD_COMMITTEES:
         existing = s.exec(select(Committee).where(Committee.name == name)).first()
@@ -339,51 +307,13 @@ EBOARD_ROSTER = [
     ("Alejandro", "Castro", Role.dir_int_aff, 908),
 ]
 
-# The chapter's real reporting tree, from the 2026-2027 org chart. Officers
-# hang off a VP; chairs hang off an officer. The president is the implicit
-# root and both VPs always report to them, so neither is listed here.
-# Co-chairs (the "(2)" entries on the chart) share one role, so a single link
-# covers both of them.
-DEFAULT_REPORTS = {
-    # --- officers -> VP External ---
-    Role.new_member_rep: Role.vpe,
-    Role.treasurer: Role.vpe,
-    Role.regional_rep: Role.vpe,
-    # --- officers -> VP Internal ---
-    Role.comm_director: Role.vpi,
-    Role.secretary: Role.vpi,
-    Role.dir_int_aff: Role.vpi,
-
-    # --- chairs -> New Member Rep ---
-    Role.social_chair: Role.new_member_rep,
-    Role.member_relations_chair: Role.new_member_rep,
-    # --- chairs -> Treasurer ---
-    Role.eec_chair: Role.treasurer,
-    Role.athletic_chair: Role.treasurer,
-    Role.web_dev_chair: Role.treasurer,
-    # --- chairs -> Regional Rep ---
-    Role.shpe_jr_chair: Role.regional_rep,
-    Role.professional_chair: Role.regional_rep,
-    Role.career_fair_chair: Role.regional_rep,
-    # --- chairs -> Communication Director ---
-    Role.marketing_chair: Role.comm_director,
-    Role.outreach_chair: Role.comm_director,
-    # --- chairs -> Secretary ---
-    Role.mentorshpe_chair: Role.secretary,
-    Role.shpetina_chair: Role.secretary,
-    # --- chairs -> Director of Internal Affairs ---
-    Role.academic_chair: Role.dir_int_aff,
-    Role.projects_chair: Role.dir_int_aff,
-}
-
-
 def seed_structure(s: Session):
     """The chapter org chart. Purely organizational — grants no permissions.
 
     Skips entirely once any link exists, so re-running seed.py to top up other
     data never stomps edits made on the Members > Structure tab. To reload the
-    chart from this file, clear the table first:
-        sqlite3 database.db "DELETE FROM rolereport;"
+    chart from chapter_data, clear the table first:
+        docker compose exec db psql -U shpe -d shpe -c "DELETE FROM rolereport;"
     """
     if s.exec(select(RoleReport)).first():
         print("Skipped reporting structure — already seeded.")
@@ -426,31 +356,25 @@ def seed_products(s: Session):
         print("Skipped products — already seeded.")
         return
 
-    apparel_sizes = ["S", "M", "L", "XL", "2XL"]
     products = [
-        # The signup flow finds this product BY NAME ("T-Shirt Dues") to send
-        # new members straight into dues checkout — renaming it breaks that
-        # auto-redirect (signup falls back to the home page).
-        Product(
-            name="T-Shirt Dues",
-            description="Chapter membership dues for the academic year — includes your SHPE UH chapter t-shirt plus all member benefits.",
-            price_cents=2000,
-            product_type=ProductType.apparel,
-            sizes=apparel_sizes,
-        ),
+        # The signup flow finds this product BY NAME to send new members
+        # straight into dues checkout — renaming it breaks that auto-redirect
+        # (signup falls back to the home page). Defined in chapter_data because
+        # production needs it too; the demo merch below is dev-only.
+        Product(**DUES_PRODUCT),
         Product(
             name="SHPE UH Quarter-Zip",
             description="Navy quarter-zip with the embroidered SHPE UH logo. Perfect for career fairs and chilly lecture halls.",
             price_cents=4500,
             product_type=ProductType.apparel,
-            sizes=apparel_sizes,
+            sizes=APPAREL_SIZES,
         ),
         Product(
             name="SHPE UH Sweater",
             description="Cozy crewneck sweater with the chapter wordmark across the chest.",
             price_cents=4000,
             product_type=ProductType.apparel,
-            sizes=apparel_sizes,
+            sizes=APPAREL_SIZES,
         ),
         Product(
             name="SHPE UH Logo Sticker",

@@ -130,7 +130,7 @@ Frontend runs at **http://localhost:5173**.
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
 | `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
-| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run. Leave unset for local dev | `production` |
+| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
 | `SMTP_PORT` | No | SMTP port | `587` |
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
@@ -251,7 +251,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the rest of the E-Board (both VPs plus the five officers, named to match the About page), the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database.
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the rest of the E-Board (both VPs plus the five officers, named to match the About page), the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database. The real chapter structure it creates (committees, org chart, dues product) lives in `backend/chapter_data.py` and is shared with `backend/bootstrap.py`, which installs that structure — and nothing else — into production. See [Deployment](#deployment).
 
 | Account | Email | Role |
 |---|---|---|
@@ -266,7 +266,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 The seeded marketing chair (`valeria.zabala@cougarnet.uh.edu`) is the third shop admin.
 
-The full chair roster lives in `backend/seed.py` (`COMMITTEE_ROSTER`).
+The full chair roster lives in `backend/chapter_data.py` (`COMMITTEE_ROSTER`), alongside the E-Board committee rows, the org chart, and the dues product. That file holds the **real chapter structure** and is shared by `seed.py` and `bootstrap.py` — edit committees there, not in either script.
 
 Re-running `python seed.py` is safe — every seeder skips what already exists, so it only fills in what's missing (that's how the E-Board officers were added to an existing database). The flip side: editing seed data in the file has no effect on rows that are already there; clear those rows first.
 
@@ -302,7 +302,9 @@ shpe-uh-website/
     ├── config.py           # DATA_DIR — where uploaded files are written
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL) and session factory
-    ├── seed.py             # Committees, chair roster, and dev seed data
+    ├── chapter_data.py     # Real chapter structure (committees, org chart, dues product) — shared by both seeders
+    ├── seed.py             # Dev seed data: test members, chair/E-Board accounts (refuses to run in production)
+    ├── bootstrap.py        # Production installer: structure only, plus the three top-tier seats
     ├── Dockerfile          # Container image used for deployment
     ├── requirements.txt    # Runtime dependencies
     ├── requirements-dev.txt # Test tooling (includes requirements.txt)
@@ -413,7 +415,7 @@ The **Structure** tab draws the chapter org chart as a tree — the president at
 
 It links **roles rather than people**: "Academic Chair reports to Treasurer" keeps working when a new person is elected, so nothing needs re-entering after a handover. Co-chairs of one committee share a role and therefore share a supervisor.
 
-`seed.py` preloads the chapter's current chart: the New Member Representative, Treasurer, and Regional Representative report to the VP External; the Communications Director, Secretary, and Director of Internal Affairs report to the VP Internal; and all 14 chairs sit beneath those officers. Seeding **skips the structure entirely once any link exists**, so re-running `seed.py` never overwrites changes made on the Structure tab. To reload the chart from the file, clear it first:
+The chapter's current chart is preloaded from `backend/chapter_data.py` (`DEFAULT_REPORTS`), by `seed.py` locally and `bootstrap.py` in production: the New Member Representative, Treasurer, and Regional Representative report to the VP External; the Communications Director, Secretary, and Director of Internal Affairs report to the VP Internal; and all 14 chairs sit beneath those officers. Both **skip the structure entirely once any link exists**, so re-running either never overwrites changes made on the Structure tab. To reload the chart from the file, clear it first:
 
 ```bash
 docker compose exec db psql -U shpe -d shpe -c "DELETE FROM rolereport;" && python backend/seed.py
@@ -424,6 +426,8 @@ docker compose exec db psql -U shpe -d shpe -c "DELETE FROM rolereport;" && pyth
 Nobody can change their own role. To hand off the presidency, the sitting president promotes their successor first — two presidents can coexist briefly — and the successor then demotes them.
 
 Every role change asks for confirmation, naming both the old and new role, and warns when the change will also move someone on or off a committee's chair listing.
+
+**Every role change also emails the sitting president and both VPs**, naming who changed, from which role to which, and who did it. Nobody with database or server access can be *prevented* from escalating privileges — but this makes sure it can't happen quietly, and the top tier are the only people who can undo it. The notice is best-effort: a mail outage never fails the role change.
 
 > **Assigning a chair role updates the Committees page, not the About page.** The new chair appears on their committee card automatically, keeping the shared committee address (e.g. `academics@shpeuhchair.org`) rather than their personal one. The About page roster is maintained by hand — update `frontend/src/pages/about.jsx` after a chair handover.
 
@@ -488,16 +492,43 @@ Uploads still live on disk, so attach a volume mounted at `/data` and set `DATA_
 
 Run exactly **one worker**. Rate-limit counters live in slowapi's process memory, so a second worker makes every limit twice as loose, non-deterministically. (The database no longer constrains this — moving off SQLite removed that half of the reason. Multiple workers become viable once the limiter is backed by Redis, and the uploads volume is shared or moved to object storage.)
 
+### Filling the production database
+
+`seed.py` refuses to run in production — every account it creates shares `password123`. But it's also the only thing that creates committees, so a fresh production database is empty and unusable: nobody can reach `/admin/*` to assign a role, `sync_events` can't link events to committees (so QR check-in silently does nothing), and the post-verification dues redirect can't find its product.
+
+`backend/bootstrap.py` fills that gap. It creates **structure only** — the 14 committees, the 10 E-Board committee rows, the 20 org-chart links, the shop settings row, and the "T-Shirt Dues" product. It creates **no accounts**: it never imports `create_user` and contains no password, so it cannot make one however it's run. Every step is guarded, so it's safe to re-run.
+
+```bash
+railway ssh
+```
+
+```bash
+python bootstrap.py
+```
+
+Prefer `railway ssh` over `railway run` — it executes inside the container, where `/data` exists and the environment matches the app. Run it **before the first 6 AM event-sheet sync**; without committees, no `EventHost` rows are written and chairs see none of their events until the next morning's sync.
+
+Once the president, VP External, and VP Internal have signed up on the live site **and clicked their verification links**, install them:
+
+```bash
+python bootstrap.py --president first.last@cougarnet.uh.edu --vpe first.last@cougarnet.uh.edu --vpi first.last@cougarnet.uh.edu
+```
+
+Each flag is handled independently — one failing doesn't block the others, so re-run just that flag later. Each seat is **one-shot**: once someone holds it, the script refuses with no override, and every later change has to go through `/members`, where only the president can move a top-tier seat. Promotions email the sitting top-tier holders, so a role change can't happen unnoticed.
+
+From there the president assigns every other role from `/members`, and adds real merch through Shop Manager.
+
 **Going live checklist**
 
 1. Generate a fresh `SECRET_KEY` — do not reuse the development one.
 2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost.
 3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
 4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
-5. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
-6. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
-7. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
-8. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
+5. Run `python bootstrap.py` to create the chapter structure (see above), then install the three top-tier seats once those accounts exist and are verified.
+6. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
+7. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
+8. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
+9. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
 
 ## Running Tests
 

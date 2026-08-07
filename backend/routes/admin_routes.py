@@ -9,7 +9,7 @@ from models.role_report import RoleNodeOut, RoleReportUpdate
 from models.user.user import User
 from models.user.user_enums import Role, TOP_TIER_ROLES
 from models.user.user_schemas import AdminMemberOut, AdminRoleUpdate, AdminStatsOut
-from services import shop_services, structure_services
+from services import shop_services, structure_services, user_services
 from services.dependencies import SessionDependencies, require_role_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -164,6 +164,17 @@ def assign_role(
     _sync_chair_memberships(session, target, old_role, payload.role)
     session.commit()
     session.refresh(target)
+
+    # After the commit, so the notice reflects live roles. Called as a module
+    # attribute so tests can monkeypatch it. Best-effort inside — a mail outage
+    # must not fail a role change that already succeeded. This route is a sync
+    # `def`, so the blocking smtplib call runs in FastAPI's threadpool, not on
+    # the event loop.
+    if old_role != payload.role:
+        user_services.notify_role_change(
+            session, target, old_role, payload.role,
+            f"{actor.first_name} {actor.last_name}",
+        )
 
     return _member_out(target, shop_services.has_paid_dues(session, target.id))
 
