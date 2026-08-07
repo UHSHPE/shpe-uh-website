@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from services import square_services
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -21,6 +22,12 @@ from services.reminder_services import send_due_reminders
 from services.event_tracker_services import sync_events
 
 from routes import admin_routes, auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
+
+# The imports above already pull .env in as a side effect (database.py calls
+# this too), but main.py reads env vars of its own — including one at import
+# time, in docs_urls() — so it must not depend on another module's import
+# order to have loaded them.
+load_dotenv()
 
 REMINDER_CHECK_SECONDS = 60
 
@@ -84,6 +91,29 @@ def cors_origins() -> list[str]:
     )
     return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
 
+def docs_urls() -> dict[str, str | None]:
+    """Paths for the interactive API docs, switched off in production.
+
+    All three go together or none of them count: /docs and /redoc are only
+    renderers, and /openapi.json is the payload they fetch. Leaving the schema
+    up while hiding the two HTML pages means the interactive console is one
+    paste into any Swagger instance away.
+
+    The schema is generated from the real code, so it lists every path, every
+    model's field names and types, and which endpoints require auth. That is
+    not a vulnerability by itself — but the privilege-escalation bug in
+    tests/auth_tests/test_signup_privilege_escalation.py was reachable through
+    the public /docs "Try it out" button, which is the difference it makes.
+
+    Unlike assert_production_config() (which runs at startup, inside lifespan)
+    this is read at IMPORT time, because FastAPI() is constructed at import.
+    Keeping the env read inside a function is what lets tests monkeypatch
+    ENVIRONMENT and call docs_urls() directly instead of reloading the module.
+    """
+    if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+
 def assert_production_config():
     if os.getenv("ENVIRONMENT", "").lower() != "production":
         return
@@ -105,7 +135,7 @@ def assert_production_config():
             f"ENVIRONMENT=production but required config is missing: {', '.join(missing)}"
         )
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, **docs_urls())
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -120,11 +150,20 @@ if _allowed_hosts:
         allowed_hosts=[h.strip() for h in _allowed_hosts.split(",") if h.strip()],
     )
 
+# Exact origins only. There is deliberately NO allow_origin_regex, and adding
+# one back is a mistake that looks safe: Starlette matches it with re.fullmatch
+# (middleware/cors.py), so a pattern broad enough to cover our Vercel preview
+# URLs — ".*\.vercel\.app" was the documented example — also matches every
+# OTHER person's Vercel project, and anchoring it with ^...$ changes nothing
+# because fullmatch already requires the whole origin to match.
+# It's survivable today only because auth is a Bearer token from localStorage,
+# which is origin-scoped and unreadable by an attacker's page. allow_credentials
+# is already True, so the day auth moves to cookies that stops being true.
+# If a preview build ever genuinely needs the API, add its exact origin to
+# CORS_ORIGINS instead.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),
-    # Lets Vercel preview deployments (*.vercel.app) reach the API.
-    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX") or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -100,6 +100,9 @@ python main.py
 
 Backend runs at **http://localhost:8000**. Interactive API docs at **http://localhost:8000/docs**.
 
+> The docs are a development convenience only. Under `ENVIRONMENT=production` the app serves no
+> API schema at all — `/docs`, `/redoc`, and `/openapi.json` all return 404.
+
 ### 4. Frontend setup
 
 ```bash
@@ -150,7 +153,6 @@ Leave these unset for local development.
 | Variable | Description | Example |
 |---|---|---|
 | `CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API. Falls back to `FRONTEND_URL`, then the Vite dev server. Under `ENVIRONMENT=production` the app **refuses to start** if this still points at localhost | `https://example.org,https://www.example.org` |
-| `CORS_ORIGIN_REGEX` | Extra origins by pattern — useful for preview deployments | `https://.*\.vercel\.app` |
 | `ALLOWED_HOSTS` | Comma-separated `Host` header allowlist. Set it to your API domain so the raw platform hostname stops answering | `api.example.org` |
 | `TRUST_PROXY_IP_HEADERS` | Set to `1` when the app runs behind a proxy or load balancer. **Without it every rate limit becomes one global bucket** shared by all visitors, because every request appears to come from the proxy's address | `1` |
 | `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
@@ -521,7 +523,7 @@ From there the president assigns every other role from `/members`, and adds real
 **Going live checklist**
 
 1. Generate a fresh `SECRET_KEY` — do not reuse the development one.
-2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost.
+2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost. It also stops serving the API schema — confirm `/docs`, `/redoc`, and `/openapi.json` all return 404 once deployed.
 3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
 4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
 5. Run `python bootstrap.py` to create the chapter structure (see above), then install the three top-tier seats once those accounts exist and are verified.

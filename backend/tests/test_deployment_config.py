@@ -1,9 +1,10 @@
-"""Deployment-facing behavior: health probes, the CORS allowlist, and the
-production config gate that refuses to boot a misconfigured server."""
+"""Deployment-facing behavior: health probes, the CORS allowlist, API docs
+exposure, and the production config gate that refuses to boot a misconfigured
+server."""
 import pytest
 
 import main
-from main import assert_production_config, cors_origins
+from main import assert_production_config, cors_origins, docs_urls
 
 
 # --- health probes ---
@@ -42,6 +43,39 @@ def test_cors_accepts_a_list_and_strips_trailing_slashes(monkeypatch):
     monkeypatch.setenv("CORS_ORIGINS", "https://shpeuh.org/, https://www.shpeuh.org")
 
     assert cors_origins() == ["https://shpeuh.org", "https://www.shpeuh.org"]
+
+
+def test_unlisted_origin_is_not_allowed(client):
+    """Pins the absence of allow_origin_regex. Starlette matches that pattern
+    with fullmatch, so anything broad enough for our own Vercel previews also
+    matches a stranger's Vercel project — this fails if one is ever re-added."""
+    res = client.get("/health", headers={"Origin": "https://attacker.vercel.app"})
+
+    assert "access-control-allow-origin" not in res.headers
+
+
+# --- API docs exposure ---
+
+def test_docs_are_served_outside_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "")
+
+    assert docs_urls() == {
+        "docs_url": "/docs",
+        "redoc_url": "/redoc",
+        "openapi_url": "/openapi.json",
+    }
+
+
+def test_production_disables_docs_redoc_and_the_schema(monkeypatch):
+    """openapi_url has to go too: /docs and /redoc only render it, so leaving
+    the schema up means the interactive console is one paste away."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+
+    assert docs_urls() == {
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None,
+    }
 
 
 # --- production config gate ---
