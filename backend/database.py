@@ -1,11 +1,15 @@
 import os
 
 from dotenv import load_dotenv
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import create_engine, Session
 
 from config import PRODUCT_IMAGE_DIR, RESUME_DIR
 
-# Import all models so SQLModel registers their tables before create_all runs
+# Import all models so they register in SQLModel's shared metadata. Nothing in
+# this module reads that registry any more, but two things depend on importing
+# this module to populate it: alembic/env.py (--autogenerate diffs against it)
+# and tests/conftest.py (builds the test schema from it). Dropping an import
+# here silently removes that table from migrations and from the test database.
 import models.user.user  # noqa: F401
 import models.user.multi_selections.user_race_ethnicity  # noqa: F401
 import models.user.multi_selections.user_prof_dev  # noqa: F401
@@ -51,7 +55,11 @@ def create_db():
     # longer does — DATA_DIR (config.py) is what points them at it.
     RESUME_DIR.mkdir(parents=True, exist_ok=True)
     PRODUCT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    SQLModel.metadata.create_all(engine)
+    # The schema is owned by Alembic — run `alembic upgrade head`. A
+    # create_all() here would be a second, competing schema authority: on a
+    # fresh database whichever ran first would win, and an app boot that beat
+    # the migration would leave Alembic trying to create tables that already
+    # exist. Tests build their schema directly (tests/conftest.py), not here.
 
 def get_session():
     with Session(engine) as session:
