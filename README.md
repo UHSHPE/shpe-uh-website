@@ -57,11 +57,13 @@ cd shpe-uh-website
 ### 2. Start the database
 
 ```bash
-docker compose up -d
+docker compose up -d --wait
 docker compose exec db createdb -U shpe shpe_test   # one-time: creates the test database
 ```
 
 This starts PostgreSQL 17 in Docker, listening on `localhost:5433` (see `docker-compose.yml`). The main `shpe` database is created automatically by the container; `shpe_test` (used only by the test suite) needs the one-time `createdb` above.
+
+`--wait` holds until the container reports healthy. Without it `createdb` can run before Postgres has finished initializing and fail with `connection to server on socket ... No such file or directory` — if that happens, just re-run the `createdb` line.
 
 ### 3. Backend setup
 
@@ -86,9 +88,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES=720
 FRONTEND_URL=http://localhost:5173" > .env
 ```
 
-Then seed and run:
+Then create the schema, seed, and run:
 
 ```bash
+# Create the database tables. Required — the app does not create them on
+# startup; Alembic owns the schema. Safe to re-run (it's a no-op once applied).
+alembic upgrade head
+
 # Seed the database with committees, chairs, and test data.
 # Safe to re-run: every seeder skips what already exists.
 python seed.py
@@ -274,16 +280,50 @@ Re-running `python seed.py` is safe — every seeder skips what already exists, 
 
 > **Note:** if you wipe and reseed the database (see below) while the backend is running, restart it — it holds pooled connections from before the wipe and will otherwise serve stale or broken data.
 
-> **Picking up a schema change:** this project doesn't use database migrations yet, so a model change (new column, new enum value, etc.) is picked up by wiping and reseeding rather than an in-place upgrade:
+## Database Migrations
+
+The schema is managed by [Alembic](https://alembic.sqlalchemy.org/) (`backend/alembic/`). The app does **not** create tables at startup, so `alembic upgrade head` is a required setup step and a required deploy step.
+
+Run every command below from `backend/` with the virtualenv activated.
+
+**Applying migrations** — brings a database up to the latest revision. Safe to re-run; it's a no-op once there's nothing left to apply:
+
+```bash
+alembic upgrade head
+```
+
+**After changing a model** (new column, new table, changed constraint) — generate a revision, then read it before applying:
+
+```bash
+alembic revision --autogenerate -m "add whatever you changed"
+```
+
+This writes a file to `backend/alembic/versions/`. **Open it and check it** — autogenerate is a starting point, not a guarantee, and it should be reviewed like any other code before it runs against a database. Then apply it with `alembic upgrade head` and commit the file alongside the model change.
+
+> **Adding a value to an enum is the one case autogenerate misses.** Enums like `Role` and `OrderStatus` become real PostgreSQL types, and Alembic does not diff their values — you'll get a revision that does nothing. Add the statement by hand in the generated file:
 >
-> ```bash
-> docker compose down -v          # -v is essential — drops the database volume
-> docker compose up -d
-> docker compose exec db createdb -U shpe shpe_test
-> cd backend && python seed.py
+> ```python
+> op.execute("ALTER TYPE role ADD VALUE 'new_chair'")
 > ```
->
-> This is a pre-deploy convenience — once the site is holding real member data, wiping stops being an option and proper migrations will need to be introduced.
+
+**Useful commands:**
+
+| Command | What it does |
+|---|---|
+| `alembic current` | Which revision the database is on |
+| `alembic history` | All revisions, newest first |
+| `alembic downgrade -1` | Roll back one revision |
+
+**Starting over locally.** Migrations make this unnecessary for ordinary schema changes, but a full reset is still the quickest way out of a wedged local database:
+
+```bash
+docker compose down -v          # -v is essential — drops the database volume
+docker compose up -d --wait
+docker compose exec db createdb -U shpe shpe_test
+cd backend && alembic upgrade head && python seed.py
+```
+
+Never run this against production — it destroys all data.
 
 ## Project Structure
 
@@ -304,6 +344,8 @@ shpe-uh-website/
     ├── config.py           # DATA_DIR — where uploaded files are written
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL) and session factory
+    ├── alembic.ini         # Alembic config (the database URL comes from alembic/env.py, not this file)
+    ├── alembic/            # Migration environment and versions/ — see Database Migrations
     ├── chapter_data.py     # Real chapter structure (committees, org chart, dues product) — shared by both seeders
     ├── seed.py             # Dev seed data: test members, chair/E-Board accounts (refuses to run in production)
     ├── bootstrap.py        # Production installer: structure only, plus the three top-tier seats
@@ -490,6 +532,8 @@ The frontend deploys to **Vercel** (paid tier — the free Hobby plan does not p
 
 **Backend.** Railway builds `backend/Dockerfile`. Add a **managed Postgres** service and set `DATABASE_URL` to its connection string — the `docker-compose.yml` container is for local development only and must not be used in production. Railway injects `PORT` automatically. Point the health check at `/health`.
 
+Set the **pre-deploy command** to `alembic upgrade head` (no `cd` — the image has the backend at its working directory, not under `backend/`). The app does not create tables at startup, so without this a fresh deploy comes up healthy — `/health` deliberately doesn't touch the database — and then fails on the first real query. Migrations need only `DATABASE_URL`, so they don't contend for the volume below.
+
 Uploads still live on disk, so attach a volume mounted at `/data` and set `DATA_DIR=/data`. Without it, every resume and product image is written to the container filesystem and destroyed on the next deploy. The database is unaffected by this — it's in Postgres.
 
 Run exactly **one worker**. Rate-limit counters live in slowapi's process memory, so a second worker makes every limit twice as loose, non-deterministically. (The database no longer constrains this — moving off SQLite removed that half of the reason. Multiple workers become viable once the limiter is backed by Redis, and the uploads volume is shared or moved to object storage.)
@@ -526,7 +570,7 @@ From there the president assigns every other role from `/members`, and adds real
 2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost. It also stops serving the API schema — confirm `/docs`, `/redoc`, and `/openapi.json` all return 404 once deployed.
 3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
 4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
-5. Run `python bootstrap.py` to create the chapter structure (see above), then install the three top-tier seats once those accounts exist and are verified.
+5. Confirm `alembic upgrade head` ran (`alembic current` should report a revision), then run `python bootstrap.py` to create the chapter structure (see above), and install the three top-tier seats once those accounts exist and are verified.
 6. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
 7. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
 8. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
@@ -542,3 +586,5 @@ python -m pytest tests/
 ```
 
 Tests run against a dedicated `shpe_test` Postgres database (separate from the `shpe` dev database, configured via `TEST_DATABASE_URL` — see [Environment Variables](#environment-variables)) using fixtures from `tests/conftest.py`. The `shpe_test` database needs to exist first — see step 2 of [Getting Started](#getting-started) if you haven't created it yet.
+
+You do **not** need to run migrations against `shpe_test`. The suite builds its schema directly from the models and drops it again each run, so it's independent of migration history — which also means a passing test run is not evidence that your migrations are correct. Check those by applying them to a real database.
