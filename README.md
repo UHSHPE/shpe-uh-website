@@ -165,6 +165,7 @@ Leave these unset for local development.
 | `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
 | `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
 | `RATE_LIMIT_UPLOAD` | Per-IP limit on the two upload routes (resume, product image) | `60/minute` |
+| `RATE_LIMIT_FAILED_CHARGE` | Per-IP limit on **declined** card charges at checkout. Much tighter than the others because a successful purchase never counts against it — only a decline does, so a real buyer retrying a card never comes close | `10/10 minutes` |
 | `MAX_REQUEST_BODY_BYTES` | Hard ceiling on request body size, rejected with a 413 as the bytes arrive. Must stay **above** the 2 MB per-file upload limits, or valid uploads fail with the wrong error | `4194304` (4 MB) |
 | `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
 | `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
@@ -172,6 +173,8 @@ Leave these unset for local development.
 #### Square shop payments (optional, one-time setup)
 
 When configured, the checkout payment step renders Square's secure card element (card numbers go straight to Square — they never touch this backend), and `POST /shop/orders` charges the card for the server-computed total **before** creating the order. A declined card leaves no order behind. Every buyer gets an emailed, itemized receipt at checkout — including Square's hosted receipt link when the charge was real. Square's fee is ~2.9% + 30¢ per online charge.
+
+A declined card always shows the buyer the same message — "Your card was declined, check your details and try again" — rather than Square's specific reason, and after `RATE_LIMIT_FAILED_CHARGE` declines from one connection checkout returns a 429 for a few minutes. Both are deliberate: checkout is open to guests, so a message naming the exact reason (bad number vs. bad CVC vs. bad ZIP) would let someone sort a stolen-card list against the chapter's real merchant account, and the chargeback fees and fraud ratio land on us. The specific Square decline code is written to the server log, so a member who asks why their card failed can still be answered. Successful purchases never count toward the 429, so a buyer retrying a card is unaffected.
 
 Every charge is **itemized in Square**: the cart is mirrored into a Square order (product name + size, quantity, unit price), so the Square Dashboard shows exactly what was bought per transaction and item names flow into Square's sales reports and exports — no manual tracking needed.
 
@@ -428,7 +431,7 @@ shpe-uh-website/
 | GET | `/shop/products` | No | Shop products that are active and not retired |
 | GET | `/shop/products/{id}` | No | One product (type, sizes, price); 404 if unknown, hidden, or retired |
 | GET | `/shop/products/{id}/image` | No | Product image |
-| POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited, configurable via `RATE_LIMIT_ORDER`) |
+| POST | `/shop/orders` | No | Charge the card via Square (when configured), then place the order; total computed server-side (rate limited, configurable via `RATE_LIMIT_ORDER`). A declined card returns 402 with a single generic message — the specific reason goes to the server log, not the buyer — and too many declines from one connection returns 429 (`RATE_LIMIT_FAILED_CHARGE`) |
 | GET | `/shop/orders/{code}?email=` | No | Buyer order lookup — requires the matching buyer email |
 | GET | `/shop/orders/me` | Yes | Signed-in member's order history |
 | PATCH | `/shop/settings` | Shop admin | Update the tagline and/or per-order item cap |
@@ -491,7 +494,7 @@ Chair permissions are tied to the user's `Role` (e.g. `academic_chair`) matching
 
 The shop sells chapter apparel (with sizes) and items like stickers. Anyone can browse and buy — no account needed; signed-in members get checkout prefilled and an order history under their profile.
 
-- **Payment is simulated in v1** — the "Pay" step instantly succeeds and no real money moves. A real Square checkout is planned and will replace only that step.
+- **Payment is by card, Apple Pay, or Google Pay through Square** (see [Square shop payments](#square-shop-payments-optional-one-time-setup)). Without Square credentials configured the "Pay" step stays simulated — it instantly succeeds and no real money moves — which is how local dev runs.
 - **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
 - Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
 - **No inventory is tracked.** Each product is either **Active** (listed in the shop) or **Hidden** (kept in the admin table, off the storefront), and every order is limited to a configurable number of units per item (default 5).

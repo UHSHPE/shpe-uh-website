@@ -34,20 +34,39 @@ class ChargeResult(NamedTuple):
 # pattern as email_services.py — so local dev and tests never hit the network
 # and checkout behaves like the old simulated flow.
 
-# Buyer-fixable decline codes → messages safe to show at checkout. Anything
-# else gets a generic message (and a logged traceback for the managers).
-_DECLINE_MESSAGES = {
-    "CARD_DECLINED": "Your card was declined. Try another card.",
-    "GENERIC_DECLINE": "Your card was declined. Try another card.",
-    "INSUFFICIENT_FUNDS": "The card was declined for insufficient funds.",
-    "CVV_FAILURE": "The security code (CVC) didn't match. Check it and try again.",
-    "ADDRESS_VERIFICATION_FAILURE": "The ZIP code didn't match the card. Check it and try again.",
-    "INVALID_CARD": "The card number is invalid. Check it and try again.",
-    "INVALID_EXPIRATION": "The card's expiration date is invalid.",
-    "EXPIRATION_FAILURE": "The card's expiration date is invalid or past.",
-}
+# Codes meaning Square processed the card and refused. This is a SET, not a
+# code→message map, and that is the whole point: membership picks one of two
+# messages, and every member picks the same one, so the 402 body carries no
+# per-code signal. POST /shop/orders is anonymous by design, so a map that
+# distinguished "card number is invalid" from "CVC didn't match" from "ZIP
+# didn't match" let anyone sort a stolen-card list against the chapter's live
+# merchant account — see the F4 note in CLAUDE.md before changing this.
+#
+# Anything outside this set is our problem rather than the card's (a Square
+# outage, an UNAUTHORIZED token) and gets _GENERIC_MESSAGE plus a traceback.
+# Kept to exactly the codes that used to have their own message — every other
+# code already fell through to the generic one. If a log shows a real decline
+# landing in the generic bucket (CARD_EXPIRED, PAN_FAILURE, CARD_TOKEN_EXPIRED)
+# add it here; it costs nothing, since they all read the same to the buyer.
+_DECLINE_CODES = frozenset({
+    "CARD_DECLINED",
+    "GENERIC_DECLINE",
+    "INSUFFICIENT_FUNDS",
+    "CVV_FAILURE",
+    "ADDRESS_VERIFICATION_FAILURE",
+    "INVALID_CARD",
+    "INVALID_EXPIRATION",
+    "EXPIRATION_FAILURE",
+})
 
+_DECLINED_MESSAGE = "Your card was declined, check your details and try again."
 _GENERIC_MESSAGE = "Payment could not be completed. Please try again."
+
+
+def _buyer_message(code: str | None) -> str:
+    """The 402 body for a Square error code. Two outcomes only — see
+    _DECLINE_CODES for why this must never grow a third."""
+    return _DECLINED_MESSAGE if code in _DECLINE_CODES else _GENERIC_MESSAGE
 
 
 class PaymentError(Exception):
@@ -166,17 +185,21 @@ def charge_card(
         )
         payment = result.payment
         if payment is None or payment.id is None:
+            logging.error("Square returned no payment object for %s", buyer_email)
             raise PaymentError(_GENERIC_MESSAGE)
         return ChargeResult(payment.id, getattr(payment, "receipt_url", None))
     except PaymentError:
         raise
     except ApiError as exc:
+        # The buyer sees one string; the specific code lives here, so a member
+        # who calls asking why their card failed can still be answered.
         code = _first_error_code(exc)
-        message = _DECLINE_MESSAGES.get(code)
-        if message is None:
+        if code in _DECLINE_CODES:
+            # Routine — a traceback per declined card is noise, not signal.
+            logging.warning("Square declined charge (code=%s) for %s", code, buyer_email)
+        else:
             logging.exception("Square charge failed (code=%s) for %s", code, buyer_email)
-            message = _GENERIC_MESSAGE
-        raise PaymentError(message) from exc
+        raise PaymentError(_buyer_message(code)) from exc
     except Exception as exc:
         logging.exception("Square charge failed for %s", buyer_email)
         raise PaymentError(_GENERIC_MESSAGE) from exc

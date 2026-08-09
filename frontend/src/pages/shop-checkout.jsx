@@ -202,9 +202,14 @@ export default function ShopCheckout() {
       navigate(`/shop/order/${order.order_code}`, { state: { order } });
     } catch (err) {
       const detail = err.response?.data?.detail;
+      // Two different 429s reach here. The failed-charge throttle sends a
+      // `detail` explaining itself; slowapi's ORDER_LIMIT handler returns
+      // {"error": ...} with no detail, so it still needs the fallback.
       setError(
         err.response?.status === 429
-          ? "Too many orders placed from this connection — try again in a minute."
+          ? typeof detail === "string"
+            ? detail
+            : "Too many orders placed from this connection — try again in a minute."
           : typeof detail === "string"
             ? detail
             : "Something went wrong placing the order. Please try again."

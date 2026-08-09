@@ -9,6 +9,7 @@ from sqlmodel import select
 
 from models.shop.order import Order
 from services import square_services
+from services.rate_limit import FAILED_CHARGE_LIMIT, limit_count
 from tests.shop_tests.conftest import make_product, order_payload
 
 
@@ -107,12 +108,12 @@ def test_missing_token_is_rejected_before_charging(unauth_client, session, squar
 
 
 def test_declined_card_returns_402_and_no_order(unauth_client, session, square, sent_emails):
-    square["error"] = square_services.PaymentError("Your card was declined. Try another card.")
+    square["error"] = square_services.PaymentError(square_services._DECLINED_MESSAGE)
 
     res = place(unauth_client, session, payment_token="tok-bad")
 
     assert res.status_code == 402
-    assert res.json()["detail"] == "Your card was declined. Try another card."
+    assert res.json()["detail"] == square_services._DECLINED_MESSAGE
     assert session.exec(select(Order)).first() is None
 
 
@@ -132,3 +133,65 @@ def test_receipt_email_includes_square_receipt_link(unauth_client, session, squa
     buyer_emails = [e for e in sent_emails if e["to"] == "jane@example.com"]
     assert len(buyer_emails) == 1
     assert "https://squareup.com/receipt/preview/sq-payment-1" in buyer_emails[0]["body"]
+
+
+# --- the 402 body must not identify WHICH check the card failed ---
+#
+# /shop/orders is anonymous, so a decline message that distinguished a bad
+# number from a bad CVC from a bad ZIP turned the chapter's live Square
+# account into a card-validation oracle. These two pin that shut.
+
+def test_every_decline_code_returns_one_identical_message():
+    messages = {
+        square_services._buyer_message(code)
+        for code in square_services._DECLINE_CODES
+    }
+
+    assert messages == {square_services._DECLINED_MESSAGE}
+
+
+@pytest.mark.parametrize("code", ["UNAUTHORIZED", "INTERNAL_SERVER_ERROR", None])
+def test_non_decline_errors_are_not_reported_as_a_decline(code):
+    """A bad access token or a Square outage is our problem, not the card's —
+    telling the buyer their card was declined would send them to their bank
+    for nothing."""
+    assert square_services._buyer_message(code) == square_services._GENERIC_MESSAGE
+
+
+# --- failed-charge budget (separate from the generous ORDER_LIMIT) ---
+
+def test_repeated_declines_are_throttled_before_reaching_square(
+    unauth_client, session, square, sent_emails
+):
+    square["error"] = square_services.PaymentError(square_services._DECLINED_MESSAGE)
+    product = make_product(session)
+    budget = limit_count(FAILED_CHARGE_LIMIT)
+
+    for _ in range(budget):
+        res = place(unauth_client, session, product=product, payment_token="tok-bad")
+        assert res.status_code == 402
+
+    assert len(square["charges"]) == budget
+
+    res = place(unauth_client, session, product=product, payment_token="tok-bad")
+
+    assert res.status_code == 429
+    # The point is not touching Square at all once the budget is gone —
+    # every probe that reaches it is a real authorization against the
+    # chapter's merchant account.
+    assert len(square["charges"]) == budget
+
+
+def test_successful_orders_do_not_spend_the_failed_charge_budget(
+    unauth_client, session, square, sent_emails
+):
+    product = make_product(session)
+    for _ in range(limit_count(FAILED_CHARGE_LIMIT) + 2):
+        assert place(
+            unauth_client, session, product=product, payment_token="tok-1"
+        ).status_code == 201
+
+    square["error"] = square_services.PaymentError(square_services._DECLINED_MESSAGE)
+    res = place(unauth_client, session, product=product, payment_token="tok-bad")
+
+    assert res.status_code == 402

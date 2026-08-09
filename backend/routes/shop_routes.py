@@ -18,7 +18,13 @@ from services.dependencies import (
     get_optional_user,
     require_shop_admin,
 )
-from services.rate_limit import limiter, ORDER_LIMIT, UPLOAD_LIMIT
+from services.rate_limit import (
+    limiter,
+    ORDER_LIMIT,
+    UPLOAD_LIMIT,
+    failed_charge_budget_exhausted,
+    record_failed_charge,
+)
 from services.time_services import utcnow
 from validators.email import normalize_email
 
@@ -153,6 +159,15 @@ def place_order(
             detail="Missing payment token — refresh the page and try again.",
         )
 
+    # Checked here rather than at the top of the route so a validation or dues
+    # rejection is never masked by a 429 — this budget is about card attempts.
+    if failed_charge_budget_exhausted(request):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed payment attempts from this connection. "
+                   "Try again in a few minutes.",
+        )
+
     # Blocking Square client is fine here: this route is sync, so FastAPI
     # already runs it in the threadpool. No order row exists yet — a declined
     # card leaves nothing behind.
@@ -165,6 +180,12 @@ def place_order(
             line_items=line_items,
         )
     except square_services.PaymentError as exc:
+        # Every failure spends budget, including the generic infrastructure
+        # one. During a Square outage an IP burns through it in ten tries and
+        # gets throttled — but checkout is already broken in that window, and
+        # letting the attacker pick a failure that costs nothing would hand
+        # the probe loop right back.
+        record_failed_charge(request)
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)
         ) from exc

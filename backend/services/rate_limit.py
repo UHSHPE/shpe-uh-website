@@ -1,5 +1,6 @@
 import os
 
+import limits
 from dotenv import load_dotenv
 from slowapi import Limiter
 from starlette.requests import Request
@@ -91,6 +92,46 @@ CODE_PREVIEW_LIMIT = os.getenv("RATE_LIMIT_CODE_PREVIEW", "600/minute")
 # uploads one IP can have in flight at once, since each in-flight request
 # holds a temp file until it completes.
 UPLOAD_LIMIT = os.getenv("RATE_LIMIT_UPLOAD", "60/minute")
+
+
+# Failed card charges only, checked and spent by POST /shop/orders.
+#
+# Separate from ORDER_LIMIT, and much tighter, because the two limits defend
+# against different things. ORDER_LIMIT is sized for the NAT problem above (a
+# dues drive is hundreds of members on one campus IP) and at 60/minute it is
+# no obstacle at all to a card-testing loop: /shop/orders is anonymous, so
+# anyone can tokenize a stolen card with the app id in our public frontend
+# bundle and probe it against the chapter's live merchant account. What that
+# costs us is per-chargeback fees and a fraud ratio that gets a small
+# merchant's Square account frozen — i.e. no dues collection and no merch.
+#
+# This one can be tight *because a successful purchase never spends it* —
+# only a decline does. A real buyer fumbling their card a couple of times
+# never comes close, and even a NAT'd dues drive would need ten separate
+# failed cards in ten minutes from one IP before anyone is turned away.
+# Still env-tunable, so an event can loosen it without a deploy.
+FAILED_CHARGE_LIMIT = os.getenv("RATE_LIMIT_FAILED_CHARGE", "10/10 minutes")
+_failed_charge_item = limits.parse(FAILED_CHARGE_LIMIT)
+_FAILED_CHARGE_KEY = "failed-charge"
+
+
+def failed_charge_budget_exhausted(request: Request) -> bool:
+    """True when this IP has already burned its failed-charge budget.
+
+    Built on the limiter's own strategy object rather than a @limiter.limit
+    decorator because that decorator counts *every* request to the route, and
+    slowapi has no deduct_when. test() checks without consuming; only
+    record_failed_charge() spends. Sharing the limiter's storage also means
+    conftest's autouse limiter.reset() already isolates this between tests.
+    """
+    return not limiter.limiter.test(
+        _failed_charge_item, _FAILED_CHARGE_KEY, client_ip(request)
+    )
+
+
+def record_failed_charge(request: Request) -> None:
+    """Spend one unit of this IP's failed-charge budget."""
+    limiter.limiter.hit(_failed_charge_item, _FAILED_CHARGE_KEY, client_ip(request))
 
 
 def limit_count(limit: str) -> int:
