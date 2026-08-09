@@ -1,9 +1,10 @@
 """Deployment-facing behavior: health probes, the CORS allowlist, API docs
-exposure, and the production config gate that refuses to boot a misconfigured
-server."""
+exposure, the production config gate that refuses to boot a misconfigured
+server, and the guard that keeps seed.py off a deployed database."""
 import pytest
 
 import main
+from database import assert_local_database
 from main import assert_production_config, cors_origins, docs_urls
 
 
@@ -155,3 +156,70 @@ def test_forgotten_cors_var_refuses_to_boot(monkeypatch):
 
     with pytest.raises(RuntimeError, match="still points at localhost"):
         assert_production_config()
+
+
+# --- seed.py's non-local database guard ---
+
+def test_docker_compose_default_url_is_accepted():
+    url = "postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe"
+
+    assert assert_local_database(url) is None
+
+
+def test_test_database_is_accepted():
+    url = "postgresql+psycopg://shpe:shpe_dev_password@127.0.0.1:5433/shpe_test"
+
+    assert assert_local_database(url) is None
+
+
+def test_unix_socket_url_is_accepted():
+    assert assert_local_database("postgresql+psycopg:///shpe?host=/tmp") is None
+
+
+def test_remote_host_is_refused_even_with_environment_unset(monkeypatch):
+    """The finding this guard exists for. ENVIRONMENT is the documented
+    local-dev default (unset), so seed.py's other guard passes — the target
+    database is the only thing that reveals this is production."""
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    url = "postgresql+psycopg://u:p@containers-us-west-9.railway.app:7233/railway"
+
+    with pytest.raises(RuntimeError, match="is not local"):
+        assert_local_database(url)
+
+
+def test_railway_internal_host_is_refused():
+    url = "postgresql+psycopg://u:p@postgres.railway.internal:5432/shpe"
+
+    with pytest.raises(RuntimeError, match="is not local"):
+        assert_local_database(url)
+
+
+def test_unexpected_database_name_on_a_local_host_is_refused():
+    """The second layer: right host, wrong database. Catches a loopback tunnel
+    or a stray local instance holding something other than the dev db."""
+    url = "postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/production"
+
+    with pytest.raises(RuntimeError, match="is not one of"):
+        assert_local_database(url)
+
+
+def test_socket_url_naming_a_remote_host_in_the_query_is_refused():
+    """libpq accepts a hostname in ?host=, where make_url reports host=None —
+    without this it would read as a local socket."""
+    url = "postgresql+psycopg:///shpe?host=postgres.railway.internal"
+
+    with pytest.raises(RuntimeError, match="is not local"):
+        assert_local_database(url)
+
+
+def test_no_argument_falls_back_to_the_resolved_database_url(monkeypatch):
+    """seed.py calls this with no argument, so the fallback to the module's
+    own DATABASE_URL is the path that actually runs. Patched rather than read
+    from the ambient .env so the test doesn't depend on a developer's config."""
+    monkeypatch.setattr(
+        "database.DATABASE_URL",
+        "postgresql+psycopg://u:p@postgres.railway.internal:5432/railway",
+    )
+
+    with pytest.raises(RuntimeError, match="is not local"):
+        assert_local_database()

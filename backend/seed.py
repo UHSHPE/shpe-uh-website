@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, date
 from sqlmodel import Session, select
-from database import engine, create_db
+from database import engine, create_db, assert_local_database
 import models.event      # noqa: F401
 import models.committee  # noqa: F401
 import models.user
@@ -34,6 +34,19 @@ from dotenv import load_dotenv
 load_dotenv()
 if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
     print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)
+    sys.exit(1)
+
+# The check above keys on an ambient flag that says nothing about which
+# database this script connects to; the one below keys on the connection
+# target itself. BOTH stay — they catch different mistakes: ENVIRONMENT
+# catches "I'm running on the prod box", assert_local_database catches "I
+# exported a prod DATABASE_URL into my local shell for psql or alembic".
+# Deliberately no bypass flag: an env var that waves this through would
+# recreate the exact defect it fixes.
+try:
+    assert_local_database()
+except RuntimeError as exc:
+    print(f"Refusing to seed: {exc}", file=sys.stderr)
     sys.exit(1)
 
 def seed_test_user(s: Session):
