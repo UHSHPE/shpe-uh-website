@@ -8,9 +8,10 @@ from services.committee_services import get_committee_or_404, require_chair
 from services.committee_services import get_all_committees
 from services.committee_services import get_active_memberships_from_user_id
 from services.dependencies import SessionDependencies, get_current_user
+from services.rate_limit import join_budget_exhausted, record_join
 
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 
 
@@ -75,14 +76,35 @@ async def join_committee(
         )
     ).first()
     
+    # Already a member: a repeat join is a no-op, NOT a fresh one. Falling
+    # through would re-emit the welcome notification plus one per chair on every
+    # POST, against a table nothing prunes and a /notifications endpoint that
+    # returns a member's whole history -- i.e. one member could permanently bury
+    # a chair's feed. Returns the success body: it is idempotent, not an error.
+    #
+    # Guarded on status as well as existence. Nothing sets status False today
+    # (leave_committee hard-deletes), so this reads as redundant -- it keeps the
+    # reactivation branch below correct if leave ever becomes a soft delete.
+    if existing_membership and existing_membership.status:
+        return {"ok": True}
+
+    # Only a join that actually writes notifications spends budget, which is why
+    # this sits below the early return and uses the manual budget rather than a
+    # @limiter.limit decorator. Per-account, so campus NAT can't dilute it.
+    if join_budget_exhausted(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You've joined too many committees recently. Try again later.",
+        )
+
     if existing_membership:
         existing_membership.status = True
         session.add(existing_membership)
     else:
         session.add(
             CommitteeMembership(
-                user_id=user.id, 
-                committee_id=committee_id, 
+                user_id=user.id,
+                committee_id=committee_id,
                 status=True
             )
         )
@@ -108,6 +130,7 @@ async def join_committee(
         ))
 
     session.commit()
+    record_join(user.id)
     return {"ok": True}
 
 

@@ -134,6 +134,59 @@ def record_failed_charge(request: Request) -> None:
     limiter.limiter.hit(_failed_charge_item, _FAILED_CHARGE_KEY, client_ip(request))
 
 
+# Committee joins that actually create a membership, checked and spent by
+# POST /committees/{id}/join.
+#
+# Keyed on the ACCOUNT, not the IP -- the first budget here that is. Everything
+# above is per-IP and sized around the NAT problem in the comment at the top of
+# this file; that sizing is exactly what makes an IP limit useless here. A join
+# limit loose enough not to starve an involvement fair (a room of members on one
+# campus IP, each joining several committees) is far too loose to constrain one
+# member looping the endpoint. Every join is authenticated, so the account is
+# right there and is the bucket that matters.
+#
+# What it defends: join_committee writes a notification to the joining member
+# AND one to every chair, against a table nothing ever prunes and an endpoint
+# (GET /notifications) that returns a member's entire history unpaginated. Left
+# unbounded, one member can permanently bury a chair's feed -- the damage
+# outlives the attack, since there is no delete path anywhere.
+#
+# 30/hour because 14 committees exist, so 14 is the ceiling on distinct
+# legitimate joins; the rest is headroom for real churn (join, leave, rejoin) in
+# one sitting. It caps a flooding account near 90 notification rows/hour no
+# matter how many IPs it comes from, and another account costs the attacker a
+# controlled @cougarnet.uh.edu inbox.
+JOIN_LIMIT = os.getenv("RATE_LIMIT_COMMITTEE_JOIN", "30/hour")
+_join_item = limits.parse(JOIN_LIMIT)
+_JOIN_KEY = "committee-join"
+
+
+def join_budget_exhausted(user_id: int) -> bool:
+    """True when this ACCOUNT has already burned its committee-join budget.
+
+    Built on the limiter's strategy object rather than a @limiter.limit
+    decorator for two reasons. The decorator keys on the IP via the limiter's
+    key_func, and it counts every request to the route -- but a repeat join is
+    a no-op that writes nothing, and slowapi has no deduct_when, so only a join
+    that actually creates a membership should spend. test() checks without
+    consuming; record_join() spends.
+
+    That asymmetry is also what closes the join/leave/join bypass: leave_committee
+    hard-deletes the membership row, so the route's early return never fires on
+    that loop and every iteration is a real join -- which is precisely what this
+    budget counts.
+
+    Sharing the limiter's storage means conftest's autouse limiter.reset()
+    already isolates this between tests.
+    """
+    return not limiter.limiter.test(_join_item, _JOIN_KEY, str(user_id))
+
+
+def record_join(user_id: int) -> None:
+    """Spend one unit of this account's committee-join budget."""
+    limiter.limiter.hit(_join_item, _JOIN_KEY, str(user_id))
+
+
 def limit_count(limit: str) -> int:
     """The request count out of a "N/period" limit string, for tests."""
     return int(limit.split("/")[0])
