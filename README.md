@@ -164,6 +164,8 @@ Leave these unset for local development.
 | `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
 | `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
 | `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
+| `RATE_LIMIT_UPLOAD` | Per-IP limit on the two upload routes (resume, product image) | `60/minute` |
+| `MAX_REQUEST_BODY_BYTES` | Hard ceiling on request body size, rejected with a 413 as the bytes arrive. Must stay **above** the 2 MB per-file upload limits, or valid uploads fail with the wrong error | `4194304` (4 MB) |
 | `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
 | `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
 
@@ -340,7 +342,7 @@ shpe-uh-website/
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
 └── backend/
-    ├── main.py             # FastAPI app: routers, health checks + background loops (reminder emails, daily event-sheet sync)
+    ├── main.py             # FastAPI app: routers, health checks, request body size ceiling + background loops (reminder emails, daily event-sheet sync)
     ├── config.py           # DATA_DIR — where uploaded files are written; also whether this is the live deployment
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL), session factory, seed.py's local-database guard
@@ -356,7 +358,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, request body size limit, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (runs against a dedicated `shpe_test` Postgres database; requires the database container to be running)
 ```
@@ -400,7 +402,7 @@ shpe-uh-website/
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited, configurable via `RATE_LIMIT_PASSWORD_RESET`) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
-| POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
+| POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
 | DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive) |
 | GET | `/events` | No | All events (powers the public calendar) |
@@ -434,7 +436,7 @@ shpe-uh-website/
 | PATCH | `/shop/products/{id}` | Shop admin | Edit a product / toggle availability |
 | DELETE | `/shop/products/{id}` | Shop admin | Retire a product — hides it from the shop and keeps it restorable (nothing is deleted); the dues product can't be retired |
 | POST | `/shop/products/{id}/restore` | Shop admin | Restore a retired product (it comes back hidden) |
-| POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤2 MB) |
+| POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`) |
 | GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |

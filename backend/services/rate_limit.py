@@ -82,6 +82,16 @@ PASSWORD_RESET_LIMIT = os.getenv("RATE_LIMIT_PASSWORD_RESET", "20/hour")
 ATTEND_LIMIT = os.getenv("RATE_LIMIT_ATTEND", "600/minute")
 CODE_PREVIEW_LIMIT = os.getenv("RATE_LIMIT_CODE_PREVIEW", "600/minute")
 
+# The two upload routes (POST /me/resume, POST /shop/products/{id}/image).
+# Generous for the same NAT reason as the rest: a resume workshop puts a room
+# of members behind one campus IP. It can afford to be generous because it is
+# no longer the primary control on upload size — BodyLimitMiddleware
+# (services/body_limit.py) rejects an oversized body at the ASGI edge before
+# the form parser runs. What's left for this limit to do is cap how many
+# uploads one IP can have in flight at once, since each in-flight request
+# holds a temp file until it completes.
+UPLOAD_LIMIT = os.getenv("RATE_LIMIT_UPLOAD", "60/minute")
+
 
 def limit_count(limit: str) -> int:
     """The request count out of a "N/period" limit string, for tests."""

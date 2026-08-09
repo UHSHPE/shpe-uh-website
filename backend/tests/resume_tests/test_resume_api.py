@@ -2,6 +2,7 @@ import pytest
 
 import routes.resume_routes as resume_routes
 from models.user.user_schemas import UserOut
+from services.rate_limit import UPLOAD_LIMIT, limit_count
 
 PDF_BYTES = b"%PDF-1.4\n%fake pdf body\n"
 
@@ -60,6 +61,48 @@ def test_upload_over_2mb_is_rejected_with_413(client, resume_dir):
         files={"file": ("big.pdf", big, "application/pdf")},
     )
     assert res.status_code == 413
+
+
+def test_size_is_checked_before_the_body_is_read(client, resume_dir, monkeypatch):
+    """The cap must be enforced against file.size, BEFORE read().
+
+    Reading first is what makes an oversized upload dangerous: read() with no
+    argument copies the whole spooled body into one bytes object, so a large
+    upload lands in resident memory and OOM-kills the worker — and the Dockerfile
+    pins --workers 1, so that process is the entire API. Blowing up inside read()
+    is how this test notices the check has moved back below it.
+    """
+    from starlette.datastructures import UploadFile
+
+    async def boom(self, size=-1):
+        raise AssertionError("read() ran before the size check")
+
+    monkeypatch.setattr(UploadFile, "read", boom)
+
+    # Over the route's 2 MB cap but under the global middleware cap, so this
+    # exercises the handler's own check rather than being stopped at the edge.
+    big = PDF_BYTES + b"0" * (2 * 1024 * 1024)
+    res = client.post(
+        "/me/resume",
+        files={"file": ("big.pdf", big, "application/pdf")},
+    )
+    assert res.status_code == 413
+
+
+def test_upload_is_rate_limited(client, resume_dir):
+    # Derived from the configured limit (RATE_LIMIT_UPLOAD) rather than
+    # hardcoded, so retuning the limit doesn't break this test.
+    for _ in range(limit_count(UPLOAD_LIMIT)):
+        client.post(
+            "/me/resume",
+            files={"file": ("my_resume.pdf", PDF_BYTES, "application/pdf")},
+        )
+
+    res = client.post(
+        "/me/resume",
+        files={"file": ("my_resume.pdf", PDF_BYTES, "application/pdf")},
+    )
+    assert res.status_code == 429
 
 
 def test_user_out_exposes_resume_filename():

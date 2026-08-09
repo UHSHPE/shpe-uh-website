@@ -256,6 +256,32 @@ def test_upload_product_image_as_manager(manager_client, session, tmp_path, monk
     assert served.content == PNG_BYTES
 
 
+def test_image_size_is_checked_before_the_body_is_read(
+    manager_client, session, tmp_path, monkeypatch
+):
+    """Same ordering rule as the resume route — see the matching test in
+    tests/resume_tests/test_resume_api.py for why reading first is the bug."""
+    from starlette.datastructures import UploadFile
+
+    from routes import shop_routes
+
+    monkeypatch.setattr(shop_routes, "PRODUCT_IMAGE_DIR", tmp_path)
+    product = make_product(session)
+
+    async def boom(self, size=-1):
+        raise AssertionError("read() ran before the size check")
+
+    monkeypatch.setattr(UploadFile, "read", boom)
+
+    # Over the route's 2 MB cap, under the global middleware cap.
+    big = PNG_BYTES + b"0" * (2 * 1024 * 1024)
+    res = manager_client.post(
+        f"/shop/products/{product.id}/image",
+        files={"file": ("big.png", big, "image/png")},
+    )
+    assert res.status_code == 413
+
+
 def test_image_is_cached_immutably(manager_client, session, tmp_path, monkeypatch):
     """Product images are the heaviest thing the API serves. Without a cache
     header every shop view re-downloads them from the origin."""

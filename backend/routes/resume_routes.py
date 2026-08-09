@@ -4,12 +4,13 @@ from typing import Annotated
 
 import config
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from fastapi.responses import FileResponse
 
 from models.user.user import User
 from services.dependencies import SessionDependencies, get_current_user
 from services.drive_services import delete_resume_from_drive, upload_resume_to_drive
+from services.rate_limit import limiter, UPLOAD_LIMIT
 
 router = APIRouter(tags=["Resume"])
 
@@ -33,7 +34,9 @@ def _canonical_resume_name(user: User) -> str:
 
 
 @router.post("/me/resume")
+@limiter.limit(UPLOAD_LIMIT)
 async def upload_resume(
+    request: Request,
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDependencies,
     file: UploadFile = File(...),
@@ -42,13 +45,19 @@ async def upload_resume(
     if not filename.lower().endswith(".pdf") or file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Resume must be a PDF file.")
 
-    contents = await file.read()
-
-    if len(contents) > MAX_RESUME_BYTES:
+    # Size is checked BEFORE the read, and against file.size rather than the
+    # length of the bytes we just materialised. The parser maintains .size as
+    # it writes (starlette/datastructures.py), so this is exact and free —
+    # whereas reading first means a multi-gigabyte upload lands in resident
+    # memory before we get to reject it, which OOM-kills the single worker and
+    # takes the whole API down with it.
+    if file.size is not None and file.size > MAX_RESUME_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Resume must be 2 MB or smaller.",
         )
+
+    contents = await file.read()
 
     if not contents.startswith(PDF_MAGIC):
         raise HTTPException(status_code=400, detail="File is not a valid PDF.")

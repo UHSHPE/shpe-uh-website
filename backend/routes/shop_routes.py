@@ -18,7 +18,7 @@ from services.dependencies import (
     get_optional_user,
     require_shop_admin,
 )
-from services.rate_limit import limiter, ORDER_LIMIT
+from services.rate_limit import limiter, ORDER_LIMIT, UPLOAD_LIMIT
 from services.time_services import utcnow
 from validators.email import normalize_email
 
@@ -300,7 +300,9 @@ def restore_product(product_id: int, session: SessionDependencies):
 
 
 @router.post("/products/{product_id}/image", dependencies=[Depends(require_shop_admin)])
+@limiter.limit(UPLOAD_LIMIT)
 async def upload_product_image(
+    request: Request,
     product_id: int,
     session: SessionDependencies,
     file: UploadFile = File(...),
@@ -312,14 +314,20 @@ async def upload_product_image(
     if file.content_type not in IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Image must be a PNG, JPEG, or WebP.")
 
-    ext, magic = IMAGE_TYPES[file.content_type]
-    contents = await file.read()
-
-    if len(contents) > MAX_IMAGE_BYTES:
+    # Checked before the read, against the parser-maintained file.size — see
+    # the matching comment in resume_routes.upload_resume for why the order
+    # matters. Note require_shop_admin does NOT protect the expensive half:
+    # FastAPI parses the form before it solves dependencies, so the body is
+    # already on disk by the time this route's admin gate runs.
+    if file.size is not None and file.size > MAX_IMAGE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Image must be {MAX_IMAGE_BYTES // (1024 * 1024)} MB or smaller.",
         )
+
+    ext, magic = IMAGE_TYPES[file.content_type]
+    contents = await file.read()
+
     if not contents.startswith(magic):
         raise HTTPException(status_code=400, detail="File is not a valid image.")
 

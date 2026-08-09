@@ -17,6 +17,7 @@ from sqlmodel import Session, text
 
 from config import is_production, square_is_production
 from database import create_db, engine
+from services.body_limit import DEFAULT_MAX_BODY_BYTES, BodyLimitMiddleware
 from services.dependencies import SessionDependencies
 from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
@@ -151,6 +152,27 @@ if _allowed_hosts:
         TrustedHostMiddleware,
         allowed_hosts=[h.strip() for h in _allowed_hosts.split(",") if h.strip()],
     )
+
+def _max_body_bytes() -> int:
+    """The cap for BodyLimitMiddleware. Must stay above both per-route upload
+    limits (2 MB each) or valid uploads fail with the wrong error."""
+    try:
+        return max(1, int(os.getenv("MAX_REQUEST_BODY_BYTES", DEFAULT_MAX_BODY_BYTES)))
+    except ValueError:
+        return DEFAULT_MAX_BODY_BYTES
+
+
+# A hard ceiling on request body size, and the ONLY layer that can stop an
+# oversized upload: FastAPI parses the multipart form before it solves
+# dependencies, so by the time a route handler (or its auth dependency) runs,
+# the body has already been spooled to disk in full — anonymously. The
+# per-route file.size checks are the second layer. See services/body_limit.py.
+#
+# Registered BEFORE the CORS block on purpose: add_middleware inserts at index
+# 0, so the last one added ends up outermost. CORS must stay outside this, or a
+# 413 goes back without CORS headers and the browser reports an opaque CORS
+# failure instead of the status.
+app.add_middleware(BodyLimitMiddleware, max_bytes=_max_body_bytes())
 
 # Exact origins only. There is deliberately NO allow_origin_regex, and adding
 # one back is a mistake that looks safe: Starlette matches it with re.fullmatch
