@@ -139,7 +139,7 @@ Frontend runs at **http://localhost:5173**.
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
 | `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
-| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Surrounding whitespace and letter case are ignored, so a pasted `"production "` still counts. Leave unset for local dev | `production` |
+| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP + Google Drive are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Surrounding whitespace and letter case are ignored, so a pasted `"production "` still counts. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
 | `SMTP_PORT` | No | SMTP port | `587` |
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
@@ -188,14 +188,22 @@ Start in the **Sandbox** (fake money, test cards), then switch to Production:
 4. Set `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` (+ `SQUARE_ENVIRONMENT=sandbox`) in `backend/.env`, and `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID` in `frontend/.env.local`. Restart both servers.
 5. Test with Square's sandbox card: `4111 1111 1111 1111`, any future expiry, any CVV, any ZIP. Charges appear in the [Sandbox Seller Dashboard](https://squareupsandbox.com/dashboard).
 6. **Go live:** swap in the app's **Production** Application ID + Access Token, the real store's Location ID, and set `SQUARE_ENVIRONMENT=production`. Also set `ENVIRONMENT=production` — the backend will then refuse to start if any of this is missing, so a config mistake can never silently turn checkout into free simulated orders.
-| `GDRIVE_RESUME_FOLDER_ID` | No | Drive folder that resume PDFs are synced to — must be the **app-created** folder id printed by `get_drive_refresh_token.py` (a hand-made folder isn't reachable under the `drive.file` scope). **Unset = dev mode:** resumes stay local only | `1AbC...xyz` |
-| `GDRIVE_OAUTH_CLIENT_ID` | No | OAuth client id for Drive resume sync (see setup below) | `...apps.googleusercontent.com` |
-| `GDRIVE_OAUTH_CLIENT_SECRET` | No | OAuth client secret for Drive resume sync | — |
-| `GDRIVE_OAUTH_REFRESH_TOKEN` | No | Refresh token minted by `get_drive_refresh_token.py` | — |
+| `GDRIVE_RESUME_FOLDER_ID` | In production | Drive folder that resume PDFs are synced to — must be the **app-created** folder id printed by `get_drive_refresh_token.py` (a hand-made folder isn't reachable under the `drive.file` scope). **Unset = dev mode:** resumes stay local only | `1AbC...xyz` |
+| `GDRIVE_OAUTH_CLIENT_ID` | In production | OAuth client id for Drive resume sync (see setup below) | `...apps.googleusercontent.com` |
+| `GDRIVE_OAUTH_CLIENT_SECRET` | In production | OAuth client secret for Drive resume sync | — |
+| `GDRIVE_OAUTH_REFRESH_TOKEN` | In production | Refresh token minted by `get_drive_refresh_token.py` | — |
+
+All four are optional for local development and **required when `ENVIRONMENT=production`** — the backend refuses to start without them, because an unconfigured instance cannot delete a resume's Drive copy when a member asks it to. Set them before deploying.
 
 #### Google Drive resume sync (optional, one-time setup)
 
 When configured, every resume upload is mirrored to the Drive folder, re-uploads replace the old copy in place, and deleting a resume removes it from Drive too. Every resume is renamed to `First_Last_PSID.pdf` (the uploaded filename is discarded) — both locally and in Drive. Sync is best-effort: if Drive is unreachable the upload still succeeds locally.
+
+**Deletions are the exception to "best-effort".** If Drive is unreachable or unconfigured when a member deletes their resume, the local copy is removed and the request still succeeds, but the backend keeps its internal reference to the Drive file so a later upload replaces it instead of leaving a stray copy. That is also why the four variables are required in production: an instance without them cannot carry out a deletion request in Drive, and a resume left behind there holds the member's name, PSID, phone number and work history. To find any resume whose Drive copy may still need clearing by hand:
+
+```bash
+docker compose exec db psql -U shpe -d shpe -c 'SELECT id, resume_drive_file_id FROM "user" WHERE resume_filename IS NULL AND resume_drive_file_id IS NOT NULL;'
+```
 
 > **Why OAuth and not a service account?** Google blocks service accounts from uploading to personal My Drive folders (403 `storageQuotaExceeded` — they have no storage quota). A service account only works with a Google Workspace **Shared Drive**. For a folder on a personal Gmail account, the backend must upload *as you* via OAuth.
 
@@ -407,7 +415,7 @@ shpe-uh-website/
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
-| DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive) |
+| DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive; if Drive is unreachable the local copy is still removed and the backend keeps its reference to the Drive file, so a later upload replaces it instead of leaving a stray copy) |
 | GET | `/events` | No | All events (powers the public calendar) |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |
@@ -572,7 +580,7 @@ From there the president assigns every other role from `/members`, and adds real
 **Going live checklist**
 
 1. Generate a fresh `SECRET_KEY` — do not reuse the development one.
-2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square and SMTP are fully configured and `CORS_ORIGINS` no longer points at localhost. It also stops serving the API schema — confirm `/docs`, `/redoc`, and `/openapi.json` all return 404 once deployed.
+2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square, SMTP and the four `GDRIVE_*` variables are fully configured and `CORS_ORIGINS` no longer points at localhost. It also stops serving the API schema — confirm `/docs`, `/redoc`, and `/openapi.json` all return 404 once deployed.
 3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
 4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
 5. Confirm `alembic upgrade head` ran (`alembic current` should report a revision), then run `python bootstrap.py` to create the chapter structure (see above), and install the three top-tier seats once those accounts exist and are verified.

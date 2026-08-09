@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from services import square_services
+from services import drive_services, square_services
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -129,6 +129,12 @@ def assert_production_config():
         missing.append("SMTP_HOST")
     if not square_is_production():
         missing.append("SQUARE_ENVIRONMENT=production")
+    # Drive is the one dev-mode no-op whose absence is silently destructive:
+    # an unconfigured delete can't remove the Drive copy, and resumes carry
+    # PSIDs and phone numbers. Presence is all a startup check can see, and
+    # all it needs to — present-but-revoked credentials already fail safe.
+    if not drive_services.is_configured():
+        missing.append("GDRIVE_RESUME_FOLDER_ID / GDRIVE_OAUTH_*")
     # A forgotten allowlist otherwise deploys green and then fails every
     # browser call with an opaque CORS error that leaves nothing in the logs.
     if any("localhost" in o or "127.0.0.1" in o for o in cors_origins()):

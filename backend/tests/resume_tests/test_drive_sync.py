@@ -108,8 +108,37 @@ def test_upload_without_drive_config_is_a_noop():
     assert drive_services.upload_resume_to_drive(None, "x.pdf", PDF_BYTES) is None
 
 
-def test_delete_without_drive_config_reports_success():
-    assert drive_services.delete_resume_from_drive("some-id") is True
+def test_delete_without_drive_config_reports_failure_so_the_id_is_kept():
+    """Deliberately NOT the upload no-op's shape. The caller nulls the file id
+    on success, so returning True here would strand a real Drive copy with
+    nothing pointing at it — and every retry after that would short-circuit on
+    the `not file_id` branch and report success forever."""
+    assert drive_services.delete_resume_from_drive("some-id") is False
+
+
+def test_delete_with_nothing_in_drive_still_reports_success():
+    """The other unconfigured path, which is genuinely a no-op: no file id
+    means no Drive copy to lose, which is every local dev run and every test."""
+    assert drive_services.delete_resume_from_drive(None) is True
+
+
+def test_drive_config_dropped_after_upload_keeps_the_pointer(client, resume_dir, session, user):
+    """The F5 finding. Drive was configured when the resume was uploaded and is
+    gone by the time it's deleted — a redeploy, a rotated credential. Runs the
+    REAL delete_resume_from_drive (no drive_calls stub), unconfigured via the
+    autouse disable_drive_sync fixture. If the id is cleared here, the Drive
+    copy is orphaned permanently and nothing in the app can reach it again."""
+    upload(client)
+    user.resume_drive_file_id = "drive-id-1"  # as a configured instance would have left it
+    session.add(user)
+    session.commit()
+
+    res = client.delete("/me/resume")
+
+    assert res.status_code == 204  # local delete still succeeds
+    session.refresh(user)
+    assert user.resume_filename is None
+    assert user.resume_drive_file_id == "drive-id-1"
 
 
 def test_oauth_env_vars_count_as_configured(monkeypatch):

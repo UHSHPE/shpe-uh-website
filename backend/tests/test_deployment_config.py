@@ -139,9 +139,12 @@ def _production_env(monkeypatch, **overrides):
             monkeypatch.delenv(key, raising=False)
         else:
             monkeypatch.setenv(key, value)
-    # Square reads its own vars at call time; stub the check itself so these
-    # tests never depend on real credentials.
+    # Square and Drive read their own vars at call time; stub the checks
+    # themselves so these tests never depend on real credentials. Drive is
+    # stubbed rather than set via env because conftest's autouse
+    # disable_drive_sync clears all four GDRIVE_* vars for every test.
     monkeypatch.setattr(main.square_services, "is_configured", lambda: True)
+    monkeypatch.setattr(main.drive_services, "is_configured", lambda: True)
 
 
 def test_non_production_never_raises(monkeypatch):
@@ -182,6 +185,17 @@ def test_unconfigured_square_refuses_to_boot(monkeypatch):
     monkeypatch.setattr(main.square_services, "is_configured", lambda: False)
 
     with pytest.raises(RuntimeError, match="SQUARE_ACCESS_TOKEN"):
+        assert_production_config()
+
+
+def test_unconfigured_drive_refuses_to_boot(monkeypatch):
+    """Resumes carry PSIDs and phone numbers, and an unconfigured Drive delete
+    cannot remove the Drive copy. Without this the instance boots green and
+    every deletion request reports success while the file survives."""
+    _production_env(monkeypatch)
+    monkeypatch.setattr(main.drive_services, "is_configured", lambda: False)
+
+    with pytest.raises(RuntimeError, match="GDRIVE_RESUME_FOLDER_ID"):
         assert_production_config()
 
 

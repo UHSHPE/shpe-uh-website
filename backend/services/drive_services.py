@@ -16,23 +16,49 @@ load_dotenv()
 # the account's Drive. That's also why GDRIVE_RESUME_FOLDER_ID must be the
 # app-created folder from the helper script (a hand-made folder's id 404s).
 #
-# Without config (dev mode), every function is a console-printing no-op —
-# same pattern as email_services.py — so local dev and tests never hit the
-# network. Drive sync is best-effort: failures are logged, never raised, and
-# the local copy in uploads/resumes/ remains the source of truth.
+# Without config, upload is a no-op returning None — same dev-mode pattern as
+# email_services.py — so local dev and tests never hit the network. Delete is
+# the exception: it reports FAILURE rather than success, because its caller
+# discards the file id on success and that id is the only handle on the Drive
+# copy. A no-op that returns the success sentinel silently orphans a real file.
+#
+# All four vars are required under ENVIRONMENT=production (is_configured() is
+# checked by main.assert_production_config), so the drifted-config case below
+# cannot arise on the deployed instance. Sync is otherwise best-effort:
+# failures are logged, never raised, and the local copy in uploads/resumes/
+# remains the source of truth.
 
 _OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
 
+_ENV_VARS = (
+    "GDRIVE_RESUME_FOLDER_ID",
+    "GDRIVE_OAUTH_CLIENT_ID",
+    "GDRIVE_OAUTH_CLIENT_SECRET",
+    "GDRIVE_OAUTH_REFRESH_TOKEN",
+)
+
+
+def is_configured() -> bool:
+    """True when all four Drive vars are set (read at call time, like SQUARE_*).
+
+    Presence only, not validity — a revoked refresh token still reads as
+    configured, and that is deliberate: it fails safely at call time (the API
+    raises, the delete returns False, the file id is kept). Absence is the case
+    that used to fail open, which is why main.assert_production_config() checks
+    this one and a startup check can't do better than presence anyway."""
+    return all(os.getenv(var) for var in _ENV_VARS)
+
 
 def _drive_config():
     """Return (credentials, folder_id), or None when Drive sync is unconfigured."""
+    if not is_configured():
+        return None
+
     folder_id = os.getenv("GDRIVE_RESUME_FOLDER_ID")
     client_id = os.getenv("GDRIVE_OAUTH_CLIENT_ID")
     client_secret = os.getenv("GDRIVE_OAUTH_CLIENT_SECRET")
     refresh_token = os.getenv("GDRIVE_OAUTH_REFRESH_TOKEN")
-    if not (folder_id and client_id and client_secret and refresh_token):
-        return None
 
     # Imported lazily so dev mode works even without the google packages.
     from google.oauth2.credentials import Credentials
@@ -99,15 +125,29 @@ def upload_resume_to_drive(existing_file_id: str | None, name: str, content: byt
 
 
 def delete_resume_from_drive(file_id: str | None) -> bool:
-    """Delete a resume from the Drive folder. A file already gone counts as
-    success; other failures are logged and return False (local delete proceeds)."""
+    """Delete a resume from the Drive folder.
+
+    True means the Drive copy is gone: there was nothing to delete, the delete
+    succeeded, or it was already 404. False means it may still be there — Drive
+    unreachable, or no config at all — and the caller MUST keep
+    resume_drive_file_id, which under the drive.file scope is the only handle
+    anything has on that file. The local delete proceeds either way."""
     if not file_id:
         return True
 
     config = _drive_config()
     if config is None:
-        print(f"[drive dev mode] would delete Drive file {file_id}")
-        return True
+        # Deliberately NOT True. The caller nulls the file id when this returns
+        # success, which would strand a real Drive copy with nothing left
+        # pointing at it — and a later retry would then short-circuit on the
+        # `not file_id` branch above and report success forever. Unlike the
+        # upload no-op, an unconfigured delete is a failure, not a skip.
+        logging.warning(
+            "Drive delete skipped for file id %s — GDRIVE_* not configured; "
+            "the Drive copy may still exist",
+            file_id,
+        )
+        return False
 
     creds, _ = config
     try:
