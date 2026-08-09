@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, date
 from sqlmodel import Session, select
+from config import is_production
 from database import engine, create_db, assert_local_database
 import models.event      # noqa: F401
 import models.committee  # noqa: F401
@@ -26,13 +27,13 @@ from chapter_data import (
     EBOARD_COMMITTEES,
 )
 
-import os, sys
+import sys
 from dotenv import load_dotenv
 
 # nuke & reseed command for local dev: docker compose down -v && docker compose up -d && docker compose exec db createdb -U shpe shpe_test
 
 load_dotenv()
-if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
+if is_production():
     print("Refusing to seed: ENVIRONMENT=production. Seed data must never enter the live database.", file=sys.stderr)
     sys.exit(1)
 

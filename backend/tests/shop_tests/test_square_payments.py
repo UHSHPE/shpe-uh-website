@@ -64,6 +64,22 @@ def test_env_vars_count_as_configured(monkeypatch):
     assert square_services.is_configured() is True
 
 
+@pytest.mark.parametrize("environment", ["production", "production "])
+def test_unconfigured_square_refuses_to_simulate_in_production(monkeypatch, environment):
+    """Dev mode is a silent free order, so on the live site it must raise
+    rather than fall back. Parametrized on the padded value because that
+    spelling used to slip past the check and simulate the charge — with no
+    order-side symptom, since the route only demands a payment token when
+    is_configured() is true. Called directly rather than through the client:
+    conftest builds TestClient without a `with`, so lifespan (and therefore
+    assert_production_config) never runs, and this stays independent of that.
+    """
+    monkeypatch.setenv("ENVIRONMENT", environment)
+
+    with pytest.raises(RuntimeError, match="refusing to simulate"):
+        square_services.charge_card(None, 4500, "x@y.com", note="t")
+
+
 # --- configured: the charge gates order creation ---
 
 def test_charges_server_side_total_and_stores_payment_id(unauth_client, session, square, sent_emails):

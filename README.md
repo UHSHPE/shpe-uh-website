@@ -139,7 +139,7 @@ Frontend runs at **http://localhost:5173**.
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
 | `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
 | `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
-| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Leave unset for local dev | `production` |
+| `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Surrounding whitespace and letter case are ignored, so a pasted `"production "` still counts. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
 | `SMTP_PORT` | No | SMTP port | `587` |
 | `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
@@ -147,7 +147,7 @@ Frontend runs at **http://localhost:5173**.
 | `EMAIL_FROM` | No | From header; defaults to `SMTP_USER` | `SHPE UH <noreply@example.org>` |
 | `SQUARE_ACCESS_TOKEN` | No | Square API access token for shop card payments. **Unset = dev mode:** checkout is simulated, no real charge | `EAAA...` |
 | `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
-| `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted | `sandbox` |
+| `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted. Whitespace and case are ignored, as with `ENVIRONMENT`; anything unrecognized means sandbox | `sandbox` |
 | `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | No | The same service-account key as a single-line JSON string (`jq -c . key.json`), for hosts with no way to mount a file. Takes precedence over `CREDENTIALS` | `{"type":"service_account",...}` |
 | `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
@@ -259,7 +259,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 ## Seeded Accounts
 
-`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the rest of the E-Board (both VPs plus the five officers, named to match the About page), the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123` — which is why `seed.py` refuses to run (exit 1) when `ENVIRONMENT=production` is set: seed data must never enter the live database. The real chapter structure it creates (committees, org chart, dues product) lives in `backend/chapter_data.py` and is shared with `backend/bootstrap.py`, which installs that structure — and nothing else — into production. See [Deployment](#deployment).
+`python seed.py` creates two test members (one with dues already paid, one without), all 14 committees and their chairs/co-chairs (22 chair accounts), a comms director, the chapter president, the rest of the E-Board (both VPs plus the five officers, named to match the About page), the reporting structure (the chapter org chart, 20 links), the shop settings row, and five sample shop products (including the $20 "T-Shirt Dues"). All seeded accounts use the password `password123`, which is why `seed.py` has two independent guards and exits 1 on either: `ENVIRONMENT=production` is set, **or** `DATABASE_URL` doesn't point at a local Postgres (host must be loopback, database must be `shpe` or `shpe_test`). The second one matters because `ENVIRONMENT` says nothing about which database is being written — exporting a production `DATABASE_URL` for a `psql` or Alembic session, with `ENVIRONMENT` unset as it normally is locally, would otherwise sail straight past the first guard. Seed data must never enter the live database. The real chapter structure it creates (committees, org chart, dues product) lives in `backend/chapter_data.py` and is shared with `backend/bootstrap.py`, which installs that structure — and nothing else — into production. See [Deployment](#deployment).
 
 | Account | Email | Role |
 |---|---|---|
@@ -341,13 +341,13 @@ shpe-uh-website/
 │       └── App.jsx         # Route definitions
 └── backend/
     ├── main.py             # FastAPI app: routers, health checks + background loops (reminder emails, daily event-sheet sync)
-    ├── config.py           # DATA_DIR — where uploaded files are written
+    ├── config.py           # DATA_DIR — where uploaded files are written; also whether this is the live deployment
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
-    ├── database.py         # Postgres engine (DATABASE_URL) and session factory
+    ├── database.py         # Postgres engine (DATABASE_URL), session factory, seed.py's local-database guard
     ├── alembic.ini         # Alembic config (the database URL comes from alembic/env.py, not this file)
     ├── alembic/            # Migration environment and versions/ — see Database Migrations
     ├── chapter_data.py     # Real chapter structure (committees, org chart, dues product) — shared by both seeders
-    ├── seed.py             # Dev seed data: test members, chair/E-Board accounts (refuses to run in production)
+    ├── seed.py             # Dev seed data: test members, chair/E-Board accounts (refuses any non-local database)
     ├── bootstrap.py        # Production installer: structure only, plus the three top-tier seats
     ├── Dockerfile          # Container image used for deployment
     ├── requirements.txt    # Runtime dependencies
@@ -540,7 +540,7 @@ Run exactly **one worker**. Rate-limit counters live in slowapi's process memory
 
 ### Filling the production database
 
-`seed.py` refuses to run in production — every account it creates shares `password123`. But it's also the only thing that creates committees, so a fresh production database is empty and unusable: nobody can reach `/admin/*` to assign a role, `sync_events` can't link events to committees (so QR check-in silently does nothing), and the post-verification dues redirect can't find its product.
+`seed.py` refuses to run against a production database — every account it creates shares `password123`. But it's also the only thing that creates committees, so a fresh production database is empty and unusable: nobody can reach `/admin/*` to assign a role, `sync_events` can't link events to committees (so QR check-in silently does nothing), and the post-verification dues redirect can't find its product.
 
 `backend/bootstrap.py` fills that gap. It creates **structure only** — the 14 committees, the 10 E-Board committee rows, the 20 org-chart links, the shop settings row, and the "T-Shirt Dues" product. It creates **no accounts**: it never imports `create_user` and contains no password, so it cannot make one however it's run. Every step is guarded, so it's safe to re-run.
 

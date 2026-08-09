@@ -4,6 +4,7 @@ server, and the guard that keeps seed.py off a deployed database."""
 import pytest
 
 import main
+from config import is_production, square_is_production
 from database import assert_local_database
 from main import assert_production_config, cors_origins, docs_urls
 
@@ -55,6 +56,48 @@ def test_unlisted_origin_is_not_allowed(client):
     assert "access-control-allow-origin" not in res.headers
 
 
+# --- what counts as production ---
+
+@pytest.mark.parametrize(
+    "value",
+    ["production", "production ", " production", "  production  ", "Production", "PRODUCTION\n"],
+)
+def test_padded_or_miscased_environment_still_reads_as_production(monkeypatch, value):
+    """A pasted dashboard value carrying whitespace is the most common way an
+    env var goes wrong, and it used to disable the payment guards while
+    leaving every visible production signal intact."""
+    monkeypatch.setenv("ENVIRONMENT", value)
+
+    assert is_production() is True
+
+
+@pytest.mark.parametrize("value", ["", " ", "prod", "development", "staging", "productionx"])
+def test_other_environment_values_are_not_production(monkeypatch, value):
+    monkeypatch.setenv("ENVIRONMENT", value)
+
+    assert is_production() is False
+
+
+def test_unset_environment_is_not_production(monkeypatch):
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    assert is_production() is False
+
+
+def test_square_environment_defaults_to_sandbox(monkeypatch):
+    """An unset value must never mean live charges."""
+    monkeypatch.delenv("SQUARE_ENVIRONMENT", raising=False)
+
+    assert square_is_production() is False
+
+
+@pytest.mark.parametrize("value", ["production", "production ", "Production"])
+def test_padded_square_environment_reads_as_production(monkeypatch, value):
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", value)
+
+    assert square_is_production() is True
+
+
 # --- API docs exposure ---
 
 def test_docs_are_served_outside_production(monkeypatch):
@@ -67,10 +110,11 @@ def test_docs_are_served_outside_production(monkeypatch):
     }
 
 
-def test_production_disables_docs_redoc_and_the_schema(monkeypatch):
+@pytest.mark.parametrize("value", ["production", "production "])
+def test_production_disables_docs_redoc_and_the_schema(monkeypatch, value):
     """openapi_url has to go too: /docs and /redoc only render it, so leaving
     the schema up means the interactive console is one paste away."""
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ENVIRONMENT", value)
 
     assert docs_urls() == {
         "docs_url": None,
@@ -139,6 +183,27 @@ def test_unconfigured_square_refuses_to_boot(monkeypatch):
 
     with pytest.raises(RuntimeError, match="SQUARE_ACCESS_TOKEN"):
         assert_production_config()
+
+
+def test_padded_environment_still_enforces_the_gate(monkeypatch):
+    """The finding this normalization exists for. With a trailing space on
+    ENVIRONMENT the gate used to return without checking anything, so the app
+    booted green with no Square credentials — and charge_card then simulated
+    every charge, meaning free merch and free dues, while /docs stayed hidden
+    and seed.py still refused, so both visible signals said production."""
+    _production_env(monkeypatch, ENVIRONMENT="production ")
+    monkeypatch.setattr(main.square_services, "is_configured", lambda: False)
+
+    with pytest.raises(RuntimeError, match="SQUARE_ACCESS_TOKEN"):
+        assert_production_config()
+
+
+def test_padded_square_environment_still_boots(monkeypatch):
+    """The mirror image, which failed closed instead: a padded value made the
+    gate demand SQUARE_ENVIRONMENT=production when it had in fact been set."""
+    _production_env(monkeypatch, SQUARE_ENVIRONMENT="production ")
+
+    assert assert_production_config() is None
 
 
 def test_localhost_cors_refuses_to_boot(monkeypatch):

@@ -5,6 +5,8 @@ from typing import NamedTuple
 
 from dotenv import load_dotenv
 
+from config import is_production, square_is_production
+
 load_dotenv()
 
 
@@ -71,7 +73,7 @@ def _square_client():
 
     environment = (
         SquareEnvironment.PRODUCTION
-        if os.getenv("SQUARE_ENVIRONMENT", "sandbox").strip().lower() == "production"
+        if square_is_production()
         else SquareEnvironment.SANDBOX
     )
     return Square(token=token, environment=environment), location_id
@@ -136,7 +138,7 @@ def charge_card(
     never double-charge within one call."""
     config = _square_client()
     if config is None:
-        if os.getenv("ENVIRONMENT", "").lower() == "production":
+        if is_production():
             raise RuntimeError("ENVIRONMENT=production but Square is not configured "
                                "(SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID missing) — refusing to simulate a charge.")
         summary = ", ".join(

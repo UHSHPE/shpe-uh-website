@@ -15,6 +15,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session, text
 
+from config import is_production, square_is_production
 from database import create_db, engine
 from services.dependencies import SessionDependencies
 from services.rate_limit import limiter
@@ -107,15 +108,16 @@ def docs_urls() -> dict[str, str | None]:
 
     Unlike assert_production_config() (which runs at startup, inside lifespan)
     this is read at IMPORT time, because FastAPI() is constructed at import.
-    Keeping the env read inside a function is what lets tests monkeypatch
-    ENVIRONMENT and call docs_urls() directly instead of reloading the module.
+    is_production() keeping the env read inside a function is what lets tests
+    monkeypatch ENVIRONMENT and call docs_urls() directly instead of reloading
+    the module.
     """
-    if os.getenv("ENVIRONMENT", "").strip().lower() == "production":
+    if is_production():
         return {"docs_url": None, "redoc_url": None, "openapi_url": None}
     return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
 
 def assert_production_config():
-    if os.getenv("ENVIRONMENT", "").lower() != "production":
+    if not is_production():
         return
     missing = []
     if not os.getenv("SECRET_KEY"):
@@ -124,7 +126,7 @@ def assert_production_config():
         missing.append("SQUARE_ACCESS_TOKEN / SQUARE_LOCATION_ID")
     if not os.getenv("SMTP_HOST"):
         missing.append("SMTP_HOST")
-    if os.getenv("SQUARE_ENVIRONMENT", "sandbox").lower() != "production":
+    if not square_is_production():
         missing.append("SQUARE_ENVIRONMENT=production")
     # A forgotten allowlist otherwise deploys green and then fails every
     # browser call with an opaque CORS error that leaves nothing in the logs.
@@ -199,6 +201,6 @@ if __name__ == "__main__":
         "main:app",
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
-        reload=os.getenv("ENVIRONMENT", "").lower() != "production",
+        reload=not is_production(),
         proxy_headers=True,
     )
