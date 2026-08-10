@@ -139,3 +139,91 @@ export function orderItemsSummary(items) {
     .map((it) => `${it.quantity}× ${it.product_name}${it.size ? ` (${it.size})` : ""}`)
     .join(" · ");
 }
+
+// --- Cart re-pricing -------------------------------------------------------
+// Cart lines snapshot priceCents at add-to-cart time and persist to
+// localStorage, but the backend recomputes the total from live catalog rows and
+// charges THAT. Without a reconcile, a buyer can approve one amount (including
+// in the Apple/Google Pay sheet) and be charged another. These are pure so the
+// context can stay a component file — see the react-refresh lint rule.
+
+export function changeKey(productId, size) {
+  return `${productId}|${size ?? ""}`;
+}
+
+// Match cart lines against the live catalog. Returns refreshed lines plus what
+// moved, so the caller can tell the buyer before they pay.
+export function reconcileCartLines(lines, products) {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const changes = [];
+  const unavailable = [];
+  let dirty = false;
+
+  const next = lines.map((line) => {
+    const product = byId.get(line.productId);
+
+    // GET /shop/products returns only is_active && !retired products, so a
+    // line missing from the response is exactly the condition the backend
+    // 400s on with "One of the products is unavailable."
+    if (!product) {
+      unavailable.push({
+        productId: line.productId,
+        size: line.size,
+        name: line.name,
+        reason: "gone",
+      });
+      return line;
+    }
+
+    // A size can disappear from product.sizes while it sits in a cart; the
+    // backend rejects that too, so catch it here rather than after the POST.
+    if (
+      product.product_type === "apparel" &&
+      (!line.size || !(product.sizes || []).includes(line.size))
+    ) {
+      unavailable.push({
+        productId: line.productId,
+        size: line.size,
+        name: product.name,
+        reason: "size",
+      });
+      return line;
+    }
+
+    if (product.price_cents === line.priceCents && product.name === line.name) {
+      return line;
+    }
+    if (product.price_cents !== line.priceCents) {
+      changes.push({
+        productId: line.productId,
+        size: line.size,
+        name: product.name,
+        fromCents: line.priceCents,
+        toCents: product.price_cents,
+      });
+    }
+    dirty = true;
+    // name is refreshed alongside the price: lineCap() and the dues guard both
+    // key off it by string.
+    return { ...line, priceCents: product.price_cents, name: product.name };
+  });
+
+  // Same array reference when nothing moved. Load-bearing: shop-checkout's
+  // Square effect depends on subtotalCents, and a needless identity change
+  // would remount the card iframe under a buyer mid-typing.
+  return { lines: dirty ? next : lines, changes, unavailable };
+}
+
+// Fold a fresh reconcile into changes already shown. An existing entry keeps
+// its ORIGINAL fromCents so a second re-price still reads "$15 → $45" rather
+// than "$40 → $45", and an entry that lands back on its starting price drops
+// out entirely.
+export function mergeChanges(prev, next) {
+  const merged = new Map(prev.map((c) => [changeKey(c.productId, c.size), c]));
+  for (const change of next) {
+    const key = changeKey(change.productId, change.size);
+    const existing = merged.get(key);
+    merged.set(key, existing ? { ...change, fromCents: existing.fromCents } : change);
+  }
+  return [...merged.values()].filter((c) => c.fromCents !== c.toCents);
+}

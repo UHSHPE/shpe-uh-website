@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createShopOrder } from "../api/api";
 import { CardIcon, CheckIcon, BoxIcon } from "../components/shopIcons";
+import PriceChangeNotice from "../components/PriceChangeNotice";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { formatCents } from "../utils/shop";
@@ -48,7 +49,18 @@ function loadSquareSdk() {
 }
 export default function ShopCheckout() {
   const { user, refreshUser } = useAuth();
-  const { lines, subtotalCents, clearCart } = useCart();
+  const {
+    lines,
+    subtotalCents,
+    clearCart,
+    removeLine,
+    repriceCart,
+    repriceState,
+    priceChanges,
+    priceChangesAcked,
+    acknowledgePriceChanges,
+    unavailableLines,
+  } = useCart();
   const navigate = useNavigate();
 
   const [step, setStep] = useState("contact"); // 'contact' | 'payment'
@@ -75,7 +87,20 @@ export default function ShopCheckout() {
     setPhone((v) => v || user.phone_num || "");
   }
 
-  const canContinue = name.trim() !== "" && email.trim() !== "";
+  // Re-price against the live catalog once, on mount — while the contact step
+  // is showing. Doing it here (not on the payment step) is what keeps
+  // subtotalCents stable for the Square effect below; see its dep array.
+  useEffect(() => {
+    repriceCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unavailableKeys = new Set(
+    unavailableLines.map((u) => `${u.productId}|${u.size ?? ""}`)
+  );
+  const needsAck = priceChanges.length > 0 && !priceChangesAcked;
+  const canContinue =
+    name.trim() !== "" && email.trim() !== "" && repriceState !== "loading";
 
   // Mount Square's card element while the payment step is showing. Cleanup
   // destroys it (and guards React StrictMode's dev double-run).
@@ -86,8 +111,12 @@ export default function ShopCheckout() {
     let applePayInstance = null;
     let googlePayInstance = null;
 
-    // The wallet sheet shows this amount; the backend still charges its own
-    // recomputed total (they match — both come from the catalog prices).
+    // The wallet sheet shows this amount and the backend charges its own
+    // recomputed total. They agree only because the cart was re-priced against
+    // the catalog on mount and "Continue to payment" is disabled until that
+    // settles — cart lines snapshot their price at add-to-cart time and would
+    // otherwise be arbitrarily stale. This sheet is the buyer's consent
+    // surface, so keep subtotalCents in the deps below and keep the gate.
     const buildPaymentRequest = (payments) =>
       payments.paymentRequest({
         countryCode: "US",
@@ -451,10 +480,28 @@ export default function ShopCheckout() {
                 <p style={{ margin: "14px 0 0", fontSize: "13px", fontWeight: 600, color: "var(--shpe-red)" }}>{error}</p>
               )}
 
+              <PriceChangeNotice
+                changes={priceChanges}
+                onAcknowledge={needsAck ? acknowledgePriceChanges : null}
+              />
+
+              {unavailableLines.length > 0 && (
+                <p style={{ margin: "14px 0 0", fontSize: "13px", fontWeight: 600, color: "var(--shpe-red)" }}>
+                  {unavailableLines.length === 1
+                    ? "An item in your cart is no longer available. Remove it to continue."
+                    : "Some items in your cart are no longer available. Remove them to continue."}
+                </p>
+              )}
+
               <button
                 className="primaryBtn"
                 onClick={() => handlePay()}
-                disabled={paying || (SQUARE_CONFIGURED && !cardReady)}
+                disabled={
+                  paying ||
+                  (SQUARE_CONFIGURED && !cardReady) ||
+                  unavailableLines.length > 0 ||
+                  needsAck
+                }
                 style={{
                   marginTop: "20px",
                   width: "100%",
@@ -514,17 +561,47 @@ export default function ShopCheckout() {
         <div style={{ ...cardStyle, padding: "22px 24px" }}>
           <h3 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 700, color: "var(--ink)" }}>Order summary</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {lines.map((l) => (
-              <div key={`${l.productId}|${l.size ?? ""}`} style={{ display: "flex", justifyContent: "space-between", gap: "12px", fontSize: "14px" }}>
-                <span style={{ color: "var(--ink-soft)" }}>
-                  {l.qty}× {l.name}
-                  {l.size ? ` (${l.size})` : ""}
-                </span>
-                <span style={{ color: "var(--ink)", fontWeight: 700, whiteSpace: "nowrap" }}>
-                  {formatCents(l.priceCents * l.qty)}
-                </span>
-              </div>
-            ))}
+            {lines.map((l) => {
+              const gone = unavailableKeys.has(`${l.productId}|${l.size ?? ""}`);
+              return (
+                <div key={`${l.productId}|${l.size ?? ""}`} style={{ display: "flex", justifyContent: "space-between", gap: "12px", fontSize: "14px" }}>
+                  <span style={{ color: "var(--ink-soft)", opacity: gone ? 0.5 : 1 }}>
+                    {l.qty}× {l.name}
+                    {l.size ? ` (${l.size})` : ""}
+                    {gone && (
+                      <>
+                        <br />
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--shpe-red)", opacity: 1 }}>
+                          No longer available
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  {gone ? (
+                    <button
+                      onClick={() => removeLine(l.productId, l.size)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "var(--shpe-red)",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span style={{ color: "var(--ink)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {formatCents(l.priceCents * l.qty)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div style={{ height: "1px", background: "var(--border)", margin: "16px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>

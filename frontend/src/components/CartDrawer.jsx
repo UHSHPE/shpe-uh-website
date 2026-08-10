@@ -1,15 +1,40 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { formatCents } from "../utils/shop";
+import PriceChangeNotice from "./PriceChangeNotice";
 import { CartIcon, CheckIcon, CloseIcon, MinusIcon, PlusIcon, TrashIcon } from "./shopIcons";
 
 // Slide-out cart drawer (right side) + scrim. Rendered once in App so it can
 // open from any route.
 export default function CartDrawer() {
-  const { lines, count, subtotalCents, changeQty, removeLine, isOpen, closeCart } = useCart();
+  const {
+    lines,
+    count,
+    subtotalCents,
+    changeQty,
+    removeLine,
+    isOpen,
+    closeCart,
+    repriceCart,
+    priceChanges,
+    unavailableLines,
+  } = useCart();
   const navigate = useNavigate();
 
+  // Prices are snapshotted at add-to-cart time, so re-match against the live
+  // catalog whenever the drawer opens. The notice here is informational — the
+  // acknowledgment gate lives on checkout, where money actually moves.
+  useEffect(() => {
+    if (isOpen) repriceCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const unavailableKeys = new Set(
+    unavailableLines.map((u) => `${u.productId}|${u.size ?? ""}`)
+  );
 
   function goCheckout() {
     closeCart();
@@ -138,7 +163,14 @@ export default function CartDrawer() {
               }}
             >
               {lines.map((line) => (
-                <div key={`${line.productId}|${line.size ?? ""}`} style={{ display: "flex", gap: "14px" }}>
+                <div
+                  key={`${line.productId}|${line.size ?? ""}`}
+                  style={{
+                    display: "flex",
+                    gap: "14px",
+                    opacity: unavailableKeys.has(`${line.productId}|${line.size ?? ""}`) ? 0.55 : 1,
+                  }}
+                >
                   <div
                     style={{
                       width: "70px",
@@ -188,6 +220,11 @@ export default function CartDrawer() {
                     <p style={{ margin: "2px 0 8px", fontSize: "12px", color: "var(--muted)" }}>
                       {line.size ? `Size ${line.size}` : "Item"} · {formatCents(line.priceCents)} each
                     </p>
+                    {unavailableKeys.has(`${line.productId}|${line.size ?? ""}`) && (
+                      <p style={{ margin: "-4px 0 8px", fontSize: "12px", fontWeight: 600, color: "var(--shpe-red)" }}>
+                        No longer available
+                      </p>
+                    )}
                     <div
                       style={{
                         display: "flex",
@@ -224,7 +261,9 @@ export default function CartDrawer() {
                         </button>
                       </div>
                       <span style={{ fontSize: "14px", fontWeight: 800, color: "var(--shpe-blue)" }}>
-                        {formatCents(line.priceCents * line.qty)}
+                        {unavailableKeys.has(`${line.productId}|${line.size ?? ""}`)
+                          ? "—"
+                          : formatCents(line.priceCents * line.qty)}
                       </span>
                     </div>
                   </div>
@@ -232,12 +271,14 @@ export default function CartDrawer() {
               ))}
             </div>
             <div style={{ borderTop: "1px solid var(--border)", padding: "18px 22px" }}>
+              <PriceChangeNotice changes={priceChanges} />
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "baseline",
                   marginBottom: "4px",
+                  marginTop: priceChanges.length > 0 ? "14px" : 0,
                 }}
               >
                 <span style={{ fontSize: "15px", fontWeight: 700, color: "var(--ink)" }}>Subtotal</span>

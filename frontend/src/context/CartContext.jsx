@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { getShopSettings } from "../api/api";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { getShopProducts, getShopSettings } from "../api/api";
 import { useAuth } from "./AuthContext";
 import { DUES_PRODUCT_NAME } from "../utils/dues";
+import { changeKey, mergeChanges, reconcileCartLines } from "../utils/shop";
 
 // Cart state shared across the app: line items (persisted to localStorage so
 // guests keep their cart across navigation), the drawer open state, the shop
@@ -34,7 +35,23 @@ export function CartProvider({ children }) {
   const [toast, setToast] = useState(null);
   const [itemCap, setItemCap] = useState(DEFAULT_ITEM_CAP);
 
+  // Re-pricing state. Deliberately NOT persisted alongside the cart: a stale
+  // "unavailable" flag would survive a restock, and localStorage lines get no
+  // shape validation in loadCart, so carts already in members' browsers keep
+  // working untouched.
+  const [priceChanges, setPriceChanges] = useState([]);
+  const [unavailableLines, setUnavailableLines] = useState([]);
+  const [repriceState, setRepriceState] = useState("idle"); // idle|loading|done|failed
+  const [priceChangesAcked, setPriceChangesAcked] = useState(false);
+
+  // repriceCart reads lines through a ref so it never closes over a stale copy
+  // (it's called from effects that shouldn't re-run when the cart changes).
+  // Seeded from the first render and kept current by the effect below — writing
+  // it during render trips react-hooks/refs.
+  const linesRef = useRef(lines);
+
   useEffect(() => {
+    linesRef.current = lines;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
   }, [lines]);
 
@@ -121,17 +138,64 @@ export function CartProvider({ children }) {
   }
 
   function removeLine(productId, size) {
-    setLines((prev) =>
-      prev.filter((l) => lineKey(l.productId, l.size) !== lineKey(productId, size))
-    );
+    const key = lineKey(productId, size);
+    setLines((prev) => prev.filter((l) => lineKey(l.productId, l.size) !== key));
+    // Drop any notice attached to the line that just left the cart.
+    setPriceChanges((prev) => prev.filter((c) => changeKey(c.productId, c.size) !== key));
+    setUnavailableLines((prev) => prev.filter((u) => changeKey(u.productId, u.size) !== key));
   }
 
   function clearCart() {
     setLines([]);
+    setPriceChanges([]);
+    setUnavailableLines([]);
+    setPriceChangesAcked(false);
+    setRepriceState("idle");
+  }
+
+  // Re-match the cart against the live catalog. Called from the surfaces that
+  // show money (checkout on mount, the drawer on open) rather than on every
+  // CartProvider mount, which would put a request on every page load for every
+  // anonymous visitor.
+  async function repriceCart() {
+    if (linesRef.current.length === 0) return;
+    setRepriceState("loading");
+    try {
+      const { data } = await getShopProducts();
+      const result = reconcileCartLines(linesRef.current, data);
+      setLines(result.lines); // same reference when nothing moved → no-op
+      if (result.changes.length > 0) {
+        setPriceChanges((prev) => mergeChanges(prev, result.changes));
+        setPriceChangesAcked(false);
+      }
+      setUnavailableLines(result.unavailable);
+      setRepriceState("done");
+    } catch {
+      // Fail open. The backend recomputes and charges correctly regardless, so
+      // a network blip must not take checkout down; "failed" exists only so the
+      // Continue button doesn't stay disabled.
+      setRepriceState("failed");
+    }
+  }
+
+  function acknowledgePriceChanges() {
+    setPriceChangesAcked(true);
   }
 
   const count = lines.reduce((n, l) => n + l.qty, 0);
-  const subtotalCents = lines.reduce((n, l) => n + l.priceCents * l.qty, 0);
+
+  // Unavailable lines are excluded from the total: they cannot be purchased
+  // (checkout blocks Pay until they're removed, and the backend 400s them), so
+  // counting them would show a figure that can never be charged — the same
+  // display/charge divergence this re-pricing exists to close. Their per-line
+  // price is hidden alongside, so the arithmetic still reads correctly.
+  const unavailableKeys = new Set(
+    unavailableLines.map((u) => changeKey(u.productId, u.size))
+  );
+  const subtotalCents = lines.reduce(
+    (n, l) => (unavailableKeys.has(lineKey(l.productId, l.size)) ? n : n + l.priceCents * l.qty),
+    0
+  );
 
   return (
     <CartContext.Provider
@@ -144,6 +208,12 @@ export function CartProvider({ children }) {
         changeQty,
         removeLine,
         clearCart,
+        repriceCart,
+        priceChanges,
+        unavailableLines,
+        repriceState,
+        priceChangesAcked,
+        acknowledgePriceChanges,
         isOpen,
         openCart: () => setIsOpen(true),
         closeCart: () => setIsOpen(false),
