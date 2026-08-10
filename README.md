@@ -429,11 +429,11 @@ shpe-uh-website/
 | GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
 | GET | `/events/{id}/scan-count` | Chair only | Live sign-in/sign-out counts for one event, for the QR modal to poll |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
-| POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair). Joining again when you are already a member is a no-op that returns 200 and notifies nobody; joins are rate limited per account (`RATE_LIMIT_COMMITTEE_JOIN`) |
+| POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair). Joining again when you are already a member is a no-op that returns 200 and notifies nobody; joins are rate limited per account (`RATE_LIMIT_COMMITTEE_JOIN`). The internal E-Board rows are not joinable and return 404 |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |
 | GET | `/committees/{id}/members` | Chair only | Roster with name, email, phone |
 | POST | `/committees/{id}/messages` | Chair only | Broadcast a message to members |
-| GET | `/committees/{id}/messages` | Member/Chair | Committee messages, newest first |
+| GET | `/committees/{id}/messages` | Member/Chair | Committee messages, newest first. Members read only committees they can actually join; chairs of the internal E-Board rows still read theirs |
 | GET | `/notifications` | Yes | Current user's notifications, newest first |
 | POST | `/notifications/{id}/read` | Yes | Mark a notification as read |
 | GET | `/shop/settings` | No | Shop settings (storefront tagline + per-order item cap) |

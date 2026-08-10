@@ -1,5 +1,5 @@
 from services.committee_services import chair_contact_email, get_chair_users_from_committee_id, is_active_member
-from models.committee import ChairOut, CommitteeMembership, CommitteeOut, MemberOut
+from models.committee import ChairOut, Committee, CommitteeMembership, CommitteeOut, MemberOut
 from models.committee_message import CommitteeMessage, CommitteeMessageCreate, CommitteeMessageOut
 from models.notification import Notification
 from models.user.user import User
@@ -68,7 +68,22 @@ async def join_committee(
     session: SessionDependencies,
 ):
     committee = get_committee_or_404(session, committee_id)
-    
+
+    # joinable=False rows exist only so EventHost can point at an officer seat.
+    # get_all_committees() keeps them off /committees, but hiding is not
+    # enforcement: committee_id is a bare path int and the ids are contiguous
+    # (seed.py creates the 14 real committees before the 10 E-Board rows), so
+    # they are trivially walked. The check lives here rather than in
+    # get_committee_or_404 because its two other callers are chair-only and
+    # officers legitimately chair E-Board rows -- a blanket refusal in the
+    # resolver would lock the VPE out of their own seat.
+    #
+    # 404, not 403: a 403 confirms the row exists and is special, which is an
+    # enumeration oracle for rows the listing deliberately hides. Same rule as
+    # the shop order lookup's single generic 404.
+    if not committee.joinable:
+        raise HTTPException(status_code=404, detail="Committee not found")
+
     existing_membership = session.exec(
         select(CommitteeMembership).where(
             CommitteeMembership.user_id == user.id,
@@ -238,11 +253,27 @@ async def get_committee_messages(
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDependencies,
 ):
+    # Bare session.get, NOT get_committee_or_404: this route answers 403 for an
+    # unknown id today, which is maximally opaque, and routing it through the
+    # resolver would downgrade that to a 404 that reveals nonexistence. Folding
+    # the missing case into the same 403 below keeps unknown, non-joinable and
+    # non-member indistinguishable.
+    committee = session.get(Committee, committee_id)
     chair_users = get_chair_users_from_committee_id(session, committee_id)
     # The president can read any committee's messages, like a chair.
     is_chair = user.role == Role.president or any(chair.id == user.id for chair in chair_users)
 
-    if not is_chair and not is_active_member(session, committee_id, user.id):
+    # Membership alone is not enough on a joinable=False row. Refusing the join
+    # is prospective only -- any row already in the table keeps passing this
+    # gate forever, and two sources produce them: a join forged before that
+    # check existed, and the demote branch in admin_routes._sync_chair_memberships,
+    # which clears is_chair but leaves status=True, so an ex-officer keeps an
+    # active non-chair row on their old E-Board seat. The two are byte-identical,
+    # so they cannot be told apart by row shape -- gating the read neutralizes
+    # both at once with no data migration. Chairs and the president pass above.
+    if not is_chair and not (
+        committee and committee.joinable and is_active_member(session, committee_id, user.id)
+    ):
         raise HTTPException(status_code=403, detail="You are not a member of this committee")
 
     messages = session.exec(
