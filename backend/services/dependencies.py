@@ -1,14 +1,21 @@
+from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from sqlmodel import Session
 import jwt
 from jwt.exceptions import InvalidTokenError
 
+from fastapi.security import OAuth2PasswordBearer
+
 from security.jwt import oauth2_scheme, SECRET_KEY, ALGORITHM, TokenData
-from services.get_user import get_user_by_email
+from services.user_services import get_user_by_email
 from database import get_session
 
 SessionDependencies = Annotated[Session, Depends(get_session)]
+
+# Like oauth2_scheme but returns None instead of raising 401 when no token is
+# sent — for public endpoints that behave slightly differently when logged in.
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: SessionDependencies):
     credentials_exception = HTTPException(
@@ -23,15 +30,91 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], session: Ses
 
         if email is None:
             raise credentials_exception
-        
+
         token_data = TokenData(email=email)
 
     except InvalidTokenError:
         raise credentials_exception
-    
+
     user = get_user_by_email(session, token_data.email)
 
     if user is None:
         raise credentials_exception
-    
+
+    # A password reset invalidates every token issued before it. PyJWT floors
+    # iat to whole seconds while password_changed_at keeps microseconds, so
+    # compare at whole-second granularity with strict < — a token issued in
+    # the same second as the reset stays valid.
+    if user.password_changed_at is not None:
+        iat = payload.get("iat")
+        if iat is None:
+            raise credentials_exception
+        issued_at = datetime.fromtimestamp(int(iat), tz=timezone.utc).replace(tzinfo=None)
+        if issued_at < user.password_changed_at.replace(microsecond=0):
+            raise credentials_exception
+
+    return user
+
+
+def get_optional_user(
+    token: Annotated[str | None, Depends(oauth2_scheme_optional)],
+    session: SessionDependencies,
+):
+    """Current user if a valid bearer token was sent, else None. Used by public
+    shop endpoints so a logged-in buyer's order links to their account."""
+    if token is None:
+        return None
+    try:
+        return get_current_user(token, session)
+    except HTTPException:
+        return None
+
+
+def require_shop_admin(user=Depends(get_current_user)):
+    """Gate for shop-admin endpoints — mirrors the committee require_chair
+    pattern. Shop admin is held by the comms director, marketing chair,
+    and the president."""
+    from models.user.user_enums import SHOP_ADMIN_ROLES
+
+    if user.role not in SHOP_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only shop admins can do that",
+        )
+    return user
+
+
+def require_event_host(user=Depends(get_current_user)):
+    """Gate for the QR-attendance endpoints (/events/mine, /events/all,
+    /events/{id}/attendance) — any committee chair or E-Board member.
+    Mirrors require_shop_admin / require_role_admin. This only checks the
+    caller's role; per-event scoping (which specific events a given chair
+    may see codes/roster for) is enforced separately by
+    attendance_services.host_scoped_events — the same relationship
+    require_chair has to committee-specific checks. The president already
+    passes (TOP_TIER_ROLES ⊆ EBOARD_ROLES), so no separate bypass is needed
+    here — host_scoped_events is where the president's full-access bypass
+    actually lives."""
+    from models.user.user_enums import CHAIR_ROLES, EBOARD_ROLES
+
+    if user.role not in CHAIR_ROLES and user.role not in EBOARD_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a committee chair or E-Board member can do that",
+        )
+    return user
+
+
+def require_role_admin(user=Depends(get_current_user)):
+    """Gate for chapter-admin endpoints (member directory, stats, role
+    assignment) — mirrors require_shop_admin. Held by the president and both
+    VPs; the VP-specific limits (no granting President, no touching the
+    sitting president) are enforced per-request in admin_routes."""
+    from models.user.user_enums import ROLE_ADMIN_ROLES
+
+    if user.role not in ROLE_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the president or a vice president can do that",
+        )
     return user

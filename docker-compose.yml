@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17
+    container_name: shpe-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shpe
+      POSTGRES_PASSWORD: shpe_dev_password
+      POSTGRES_DB: shpe
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shpe -d shpe"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

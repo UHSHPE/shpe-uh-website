@@ -27,5 +27,12 @@ Thumbs.db
 .idea/
 
 *.db
+*.db.bak-*
+# SQLite WAL sidecars — created since the DB runs in WAL mode, and they hold
+# committed data that hasn't been checkpointed into the .db file yet.
+*.db-wal
+*.db-shm
 
 .claude/settings.local.json
+
+/specs

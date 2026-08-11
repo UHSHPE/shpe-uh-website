@@ -1,0 +1,8 @@
+# Test-only dependencies. Installed alongside requirements.txt in CI;
+# kept out of the production image so the container stays lean.
+-r requirements.txt
+
+Pygments==2.20.0
+iniconfig==2.3.0
+pluggy==1.6.0
+pytest==9.0.3

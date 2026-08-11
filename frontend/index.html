@@ -3,7 +3,55 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>frontend</title>
+
+		<!--
+			SITE DOMAIN — change these four absolute URLs together if the domain
+			moves. og:image and og:url MUST be absolute: Facebook, iMessage,
+			LinkedIn and Discord scrapers do not reliably resolve relative paths,
+			and a relative og:image is the usual reason a shared link renders a
+			preview card with no picture.
+		-->
+		<link rel="canonical" href="https://www.shpeuh.com/" />
+		<meta property="og:url" content="https://www.shpeuh.com/" />
+		<meta property="og:image" content="https://www.shpeuh.com/og-image.png" />
+		<meta name="twitter:image" content="https://www.shpeuh.com/og-image.png" />
+
+		<title>SHPE University of Houston — Leading Hispanics in STEM</title>
+		<meta
+			name="description"
+			content="The UH chapter of the Society of Hispanic Professional Engineers — mentorship, professional development, and community for Hispanic students in STEM."
+		/>
+		<meta name="theme-color" content="#001F5B" />
+
+		<!-- Icons. Tab favicons keep the mark's transparency so it reads on both
+			 light and dark tab bars; the Apple touch icon ships an opaque white
+			 background because iOS composites transparency onto black. -->
+		<link rel="icon" href="/favicon.ico" sizes="any" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="manifest" href="/site.webmanifest" />
+
+		<!-- Open Graph — Facebook, Instagram, LinkedIn, GroupMe, Discord, Slack -->
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="SHPE UH" />
+		<meta property="og:locale" content="en_US" />
+		<meta
+			property="og:title"
+			content="SHPE University of Houston — Leading Hispanics in STEM"
+		/>
+		<meta
+			property="og:description"
+			content="The UH chapter of the Society of Hispanic Professional Engineers — mentorship, professional development, and community for Hispanic students in STEM."
+		/>
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta
+			property="og:image:alt"
+			content="The SHPE pinwheel logo on a navy background"
+		/>
+
+		<!-- X/Twitter reads its own namespace and falls back to og:* for the rest -->
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:site" content="@shpe_uh" />
 	</head>
 	<body>
 		<div id="root"></div>

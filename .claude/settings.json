@@ -1,11 +1,26 @@
 {
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "in=$(cat); sid=$(printf %s \"$in\" | jq -r '.session_id // \"default\"'); f=$(printf %s \"$in\" | jq -r '.tool_input.file_path // .tool_response.filePath // empty'); case \"$f\" in \"\"|*README.md|*CLAUDE.md|*/memory/*) ;; *) echo \"$f\" >> \"/tmp/claude-readme-nudge-$sid\";; esac"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "echo '{\"systemMessage\": \"CLAUDE.md reminder: Did you update CLAUDE.md with any new lessons, patterns, or gotchas from this session?\"}'"
+          },
+          {
+            "type": "command",
+            "command": "in=$(cat); sid=$(printf %s \"$in\" | jq -r '.session_id // \"default\"'); act=$(printf %s \"$in\" | jq -r '.stop_hook_active // false'); f=\"/tmp/claude-readme-nudge-$sid\"; if [ \"$act\" != \"true\" ] && [ -s \"$f\" ]; then rm -f \"$f\"; printf %s '{\"decision\":\"block\",\"reason\":\"Source files were modified this session. Check whether the changes affect anything README.md documents (features, setup steps, env vars, seeded accounts, project structure, pages, API endpoints, test instructions) and update README.md to match; also update CLAUDE.md per its self-update instructions. If nothing documented was affected, no edits are needed and you can finish.\"}'; fi"
           }
         ]
       }

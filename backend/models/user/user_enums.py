@@ -1,0 +1,230 @@
+from enum import Enum
+
+class Role(str, Enum):
+    member = "Member"
+    nonmember = "Nonmember"
+    president = "President"
+    vpe = "Vice President External"
+    vpi = "Vice President Internal"
+    treasurer = "Treasurer"
+    secretary = "Secretary"
+    comm_director = "Communication Director"
+    regional_rep = "Regional Representative"
+    new_member_rep = "New Member Representative"
+    dir_int_aff = "Director Of Internal Affairs"
+    marketing_chair = "Marketing Chair"
+    mentorshpe_chair = "MentorSHPE Chair"
+    academic_chair = "Academic Chair"
+    professional_chair = "Professional Chair"
+    career_fair_chair = "Career Fair Chair"
+    web_dev_chair = "Web Development Chair"
+    social_chair = "Social Chair"
+    shpe_jr_chair = "SHPE Jr Chair"
+    outreach_chair = "Outreach Chair"
+    eec_chair = "Engineering Events Coordinator Chair"   
+    shpetina_chair = "SHPEtina Chair"
+    athletic_chair = "Athletic Chair"
+    projects_chair = "Projects Chair"
+    member_relations_chair = "Member Relations Chair"
+
+# Roles allowed to administer the merch shop (products, orders, settings).
+# There is no dedicated shop-manager role — shop admin rides on these roles.
+# The president holds every admin privilege on the site, shop included.
+SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair, Role.president}
+
+# Roles allowed to assign other members' roles (the /admin/* endpoints).
+# VPs are restricted further in admin_routes: only the president may grant or
+# modify a TOP_TIER role, so VPs can't reshape the presidency or each other.
+ROLE_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi}
+
+# --- Org tiers ---------------------------------------------------------
+# Used for the members-page tabs and the reporting tree. Listed explicitly
+# rather than derived from the display string: `value.endswith("Chair")`
+# happens to select exactly the 14 chairs today, but would silently pick up
+# a future role like "Vice Chair".
+VP_ROLES = {Role.vpe, Role.vpi}
+
+# The president plus both VPs — only the president may assign or modify these.
+TOP_TIER_ROLES = {Role.president} | VP_ROLES
+
+# E-board officers below the VPs; each reports to one VP in the tree.
+OFFICER_ROLES = {
+    Role.treasurer,
+    Role.secretary,
+    Role.comm_director,
+    Role.regional_rep,
+    Role.new_member_rep,
+    Role.dir_int_aff,
+}
+
+# The 9 the About page calls the E-Board (president + VPs + officers).
+EBOARD_ROLES = TOP_TIER_ROLES | OFFICER_ROLES
+
+# The 14 chairs — the roles Committee.chair_role maps onto 1:1.
+CHAIR_ROLES = {
+    Role.marketing_chair,
+    Role.mentorshpe_chair,
+    Role.academic_chair,
+    Role.professional_chair,
+    Role.career_fair_chair,
+    Role.web_dev_chair,
+    Role.social_chair,
+    Role.shpe_jr_chair,
+    Role.outreach_chair,
+    Role.eec_chair,
+    Role.shpetina_chair,
+    Role.athletic_chair,
+    Role.projects_chair,
+    Role.member_relations_chair,
+}
+
+class Gender(str, Enum):
+    female = "Female"
+    male = "Male"
+    not_say = "Prefer not to say"
+    other = "other"
+
+class RaceEthnicity(str, Enum):
+    native_american = "American Indian or Alaska Native"
+    asian = "Asian"
+    black = "Black or African American"
+    hispanic = "Hispanic or Latino"
+    pacific_islander = "Native Hawaiian or Other Pacific Islander"
+    white = "White or Caucasian"
+    multiracial = "Multiracial or Biracial"
+    other = "A race/ethnicity not listed here"
+
+class Classification(str, Enum):
+    freshman = "Freshman"
+    sophomore = "Sophomore"
+    junior = "Junior"
+    senior = "Senior"
+    graduate = "Graduate Student"
+
+class ExpGradDate(str, Enum):
+    fall_2026 = "Fall 2026"
+    spring_2027 = "Spring 2027"
+    fall_2027 = "Fall 2027"
+    spring_2028 = "Spring 2028"
+    fall_2028 = "Fall 2028"
+    spring_2029 = "Spring 2029"
+    fall_2029 = "Fall 2029"
+    spring_2030 = "Spring 2030"
+    fall_2030 = "Fall 2030"
+    spring_2031 = "Spring 2031"
+    other = "Other"
+
+class GPA(str, Enum):
+    gpa_350_400 = "4.00 - 3.50"
+    gpa_300_349 = "3.49 - 3.00"
+    gpa_250_299 = "2.99 - 2.50"
+    gpa_below_249 = "2.49 or below"
+    no_gpa = "I have no gpa"
+
+class MembershipStatus(str, Enum):
+    new = "New Member"
+    returning_1 = "Returning Member (Member of 1 year)"
+    returning_2 = "Returning Member (Member of 2 years)"
+    returning_3_plus = "Returning Member (Member of 3+ years)"
+
+class ProfDev(str, Enum):
+    internships = "Internships/Co-ops"
+    full_time = "Full time jobs for post-graduation"
+    research = "Research Opportunities"
+    other = "Other"
+
+class Industry(str, Enum):
+    aerospace = "Aerospace"
+    agriculture = "Agriculture, Food, and Beverage"
+    automotive = "Automotive"
+    chemical_plant = "Chemical Plant"
+    construction = "Construction"
+    consulting = "Consulting/Financial Services"
+    cosmetics = "Cosmetics"
+    cybersecurity = "Cybersecurity"
+    defense = "Defense"
+    electronics = "Electronics/Technology/Software"
+    environmental = "Environmental"
+    lab_research = "Lab Research"
+    manufacturing = "Manufacturing"
+    medical_devices = "Medical Devices"
+    oil_and_gas = "Oil and Gas/Energy"
+    pharmaceuticals = "Pharmaceuticals"
+    semiconductors = "Semi-Conductors"
+    supply_chain = "Supply Chain and Logistics"
+    transportation = "Transportation"
+    other = "Other"
+
+class ShirtSize(str, Enum):
+    s = "S"
+    m = "M"
+    l = "L"
+    xl = "XL"
+    xxl = "2XL"
+    other = "Other"
+
+class Colleges(str, Enum):
+    nsm = "College of Natural Science & Mathematics"
+    engineering = "Cullen College of Engineering"
+    cot = "College of Technology"
+    other = "Other"
+
+class EngineerMajors(str, Enum):
+    biomedical = "Biomedical Engineering"
+    chemical = "Chemical Engineering"
+    civil = "Civil Engineering"
+    construction = "Construction Engineering"
+    computer_analytics = "Computer Engineering and Analytics"
+    computer = "Computer Engineering"
+    electrical = "Electrical Engineering"
+    industrial = "Industrial Engineering"
+    systems = "Systems Engineering"
+    mechanical = "Mechanical Engineering"
+    petroleum = "Petroleum Engineering"
+    environmental = "Environmental Engineering"
+    geosensing = "Geosensing Systems Engineering and Sciences"
+    computer_and_systems = "Computer and Systems Engineering"
+    aerospace = "Aerospace Engineering"
+    space_architecture = "Space Architecture"
+    subsea = "Subsea Engineering"
+    materials = "Materials Science and Engineering"
+    aerospace_space_architecture = "Aerospace Engineering and Space Architecture"
+    mechanical_subsea = "Mechanical and Subsea Engineering"
+    mechanical_aerospace = "Mechanical and Aerospace Engineering"
+    petroleum_subsea = "Petroleum and Subsea Engineering"
+
+class NSMMajors(str, Enum):
+    mathematical_biology = "Mathematical Biology"
+    biochem_biophysical = "Biochemical and Biophysical Sciences"
+    biology = "Biology"
+    chemistry = "Chemistry"
+    computer_science = "Computer Science"
+    earth_science = "Earth Science"
+    environmental_sciences = "Environmental Sciences"
+    geology = "Geology"
+    geophysics = "Geophysics"
+    mathematics = "Mathematics"
+    physics = "Physics"
+    biochemistry = "Biochemistry"
+    atmospheric_science = "Atmospheric Science"
+    applied_mathematics = "Applied Mathematics"
+    statistics_data_science = "Statistics and Data Science"
+
+class COTMajors(str, Enum):
+    construction_management = "Construction Management"
+    supply_chain_logistics = "Supply Chain and Logistics Technology"
+    biotechnology = "Biotechnology"
+    computer_engineering_tech = "Computer Engineering Technology"
+    electrical_power_tech = "Electrical Power Engineering Technology"
+    mechanical_engineering_tech = "Mechanical Engineering Technology"
+    human_resource_development = "Human Resource Development"
+    retailing_consumer_science = "Retailing and Consumer Science"
+    computer_information_systems = "Computer Information Systems"
+    digital_media = "Digital Media"
+    tech_leadership_innovation = "Technology Leadership and Innovation Management"
+    tech_project_management = "Technology Project Management"
+    engineering_technology = "Engineering Technology"
+    foresight = "Foresight"
+    global_retailing = "Global Retailing"
+    cybersecurity = "Cybersecurity"
+    

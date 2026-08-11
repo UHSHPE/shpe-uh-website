@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars */
 import { FaFacebookF, FaXTwitter, FaTiktok, FaInstagram, FaLinkedinIn } from "react-icons/fa6";
-// eslint-disable-next-line no-unused-vars
 import { motion } from "framer-motion";
 import { href } from "react-router-dom";
 

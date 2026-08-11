@@ -10,6 +10,6 @@ def normalize_email(value: str) -> str:
         return str(email)
     except ValidationError:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid email format",
         )

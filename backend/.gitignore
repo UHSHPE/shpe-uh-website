@@ -1,3 +1,5 @@
 .venv311
 database.db
 .env
+uploads/
+secrets/

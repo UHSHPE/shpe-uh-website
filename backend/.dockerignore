@@ -1,0 +1,29 @@
+# Secrets and data that exist on disk but must NEVER enter an image.
+# These are all gitignored, so a Git-triggered build never sees them — but a
+# local `railway up` / `docker build` copies the working directory verbatim.
+# database.db in particular contains every seeded account, all sharing the
+# password from seed.py.
+.env
+.env.*
+secrets/
+database.db
+database.db-wal
+database.db-shm
+database.db.bak-*
+uploads/
+
+# Local tooling and build noise
+.venv
+.venv311
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+
+# Tests aren't run from the image; requirements-dev.txt isn't installed there.
+tests/
+requirements-dev.txt
+pytest.ini

@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import PrivateRoute from './components/PrivateRoute';
 
 import Home from './pages/home';
 import About from './pages/about';
@@ -8,11 +9,37 @@ import GetInvolved from './pages/get-involved';
 import MemberSHPE from './pages/membershpe';
 import Sponsors from './pages/sponsors';
 import Gallery from './pages/gallery';
+import SignIn from './pages/signin';
+import SignUp from './pages/signup';
+import ForgotPassword from './pages/forgot-password';
+import ResetPassword from './pages/reset-password';
+import VerifyEmail from './pages/verify-email';
+import Dashboard from './pages/dashboard';
+import Committees from './pages/committees';
+import Calendar from './pages/calendar';
+import Profile from './pages/profile';
+import Members from './pages/members';
+import ShopManagerPage from './pages/shop-manager';
+import Shop from './pages/shop';
+import ShopProduct from './pages/shop-product';
+import ShopCheckout from './pages/shop-checkout';
+import ShopOrder from './pages/shop-order';
+import Attend from './pages/attend';
+import MyEvents from './pages/my-events';
+import CartDrawer, { ShopToast } from './components/CartDrawer';
+import DuesBanner from './components/DuesBanner';
 
 export default function App() {
+	const { pathname } = useLocation();
+	// The mobile QR check-in flow is reached ONLY by scanning a code — it
+	// renders its own full-bleed shell with zero site chrome (no header, no
+	// footer, no cart overlays). See the implementation plan's Part 2.
+	const bare = pathname.startsWith('/attend/');
+
 	return (
 		<div className="app">
-			<Header />
+			{!bare && <Header />}
+			{!bare && <DuesBanner />}
 			<main className="main">
 				<Routes>
 					<Route path="/" element={<Home />} />
@@ -21,6 +48,67 @@ export default function App() {
 					<Route path="/membershpe" element={<MemberSHPE />} />
 					<Route path="/sponsors" element={<Sponsors />} />
 					<Route path="/gallery" element={<Gallery />} />
+					<Route path="/calendar" element={<Calendar />} />
+					<Route path="/shop" element={<Shop />} />
+					<Route path="/shop/checkout" element={<ShopCheckout />} />
+					<Route path="/shop/order/:code" element={<ShopOrder />} />
+					<Route path="/shop/:productId" element={<ShopProduct />} />
+					<Route path="/signin" element={<SignIn />} />
+					<Route path="/signup" element={<SignUp />} />
+					<Route path="/forgot-password" element={<ForgotPassword />} />
+					<Route path="/reset-password" element={<ResetPassword />} />
+					<Route path="/verify-email" element={<VerifyEmail />} />
+					<Route
+						path="/dashboard"
+						element={
+							<PrivateRoute>
+								<Dashboard />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/committees"
+						element={
+							<PrivateRoute>
+								<Committees />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/profile"
+						element={
+							<PrivateRoute>
+								<Profile />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/members"
+						element={
+							<PrivateRoute>
+								<Members />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/shop-manager"
+						element={
+							<PrivateRoute>
+								<ShopManagerPage />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/my-events"
+						element={
+							<PrivateRoute>
+								<MyEvents />
+							</PrivateRoute>
+						}
+					/>
+					{/* Not wrapped in PrivateRoute — the page renders its own
+						"Sign in to check in" screen for anonymous scans. */}
+					<Route path="/attend/:code" element={<Attend />} />
 					{/* Redirect old /pages/ routes */}
 					<Route
 						path="/pages/about"
@@ -44,7 +132,14 @@ export default function App() {
 					/>
 				</Routes>
 			</main>
-			<Footer />
+			{!bare && <Footer />}
+			{/* Global shop overlays — the cart drawer can open from any route */}
+			{!bare && (
+				<>
+					<CartDrawer />
+					<ShopToast />
+				</>
+			)}
 		</div>
 	);
 }

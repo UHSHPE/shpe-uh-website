@@ -1,12 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,200;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700&display=swap");
+
+/* ============================================================
+   SHPE UH DESIGN TOKENS
+   Brand palette, type, spacing, radii, shadows. Product code
+   should reference these tokens rather than raw hex.
+   ============================================================ */
 :root{
-  --blue:#003A70;      /* deep footer blue */
-  --navText:#0b0b0b;
-  --muted:#6b7280;
-  --card:#0e5e99;
+  /* ---- Brand: navy / blue ---- */
+  --shpe-navy:        #001F5B;
+  --shpe-navy-700:    #1A2858;
+  --shpe-blue:        #003A70;
+  --shpe-blue-pro:    #005A9C;
+  --shpe-blue-mid:    #1170B9;
+  --shpe-blue-bright: #0070C0;
+  --shpe-steel:       #72A9BE;
+
+  /* ---- Brand: orange / red ---- */
+  --shpe-red:         #D33A02;
+  --shpe-orange:      #FD652F;
+  --shpe-orange-2:    #F16635;
+  --shpe-orange-deep: #C2410C;
+  --shpe-orange-600:  #EA580C;
+
+  /* ---- University of Houston ---- */
+  --uh-red:           #C8102E;
+
+  /* ---- Event-type accents (calendar / dashboard) ---- */
+  --event-general:      #0070C0;
+  --event-professional: #005A9C;
+  --event-outreach:     #D33A02;
+  --event-social:       #6B21A8;
+  --event-srt:          #065F46;
+
+  /* ---- Neutrals ---- */
+  --ink:           #111827;
+  --ink-soft:      #374151;
+  --muted:         #6B7280;
+  --muted-soft:    #9CA3AF;
+  --border:        #E5E7EB;
+  --border-strong: #D1D5DB;
+  --surface:       #FFFFFF;
+  --surface-muted: #F9FAFB;
+  --surface-tint:  #EFF6FF;
+
+  /* ---- Semantic aliases ---- */
+  --link:          var(--shpe-blue-bright);
+
+  /* ---- Brand gradients ---- */
+  --gradient-navy:   linear-gradient(135deg, #001F5B 0%, #003A70 55%, #0070C0 100%);
+  --gradient-orange: linear-gradient(180deg, #C2410C 0%, #EA580C 100%);
+
+  /* ---- Typography ---- */
+  --font-body: "Work Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* ---- Corner radii ---- */
+  --radius-xs:  6px;
+  --radius-sm:  8px;
+  --radius-md:  10px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 20px;
+  --radius-pill:999px;
+
+  /* ---- Shadows ---- */
+  --shadow-card:  0 1px 4px rgba(0,0,0,0.06);
+  --shadow-pop:   0 4px 30px rgba(0,31,91,0.15);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.25);
+
+  /* ---- Layout ---- */
+  --container-narrow: 720px;   /* committees */
+  --container-md:     800px;   /* dashboard */
+  --container-lg:     880px;   /* calendar */
+  --container-xl:     1100px;  /* marketing pages */
+  --container-max:    1280px;  /* full app width */
+  --header-height:    80px;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ---- Shop (see specs/shop/shop-page.md §9.1) ---- */
+  --page-bg:       #F4F6FA;   /* app background behind shop pages */
+  --surface-soft:  #F3F4F6;   /* row separators, chip backgrounds */
+  --info-border:   #CFE2F5;   /* blue info-callout border */
+  --success-deep:  #065F46;
+  --success-bg:    #ECFDF5;
+  --success-border:#C7EBDC;
+  --gradient-success: linear-gradient(135deg, #065F46 0%, #0F766E 100%);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --placeholder-hatch: repeating-linear-gradient(135deg, #f2f6fc, #f2f6fc 10px, #eaf0f9 10px, #eaf0f9 20px);
+
+  /* Order-status color sets (text / bg / border) */
+  --status-paid-text:   #005A9C;
+  --status-paid-bg:     #EFF6FF;
+  --status-paid-border: #CFE2F5;
+  --status-ready-text:   #C2410C;
+  --status-ready-bg:     #FFF3EB;
+  --status-ready-border: #FBD9C4;
+  --status-picked-text:   #065F46;
+  --status-picked-bg:     #ECFDF5;
+  --status-picked-border: #C7EBDC;
+  --status-cancelled-text:   #6B7280;
+  --status-cancelled-bg:     #F3F4F6;
+  --status-cancelled-border: #E5E7EB;
+
+  /* ---- Legacy aliases (kept: referenced across existing pages) ---- */
+  --blue:    var(--shpe-blue);
+  --navText: var(--ink);
+  --card:    #0e5e99;
 }
 
 *{ box-sizing:border-box; }
-body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#111; }
+body{ margin:0; font-family: var(--font-body); color:var(--ink); -webkit-font-smoothing:antialiased; }
 a{ color:inherit; text-decoration:none; }
 
 .app{ min-height:100vh; display:flex; flex-direction:column; }
@@ -24,12 +128,12 @@ a{ color:inherit; text-decoration:none; }
   z-index: 1000;
 }
 .headerRow{
-  max-width:1100px;
+  max-width:var(--container-max);
   margin:0 auto;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding:18px 16px;
+  padding:14px 24px;
   gap:18px;
 }
 .brand{ display:flex; align-items:center; gap:12px; width:260px; }
@@ -41,6 +145,110 @@ a{ color:inherit; text-decoration:none; }
 .navLinkInner.active{ color: var(--blue); }
 .mobileMenuBtn{ display:none; }
 .mobileNavPanel{ display:none; }
+
+/* Initials avatar */
+.avatar{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:var(--radius-pill);
+  background:var(--gradient-navy);
+  color:#fff;
+  font-family:var(--font-body);
+  font-weight:700;
+  line-height:1;
+  overflow:hidden;
+  flex-shrink:0;
+  user-select:none;
+}
+.avatar img{ width:100%; height:100%; object-fit:cover; }
+
+/* Member dropdown — avatar pill + "MEMBER AREA" menu */
+.memberMenu{ position:relative; margin-left:8px; }
+.memberPill{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  font-family:var(--font-body);
+  font-size:14px;
+  font-weight:600;
+  color:var(--ink);
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:var(--radius-pill);
+  padding:5px 12px 5px 6px;
+  transition:background 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+.memberPill.onMember{ color:var(--shpe-blue); }
+.memberPill:hover{ background:var(--surface-muted); }
+.memberPill.open{ background:var(--surface-tint); border-color:var(--shpe-blue-bright); }
+.memberPillCaret{ font-size:10px; color:var(--muted); transition:transform 0.15s var(--ease-out); }
+.memberPillCaret.open{ transform:rotate(180deg); }
+
+.memberMenuPanel{
+  position:absolute;
+  top:calc(100% + 8px);
+  right:0;
+  min-width:208px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-modal);
+  padding:6px;
+  z-index:1100; /* above the fixed header (z-index:1000) */
+}
+.memberMenuLabel{
+  padding:8px 12px 6px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.memberMenuItem{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  text-align:left;
+  background:transparent;
+  border:none;
+  cursor:pointer;
+  font-family:var(--font-body);
+  font-size:14px;
+  font-weight:500;
+  color:var(--ink);
+  padding:9px 12px;
+  border-radius:var(--radius-sm);
+}
+.memberMenuItem:hover{ background:var(--surface-muted); }
+.memberMenuItem.active{ background:var(--surface-tint); color:var(--shpe-blue); font-weight:700; }
+.memberMenuDot{
+  width:6px;
+  height:6px;
+  border-radius:var(--radius-pill);
+  background:var(--border-strong);
+  flex-shrink:0;
+}
+.memberMenuItem.active .memberMenuDot{ background:var(--shpe-blue); }
+.memberMenuDivider{ height:1px; background:var(--border); margin:6px 8px; }
+.memberMenuSignout{
+  display:flex;
+  align-items:center;
+  width:100%;
+  text-align:left;
+  background:transparent;
+  border:none;
+  cursor:pointer;
+  font-family:var(--font-body);
+  font-size:14px;
+  font-weight:600;
+  color:var(--shpe-red);
+  padding:9px 12px;
+  border-radius:var(--radius-sm);
+}
+.memberMenuSignout:hover{ background:color-mix(in srgb, var(--shpe-red) 8%, white); }
 .underline{
   position:absolute;
   left:0; right:0;
@@ -66,16 +274,23 @@ a{ color:inherit; text-decoration:none; }
 .hero p{ margin:0 0 18px; color:#374151; font-size:18px; line-height:1.5; }
 .heroActions{ display:flex; gap:12px; }
 
-.primaryBtn, .ghostBtn{
-  border-radius:999px;
+.primaryBtn, .ghostBtn, .accentBtn{
+  border-radius:var(--radius-pill);
   padding:10px 16px;
+  font-family:var(--font-body);
   font-weight:700;
-  border:1px solid #ddd;
-  background:#fff;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--ink);
   cursor:pointer;
+  transition:filter 0.15s var(--ease-out), transform 0.05s var(--ease-out);
 }
-.primaryBtn{ background:var(--blue); color:#fff; border-color:var(--blue); }
+.primaryBtn{ background:var(--shpe-blue); color:#fff; border-color:var(--shpe-blue); }
+.accentBtn{ background:var(--shpe-red); color:#fff; border-color:var(--shpe-red); }
 .ghostBtn{ background:transparent; }
+.primaryBtn:hover, .ghostBtn:hover, .accentBtn:hover{ filter:brightness(0.95); }
+.primaryBtn:active, .ghostBtn:active, .accentBtn:active{ transform:translateY(1px); }
+.primaryBtn:disabled, .ghostBtn:disabled, .accentBtn:disabled{ opacity:0.6; cursor:default; }
 
 .blob{
   position:absolute;
@@ -88,21 +303,82 @@ a{ color:inherit; text-decoration:none; }
   z-index:1;
 }
 
+/* SHOP */
+@keyframes shopPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.5; } }
+@keyframes shopSlideInRight{ from{ transform:translateX(30px); opacity:.4; } to{ transform:translateX(0); opacity:1; } }
+@keyframes shopFadeIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes shopRiseIn{ from{ transform:translateY(10px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+@keyframes shopSpin{ to{ transform:rotate(360deg); } }
+@keyframes shopToastIn{ from{ transform:translate(-50%,14px); opacity:0; } to{ transform:translate(-50%,0); opacity:1; } }
+
+.cartBtn{
+  position:relative;
+  width:40px; height:40px;
+  border-radius:var(--radius-pill);
+  border:1px solid var(--border);
+  background:#fff;
+  color:var(--shpe-blue);
+  display:grid; place-items:center;
+  cursor:pointer;
+}
+.cartBtnBadge{
+  position:absolute;
+  top:-4px; right:-4px;
+  min-width:18px; height:18px;
+  padding:0 4px;
+  border-radius:var(--radius-pill);
+  background:var(--shpe-red);
+  color:#fff;
+  font-size:11px; font-weight:700;
+  display:grid; place-items:center;
+}
+.cartBtnMobile{ display:none; }
+
+/* Product cards lift on hover (hover states need CSS, not inline styles) */
+.shopCard{
+  transition:box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  box-shadow:var(--shadow-card);
+}
+.shopCard:hover{ box-shadow:var(--shadow-pop); transform:translateY(-3px); }
+
+.shopInput{
+  width:100%;
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);
+  padding:11px 13px;
+  font-size:14px;
+  outline:none;
+  color:var(--ink);
+  font-family:var(--font-body);
+  background:#fff;
+}
+.shopInput:focus{ border-color:var(--shpe-blue-bright); }
+
+.shopDetailGrid{ display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
+.checkoutGrid{ display:grid; grid-template-columns:1.4fr 1fr; gap:28px; align-items:start; }
+@media (max-width: 860px){
+  .shopDetailGrid{ grid-template-columns:1fr; gap:24px; }
+  .checkoutGrid{ grid-template-columns:1fr; }
+  .cartBtnMobile{ display:grid; }
+  .cartBtnDesktop{ display:none; }
+}
+
 /* FOOTER */
 .footer{ background:var(--blue); color:#fff; padding:26px 0; }
 .footerInner{
-  max-width:1100px;
+  max-width:var(--container-xl);
   margin:0 auto;
   display:flex;
   justify-content:space-between;
   gap:20px;
-  padding:0 16px;
-  align-items:flex-start;
+  padding:0 24px;
+  align-items:center;
+  flex-wrap:wrap;
 }
-.footerLeft{ display:flex; align-items:center; gap:50px; flex-wrap:wrap; }
+.footerLeft{ display:flex; align-items:center; gap:40px; flex-wrap:wrap; }
 .footerLogo{ display:flex; gap:12px; align-items:center; }
-.footerMark{ width: 380px; border-radius:16px; }
-.footerContact{ color:rgba(255,255,255,0.9); line-height:1.6; }
+.footerMark img{ height:54px; width:auto; display:block; }
+.footerContact{ color:rgba(255,255,255,0.9); line-height:1.6; font-size:14px; }
 
 .footerRight{ text-align:center; }
 .footerFollow{ font-weight:700; margin-bottom:10px; }
@@ -172,3 +448,80 @@ a{ color:inherit; text-decoration:none; }
   .footerRight{ text-align:left; }
   .socialRow{ justify-content:flex-start; }
 }
+
+/* Native Apple Pay button (Safari draws the real thing). Rendered only when
+   Square reports Apple Pay is available on this device + domain — vendor
+   appearance props, so this can't be a Tailwind utility. */
+.applePayBtn {
+  -webkit-appearance: -apple-pay-button;
+  -apple-pay-button-type: pay;
+  -apple-pay-button-style: black;
+  display: block;
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.applePayBtn:disabled { opacity: 0.5; cursor: default; }
+
+/* QR CHECK-IN — mobile flow (pages/attend.jsx). Full-bleed navy-gradient
+   shell; the only bits inline styles can't express are :focus / ::placeholder
+   pseudo-classes, so those live here while everything else on the page stays
+   inline like the rest of the site's pages. */
+.attendInput{
+  width:100%;
+  background:rgba(255,255,255,.12);
+  border:1.5px solid rgba(255,255,255,.3);
+  border-radius:var(--radius-md);
+  padding:14px 16px;
+  font-size:16px;
+  font-family:var(--font-body);
+  color:#fff;
+  outline:none;
+  transition:border-color 0.15s var(--ease-out);
+}
+.attendInput::placeholder{ color:rgba(255,255,255,.55); }
+.attendInput:focus{ border-color:var(--shpe-blue-bright); }
+.attendInput.hasError{ border-color:var(--shpe-red); }
+
+/* Org chart tree (Members > Structure). The elbow connectors need
+   ::before/::after, which inline styles can't express — everything else on
+   that panel stays inline like the rest of the page. */
+.orgTree, .orgTree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.orgTree ul { margin-left: 20px; }
+.orgTree li {
+  position: relative;
+  padding-left: 26px;
+}
+/* vertical run linking a node to its next sibling */
+.orgTree li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--border);
+}
+/* the last child stops its vertical run at the elbow */
+.orgTree li:last-child::before {
+  bottom: auto;
+  height: 26px;
+}
+/* horizontal stub from the run into the node */
+.orgTree li::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 26px;
+  width: 18px;
+  border-top: 2px solid var(--border);
+}
+/* the root sits flush — nothing above it to connect to */
+.orgTree > li { padding-left: 0; }
+.orgTree > li::before,
+.orgTree > li::after { display: none; }
