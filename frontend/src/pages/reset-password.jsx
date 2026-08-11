@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { confirmPasswordReset } from "../api/api";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export default function ResetPassword() {
+  useDocumentTitle("Reset Password");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";

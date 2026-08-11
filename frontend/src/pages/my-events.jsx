@@ -8,6 +8,7 @@ import { isChair, isEboard } from "../utils/shop";
 import { eventColor, eventTypeLabel, formatEventDay, formatEventTime } from "../utils/events";
 import EventQrModal from "../components/EventQrModal";
 import EventAttendancePanel from "../components/EventAttendancePanel";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Chair/E-Board Events page — My Events (with QR + attendance) and All
 // Events (read-only, no codes). Route gate mirrors pages/shop-manager.jsx:
@@ -16,6 +17,7 @@ import EventAttendancePanel from "../components/EventAttendancePanel";
 // superset of isEboard (the president is E-Board but not a chair), so both
 // checks are required.
 export default function MyEventsPage() {
+  useDocumentTitle("Events");
   const { user } = useAuth();
   const [tab, setTab] = useState("mine");
   const [mineEvents, setMineEvents] = useState([]);

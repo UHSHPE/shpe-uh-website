@@ -4,8 +4,10 @@ import { verifyEmail, getMe } from "../api/api";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { startDuesCheckout } from "../utils/dues";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export default function VerifyEmail() {
+  useDocumentTitle("Verify Email");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";

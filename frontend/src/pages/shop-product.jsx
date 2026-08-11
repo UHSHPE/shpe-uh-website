@@ -7,6 +7,7 @@ import ProductImage from "../components/ProductImage";
 import { BackIcon, BoxIcon, CartIcon, MinusIcon, PlusIcon } from "../components/shopIcons";
 import { useCart } from "../context/CartContext";
 import { formatCents, typeLabel } from "../utils/shop";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Product detail (own shareable route): size selector for apparel, quantity
 // stepper, add to cart.
@@ -20,6 +21,10 @@ export default function ShopProduct() {
   const [size, setSize] = useState(null);
   const [needSize, setNeedSize] = useState(false);
   const [qty, setQty] = useState(1);
+
+  // Falls back to "Shop" rather than a falsy value, so the tab doesn't flash
+  // the site default while the product is still loading.
+  useDocumentTitle(product ? product.name : "Shop");
 
   // Reset selection when navigating between products. Render-phase reset
   // instead of an effect — see "You Might Not Need an Effect" (React docs).

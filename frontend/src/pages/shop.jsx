@@ -4,6 +4,7 @@ import { getShopProducts, getShopSettings } from "../api/api";
 import ProductImage from "../components/ProductImage";
 import { BoxIcon } from "../components/shopIcons";
 import { formatCents, typeLabel } from "../utils/shop";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Product-agnostic fallback while settings load (or if the fetch fails).
 const DEFAULT_TAGLINE =
@@ -13,6 +14,7 @@ const DEFAULT_TAGLINE =
 // filter pills (derived from the catalog's product types — never hardcoded),
 // and the product grid.
 export default function Shop() {
+  useDocumentTitle("Shop");
   const [products, setProducts] = useState(null); // null = loading
   const [error, setError] = useState(false);
   const [category, setCategory] = useState("all");

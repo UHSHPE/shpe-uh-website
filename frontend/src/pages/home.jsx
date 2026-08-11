@@ -7,8 +7,10 @@ import waves from "../assets/images/waves.png"
 import polygons from "../assets/images/Deco.png"
 
 import { useAuth } from '../context/AuthContext'
+import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export default function Home() {
+	useDocumentTitle()
 	const [email, setEmail] = useState('');
 	const [instaPosts, setInstaPosts] = useState([]);
 	const navigate = useNavigate();

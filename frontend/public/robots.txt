@@ -1,0 +1,23 @@
+User-agent: *
+
+# Member-only areas. They're client-rendered behind PrivateRoute so a crawler
+# sees nothing anyway, but keeping them out of the index avoids member-facing
+# URLs turning up in search results for the chapter's name.
+Disallow: /dashboard
+Disallow: /committees
+Disallow: /profile
+Disallow: /members
+Disallow: /shop-manager
+Disallow: /my-events
+Disallow: /attend/
+
+# These carry single-use tokens in the query string.
+Disallow: /verify-email
+Disallow: /reset-password
+
+# Checkout and per-order confirmation pages — nothing to index, and order
+# lookups require the buyer's email.
+Disallow: /shop/checkout
+Disallow: /shop/order/
+
+Allow: /

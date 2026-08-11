@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom"
 import confetti from "../assets/membershpeImages/confettiBackground.png"
 import shpeSpirit from "../assets/images/SHPESpiritWeb.png"
+import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export function Hero() {
   return (
@@ -321,6 +322,7 @@ export function Points() {
 }
 
 export default function MemberSHPE() {
+  useDocumentTitle("MemberSHPE")
   return (
     <>
       <Hero />

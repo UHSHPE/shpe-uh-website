@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { uploadResume, getResumeBlob, deleteResume } from '../api/api';
 import MyOrders from '../components/MyOrders';
 import { isPresident, isShopManager } from '../utils/shop';
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 function yesNo(v) {
   return v ? 'Yes' : 'No';
@@ -59,6 +60,7 @@ function Section({ title, children }) {
 }
 
 export default function Profile() {
+  useDocumentTitle("Profile");
   const { user } = useAuth();
   const { hash } = useLocation();
   const fileInputRef = useRef(null);

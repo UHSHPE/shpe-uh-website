@@ -9,6 +9,7 @@ import {
   getCommitteeMessages,
   sendCommitteeMessage,
 } from '../api/api';
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 function formatMessageTime(str) {
   const d = new Date(str + 'Z'); // stored UTC
@@ -283,6 +284,7 @@ function CommitteeCard({ committee, onToggle }) {
 }
 
 export default function Committees() {
+  useDocumentTitle("Committees");
   const [committees, setCommittees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

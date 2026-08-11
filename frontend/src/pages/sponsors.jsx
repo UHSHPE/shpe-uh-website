@@ -31,6 +31,7 @@ import CHEVRON_PHILLIPS from '../assets/images/sponsors/chevron-phillips.png';
 import PHILLIPS66  from '../assets/images/sponsors/phillips66.png';
 import FLUOR       from '../assets/images/sponsors/fluor.png';
 import SHPE_LOGO   from '../assets/images/sponsors/shpe-logo.png';
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 const sponsors = [
   { name: 'LyondellBasell',             logo: LYB },
@@ -174,6 +175,7 @@ function ContactSection() {
 }
 
 export default function Sponsors() {
+  useDocumentTitle("Sponsors");
   return (
     <div className="size-full relative">
       <HeroSection />

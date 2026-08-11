@@ -8,6 +8,7 @@ import {
   RACE_ETHNICITY_OPTIONS, INDUSTRY_OPTIONS, PROF_DEV_OPTIONS,
 } from "../constants/userEnums";
 import { COUNTRIES } from "../constants/countries";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 const STEPS = ["Account", "Academic", "Personal", "Background", "Membership"];
 
@@ -127,6 +128,7 @@ function getFieldError(field, form) {
 }
 
 export default function SignUp() {
+  useDocumentTitle("Sign Up");
   const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(emptyForm);

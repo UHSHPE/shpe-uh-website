@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import CheckInSuccess from "../components/CheckInSuccess";
 import shpeMark from "../assets/logos/shpeMark.png";
 import { formatClock, formatDuration, formatEventTime } from "../utils/events";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Mobile QR check-in flow — reached ONLY by scanning a code (never linked
 // from nav), so it renders with zero site chrome (see App.jsx's `bare`
@@ -221,6 +222,7 @@ function pillChoiceStyle(primary) {
 }
 
 export default function Attend() {
+  useDocumentTitle("Check In");
   const { code } = useParams();
   const navigate = useNavigate();
   const location = useLocation();

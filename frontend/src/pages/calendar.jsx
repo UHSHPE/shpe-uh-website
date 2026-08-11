@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAllEvents, getMyReminders, setEventReminder, cancelEventReminder } from '../api/api';
 import { useAuth } from '../context/AuthContext';
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 const EVENT_TYPE_COLORS = {
   'General Meeting': '#0070C0',
@@ -50,6 +51,7 @@ function startOfMonth(date) {
 }
 
 export default function Calendar() {
+  useDocumentTitle("Calendar");
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

@@ -20,6 +20,7 @@ import {
   TOP_TIER_ROLES,
 } from "../utils/shop";
 import ConfirmDialog from "../components/ConfirmDialog";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Members directory for the president and both VPs: chapter-wide stats
 // (accounts, dues paid vs not), member lookup, role assignment, and the
@@ -293,6 +294,7 @@ function StructurePanel({ structure, savingRole, onRequestChange, pending }) {
 }
 
 export default function MembersPage() {
+  useDocumentTitle("Members");
   const { user } = useAuth();
   const { showToast } = useCart();
 

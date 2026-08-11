@@ -6,6 +6,7 @@ import PriceChangeNotice from "../components/PriceChangeNotice";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { formatCents } from "../utils/shop";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Two-step checkout: contact details, then payment. With VITE_SQUARE_* set,
 // the payment step renders Square's secure card element (Web Payments SDK)
@@ -48,6 +49,7 @@ function loadSquareSdk() {
   return squareSdkPromise;
 }
 export default function ShopCheckout() {
+  useDocumentTitle("Checkout");
   const { user, refreshUser } = useAuth();
   const {
     lines,

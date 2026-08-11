@@ -7,6 +7,7 @@ import pillarImg from '../assets/images/pillar.png'
 import Daniel from '../assets/images/Eboard_Photos/Daniel.JPG'
 import Carlos from '../assets/images/Eboard_Photos/Carlos.JPG'
 import Gabriela from '../assets/images/Eboard_Photos/Gaby.JPG'
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export function ScrollTransitionHero() {
   const containerRef = useRef(null);
@@ -326,6 +327,7 @@ export function ChairsSection() {
 
 /* ABOUT PAGE */
 export default function About() {
+  useDocumentTitle("About");
   return (
     <div className="size-full relative">
       <main>

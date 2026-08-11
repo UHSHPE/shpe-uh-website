@@ -345,12 +345,15 @@ Never run this against production — it destroys all data.
 shpe-uh-website/
 ├── docker-compose.yml  # PostgreSQL 17 dev database container
 ├── frontend/
+│   ├── index.html          # Page shell: title, favicons, description, Open Graph/Twitter card tags
+│   ├── public/             # Served at the site root: favicons, og-image.png, site.webmanifest, robots.txt
 │   └── src/
 │       ├── api/            # Axios instance + all API call functions (api.js)
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
-│       ├── utils/          # Shared helpers (money formatting, order-status styling, event colors/labels/duration)
+│       ├── hooks/          # useDocumentTitle — sets the browser tab title per page
+│       ├── utils/          # Shared helpers (money formatting, order-status styling, cart re-pricing, event colors/labels/duration)
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
 └── backend/
@@ -376,6 +379,8 @@ shpe-uh-website/
 ```
 
 ## Pages
+
+Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`, and so on), so history entries and bookmarks are distinguishable; the home page keeps the full site title. Product and order pages title themselves from the product name and the order code.
 
 | Path | Description | Auth Required |
 |---|---|---|
@@ -507,6 +512,7 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **Fulfillment is in-person pickup** at chapter events (no shipping). Every order gets a short code (e.g. `SHPE-A1B2`); the buyer brings it to pickup.
 - Order lifecycle: `paid → ready → picked_up` (or `cancelled`). Marking an order **ready** emails the buyer; new orders notify all shop admins in-app and by email.
 - **No inventory is tracked.** Each product is either **Active** (listed in the shop) or **Hidden** (kept in the admin table, off the storefront), and every order is limited to a configurable number of units per item (default 5).
+- **Carts are re-priced against the live catalog** when the cart drawer opens and again at checkout, so a cart left sitting for days can't show one price while a different one is charged. If a price moved, the buyer sees an "A price changed since you added it" notice with the old and new figures, and the Pay button stays disabled until they acknowledge it. If a product was retired or one of its sizes withdrawn while in someone's cart, that line is marked **No longer available** with a Remove button and is left out of the total.
 - **Products are never deleted.** Retiring one takes it off the storefront and files it under **Retired** in the Shop Manager, where it can be restored at any time (a restored product comes back Hidden, so an admin republishes it deliberately). Past orders keep showing exactly what was bought, and the product image is kept too. The **T-Shirt Dues** product can't be retired — newly verified members are sent straight to it.
 - Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, show/hide, retire/restore), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page at `/shop-manager`.
 
@@ -543,6 +549,8 @@ Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local dev
 The frontend deploys to **Vercel** (paid tier — the free Hobby plan does not permit commercial use, and the site sells merch) and the backend to **Railway**, with DNS at the registrar.
 
 **Frontend.** Import the repo in Vercel with root directory `frontend`; the framework, build command (`npm run build`), and output directory (`dist`) are detected automatically. Set `VITE_API_URL` (no trailing slash), `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID`, and `VITE_BEHOLD_FEED_URL` for **both** Production and Preview — these are baked in at build time, so changing one needs a redeploy rather than a restart. `frontend/vercel.json` supplies the single-page-app fallback (needed so emailed `/verify-email` and `/reset-password` links resolve) plus security and caching headers.
+
+> **Set the site domain before the first deploy.** `frontend/index.html` hardcodes the production domain in four absolute URLs — `canonical`, `og:url`, `og:image`, `twitter:image` — grouped in a single commented block at the top of `<head>`. They have to be absolute, because link-preview scrapers (Facebook, iMessage, LinkedIn, Discord) do not reliably resolve relative paths; a relative `og:image` is the usual reason a shared link renders a preview card with no picture. Change all four together if the domain moves, then redeploy. Preview the result with Facebook's [Sharing Debugger](https://developers.facebook.com/tools/debug/) — it also force-refreshes the scraper's cache, which otherwise holds a stale card for days.
 
 **Backend.** Railway builds `backend/Dockerfile`. Add a **managed Postgres** service and set `DATABASE_URL` to its connection string — the `docker-compose.yml` container is for local development only and must not be used in production. Railway injects `PORT` automatically. Point the health check at `/health`.
 

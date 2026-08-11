@@ -5,6 +5,7 @@ import { BoxIcon, CheckIcon } from "../components/shopIcons";
 import { useAuth } from "../context/AuthContext";
 import StatusPill from "../components/StatusPill";
 import { formatCents } from "../utils/shop";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 // Order confirmation / status page. Arrives with the order in route state
 // right after checkout; on a revisit it looks the order up by code + email
@@ -12,6 +13,8 @@ import { formatCents } from "../utils/shop";
 // never reveals an order without the matching buyer email).
 export default function ShopOrder() {
   const { code } = useParams();
+  // From the route param, so it's correct even before the lookup resolves.
+  useDocumentTitle(`Order ${code}`);
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();

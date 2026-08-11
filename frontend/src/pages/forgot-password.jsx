@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/api";
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export default function ForgotPassword() {
+  useDocumentTitle("Forgot Password");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);

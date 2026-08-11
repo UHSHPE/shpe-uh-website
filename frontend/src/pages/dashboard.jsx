@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { getUpcomingEvents, getNotifications, markNotificationRead } from '../api/api';
+import useDocumentTitle from "../hooks/useDocumentTitle";
 
 function PointsBadge({ points }) {
   return (
@@ -161,6 +162,7 @@ function NotificationItem({ notification, onRead }) {
 }
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard");
   const { user } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
