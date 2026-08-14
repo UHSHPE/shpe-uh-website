@@ -610,3 +610,4 @@ python -m pytest tests/
 Tests run against a dedicated `shpe_test` Postgres database (separate from the `shpe` dev database, configured via `TEST_DATABASE_URL` — see [Environment Variables](#environment-variables)) using fixtures from `tests/conftest.py`. The `shpe_test` database needs to exist first — see step 2 of [Getting Started](#getting-started) if you haven't created it yet.
 
 You do **not** need to run migrations against `shpe_test`. The suite builds its schema directly from the models and drops it again each run, so it's independent of migration history — which also means a passing test run is not evidence that your migrations are correct. Check those by applying them to a real database.
+
