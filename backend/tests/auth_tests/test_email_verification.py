@@ -105,10 +105,54 @@ def test_verify_then_login_succeeds(unauth_client, session, sent_emails):
 
 
 def test_verify_token_is_single_use(unauth_client, session, sent_emails):
+    """Reusing the token reports 409 rather than minting a second session.
+
+    The status changed from 400 so the page can distinguish "already verified,
+    go sign in" from a genuinely dead link — but the load-bearing half is the
+    assertion below: a spent token must never return an access_token, however
+    it is reported. Whoever holds the string may be a mail scanner or a
+    forwarded inbox, not the member.
+    """
     signup(unauth_client)
     raw = extract_token(sent_emails[0]["body"])
     assert unauth_client.post("/verify-email", json={"token": raw}).status_code == 200
-    assert unauth_client.post("/verify-email", json={"token": raw}).status_code == 400
+
+    replay = unauth_client.post("/verify-email", json={"token": raw})
+    assert replay.status_code == 409
+    assert "access_token" not in replay.json()
+
+
+def test_link_opened_by_a_scanner_still_lets_the_member_sign_in(unauth_client, session, sent_emails):
+    """The production failure this 409 exists for.
+
+    Microsoft Defender Safe Links fetches URLs out of incoming mail and, where
+    it renders JavaScript, runs the verify page — so the scanner spends the
+    single-use token and the member's own click is the second use. The account
+    is verified and working; reporting that as a flat 400 read as "signup
+    failed" and sent members back to signup, which then 409s on the email.
+    """
+    signup(unauth_client)
+    raw = extract_token(sent_emails[0]["body"])
+
+    # The scanner gets there first.
+    assert unauth_client.post("/verify-email", json={"token": raw}).status_code == 200
+    # The member clicks their own link.
+    member = unauth_client.post("/verify-email", json={"token": raw})
+
+    assert member.status_code == 409
+    assert "sign in" in member.json()["detail"].lower()
+    # And the advice is true: the account really is usable.
+    assert login(unauth_client, "maria.garcia@cougarnet.uh.edu").status_code == 200
+
+
+def test_superseded_token_is_still_a_flat_400(unauth_client, session, sent_emails):
+    """A link replaced by a later signup is genuinely dead, not 'already
+    verified' — the account it pointed at was deleted, so 409 would be a lie."""
+    signup(unauth_client)
+    stale = extract_token(sent_emails[0]["body"])
+    signup(unauth_client)  # reclaims the unverified account, deleting the token
+
+    assert unauth_client.post("/verify-email", json={"token": stale}).status_code == 400
 
 
 def test_verify_garbage_token_rejected(unauth_client, session):
