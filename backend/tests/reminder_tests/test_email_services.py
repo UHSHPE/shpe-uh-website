@@ -85,6 +85,8 @@ def test_smtp_always_gets_a_timeout(monkeypatch):
     whole event loop) or a background loop, so the timeout must never be None."""
     _clear_smtp_env(monkeypatch)
     monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+    # A valid sender is required before send_email will open a connection.
+    monkeypatch.setenv("EMAIL_FROM", "bot@shpeuh.org")
     FakeSMTP.instances.clear()
     monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
 
@@ -95,6 +97,7 @@ def test_smtp_always_gets_a_timeout(monkeypatch):
 def test_smtp_timeout_is_configurable(monkeypatch):
     _clear_smtp_env(monkeypatch)
     monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+    monkeypatch.setenv("EMAIL_FROM", "bot@shpeuh.org")
     monkeypatch.setenv("SMTP_TIMEOUT", "3.5")
     FakeSMTP.instances.clear()
     monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
@@ -139,3 +142,61 @@ def test_smtp_failure_returns_false(monkeypatch):
     monkeypatch.setattr(email_services.smtplib, "SMTP", BoomSMTP)
 
     assert send_email("member@gmail.com", "Reminder", "Body") is False
+
+
+def test_api_key_relay_username_is_refused_as_a_from_address(monkeypatch, caplog):
+    """EMAIL_FROM defaults to SMTP_USER, which is only an address by accident.
+
+    Resend's SMTP username is the literal string "resend", so the default
+    would put that bare word in the From header. The relay rejects it and the
+    only symptom is mail that silently never arrives — so refuse up front,
+    before connecting, with a message that names EMAIL_FROM.
+    """
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.resend.com")
+    monkeypatch.setenv("SMTP_USER", "resend")
+    monkeypatch.setenv("SMTP_PASSWORD", "re_testkey")
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
+
+    ok = send_email("member@cougarnet.uh.edu", "Verify", "link")
+
+    assert ok is False
+    # Refused before opening a connection, not after a failed handshake.
+    assert FakeSMTP.instances == []
+    assert "EMAIL_FROM" in caplog.text
+
+
+def test_explicit_email_from_allows_an_api_key_relay(monkeypatch):
+    """The same config with EMAIL_FROM set is the supported Resend setup."""
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.resend.com")
+    monkeypatch.setenv("SMTP_USER", "resend")
+    monkeypatch.setenv("SMTP_PASSWORD", "re_testkey")
+    monkeypatch.setenv("EMAIL_FROM", "SHPE UH <noreply@shpeuh.com>")
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_services.smtplib, "SMTP", FakeSMTP)
+
+    ok = send_email("member@cougarnet.uh.edu", "Verify", "link")
+
+    assert ok is True
+    assert FakeSMTP.instances[0].sent_messages[0]["From"] == (
+        "SHPE UH <noreply@shpeuh.com>"
+    )
+
+
+def test_send_failure_is_logged(monkeypatch, caplog):
+    """It used to return False with no trace anywhere, which is what made a
+    dead relay indistinguishable from dev mode."""
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.test.com")
+    monkeypatch.setenv("EMAIL_FROM", "bot@shpeuh.org")
+
+    class ExplodingSMTP:
+        def __init__(self, *a, **k):
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(email_services.smtplib, "SMTP", ExplodingSMTP)
+
+    assert send_email("member@gmail.com", "Reminder", "body") is False
+    assert "SMTP send failed" in caplog.text
