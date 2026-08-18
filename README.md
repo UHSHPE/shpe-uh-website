@@ -138,13 +138,13 @@ Frontend runs at **http://localhost:5173**.
 | `DATABASE_URL` | No | Postgres connection string. Defaults to the `docker-compose.yml` credentials/port, so local dev needs nothing here unless those change | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe` |
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
 | `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
-| `FRONTEND_URL` | No | Base URL of the frontend, used to build password-reset links in emails. Defaults to `http://localhost:5173` | `http://localhost:5173` |
+| `FRONTEND_URL` | **Yes in production** | Base URL of the frontend, used to build the verification and password-reset links in emails. Defaults to `http://localhost:5173`, so leaving it unset ships emails whose links point at localhost and strands every new member. Nothing catches this: the startup localhost check reads `CORS_ORIGINS` when that is set, so it passes while `FRONTEND_URL` is still the default | `https://www.shpeuh.com` |
 | `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP + Google Drive are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [Deployment](#deployment)). Surrounding whitespace and letter case are ignored, so a pasted `"production "` still counts. Leave unset for local dev | `production` |
-| `SMTP_HOST` | No | SMTP server for reminder emails. **Unset = dev mode:** emails print to the console instead | `smtp.gmail.com` |
-| `SMTP_PORT` | No | SMTP port | `587` |
-| `SMTP_USER` | No | Sender address / SMTP login | `chapter@example.org` |
-| `SMTP_PASSWORD` | No | SMTP password (use an app password for Gmail) | — |
-| `EMAIL_FROM` | No | From header; defaults to `SMTP_USER` | `SHPE UH <noreply@example.org>` |
+| `SMTP_HOST` | No | SMTP server for verification, reset and reminder emails. **Unset = dev mode:** emails print to the console instead. This is the only switch — `ENVIRONMENT` does not turn email on | `smtp.gmail.com` |
+| `SMTP_PORT` | No | SMTP port. Must be a **STARTTLS** port (587): the client calls `starttls()`, so implicit-TLS port 465 will not work | `587` |
+| `SMTP_USER` | No | SMTP login. An address for Gmail; the literal word `resend` for Resend | `chapter@example.org` |
+| `SMTP_PASSWORD` | No | SMTP password — an app password for Gmail, the API key (`re_…`) for Resend | — |
+| `EMAIL_FROM` | **Yes, for API-key relays** | From header; defaults to `SMTP_USER`. That default only works when the username happens to be an address (Gmail). Resend's SMTP username is the literal word `resend`, so leave this unset there and every send is refused — set it to an address on a domain you have verified with the provider | `SHPE UH <noreply@example.org>` |
 | `SQUARE_ACCESS_TOKEN` | No | Square API access token for shop card payments. **Unset = dev mode:** checkout is simulated, no real charge | `EAAA...` |
 | `SQUARE_LOCATION_ID` | No | Location id of the Square account (same application as the token) | `L4X...` |
 | `SQUARE_ENVIRONMENT` | No | `sandbox` (default) or `production` — must match where the token was minted. Whitespace and case are ignored, as with `ENVIRONMENT`; anything unrecognized means sandbox | `sandbox` |
@@ -414,7 +414,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | GET | `/health` | No | Liveness probe for the hosting platform. Deliberately does not query the database, so a momentary lock can't get a healthy server restarted |
 | GET | `/health/db` | No | Readiness check that does query the database — for manual verification after a deploy |
 | POST | `/login` | No | Authenticate and receive a JWT token (rate limited, configurable via `RATE_LIMIT_LOGIN`); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
-| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`). CougarNet email and PSID are each unique to one account — a conflict with a verified account is rejected, while a conflict with an unverified one replaces that pending signup and sends a fresh link |
+| POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`). CougarNet email and PSID are each unique to one account — a conflict with a verified account is rejected, while a conflict with an unverified one replaces that pending signup and sends a fresh link. If the email cannot be sent the request fails rather than claiming success — sign up again to retry |
 | POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited, configurable via `RATE_LIMIT_PASSWORD_RESET`) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |

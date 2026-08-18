@@ -174,9 +174,22 @@ async def signup(request: Request, user_in: UserCreate, session: SessionDependen
     # to_thread for the same reason as the HIBP call above: smtplib is
     # blocking, and a blocking call inside an async handler stalls the event
     # loop for every other request, not just this one.
-    await asyncio.to_thread(
+    sent = await asyncio.to_thread(
         send_email, user_db.cougarnet_email, "Verify your SHPE UH account",
         f"Hi {user_db.first_name}, confirm your account:\n\n{link}\n\nThis link expires in 24 hours.")
+
+    # The result used to be discarded, so a dead relay still answered "check
+    # your email" and the member was stranded: unverified accounts cannot log
+    # in, and nothing tells them why. Safe to surface here (unlike the reset
+    # route, which must stay generic to avoid confirming an address exists) —
+    # this leaks nothing about the account, only about our own mail setup.
+    # Recovery is just signing up again: the account is left unverified, and
+    # the squat-reclaim branch above deletes and recreates it with a new link.
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="We couldn't send your verification email. Please try again shortly.",
+        )
 
     return {"detail": "Check your CougarNet email to verify your account."}
 

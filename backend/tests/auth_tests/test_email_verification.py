@@ -172,3 +172,25 @@ def test_signup_is_rate_limited(unauth_client, session, sent_emails):
         psid=f"{2000000 + allowed}",
     )
     assert throttled.status_code == 429
+
+
+def test_signup_reports_a_failed_verification_email(unauth_client, monkeypatch):
+    """A dead relay used to answer "check your email" anyway, stranding the
+    member: unverified accounts cannot log in, and nothing said why."""
+    monkeypatch.setattr("routes.auth_routes.send_email", lambda *a, **k: False)
+
+    res = signup(unauth_client, cougarnet_email="dead.relay@cougarnet.uh.edu")
+
+    assert res.status_code == 502
+    assert "verification email" in res.json()["detail"]
+
+
+def test_signup_can_be_retried_after_a_failed_send(unauth_client, monkeypatch):
+    """The 502 must be recoverable without human cleanup. The account is left
+    unverified, so the squat-reclaim branch deletes and recreates it with a
+    fresh token on the next attempt."""
+    monkeypatch.setattr("routes.auth_routes.send_email", lambda *a, **k: False)
+    assert signup(unauth_client, cougarnet_email="retry@cougarnet.uh.edu").status_code == 502
+
+    monkeypatch.setattr("routes.auth_routes.send_email", lambda *a, **k: True)
+    assert signup(unauth_client, cougarnet_email="retry@cougarnet.uh.edu").status_code == 201

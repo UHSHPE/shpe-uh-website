@@ -90,6 +90,24 @@ def disable_event_tracker_sync(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
+# send_email branches on SMTP_HOST at call time, so a developer with real SMTP
+# credentials in backend/.env would have tests mailing live addresses through
+# the chapter's relay — and, now that signup 502s on a failed send, a relay
+# that merely rate-limits them would fail unrelated tests with a confusing
+# error. Nothing here needs real SMTP: tests that assert on email content
+# monkeypatch send_email where it is imported.
+@pytest.fixture(autouse=True)
+def disable_smtp(monkeypatch):
+    for var in (
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "EMAIL_FROM",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture(scope="session")
 def engine():
     name = TEST_DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
