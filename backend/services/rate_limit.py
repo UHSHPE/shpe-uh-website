@@ -8,9 +8,17 @@ from starlette.requests import Request
 load_dotenv()
 
 
-def _trust_proxy_headers() -> bool:
-    # Read at call time (same pattern as square_services / drive_services) so
-    # tests can flip it with monkeypatch.setenv without re-importing.
+def trust_proxy_headers() -> bool:
+    """Whether a trusted proxy sits in front of us, so its forwarded headers
+    may be believed.
+
+    The ONLY reader of TRUST_PROXY_IP_HEADERS — services/forwarded_proto.py
+    imports this rather than reading the env var again, for the same
+    single-source reason config.is_production() exists.
+
+    Read at call time (same pattern as square_services / drive_services) so
+    tests can flip it with monkeypatch.setenv without re-importing.
+    """
     raw = os.getenv("TRUST_PROXY_IP_HEADERS", "").strip().lower()
     return raw in ("1", "true", "yes")
 
@@ -38,7 +46,7 @@ def client_ip(request: Request) -> str:
     Off by default: local dev and the test suite have no trusted proxy in front,
     so they keep using the socket peer address and behave exactly as before.
     """
-    if _trust_proxy_headers():
+    if trust_proxy_headers():
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
             parts = [p.strip() for p in forwarded.split(",") if p.strip()]

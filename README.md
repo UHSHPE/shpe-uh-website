@@ -159,8 +159,8 @@ Leave these unset for local development.
 | Variable | Description | Example |
 |---|---|---|
 | `CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API. Falls back to `FRONTEND_URL`, then the Vite dev server. Under `ENVIRONMENT=production` the app **refuses to start** if this still points at localhost | `https://example.org,https://www.example.org` |
-| `ALLOWED_HOSTS` | Comma-separated `Host` header allowlist. Set it to your API domain so the raw platform hostname stops answering | `api.example.org` |
-| `TRUST_PROXY_IP_HEADERS` | Set to `1` when the app runs behind a proxy or load balancer. **Without it every rate limit becomes one global bucket** shared by all visitors, because every request appears to come from the proxy's address | `1` |
+| `ALLOWED_HOSTS` | Comma-separated `Host` header allowlist for requests arriving **at the API** — your API's own domain, *not* the frontend's. With no custom API domain yet, that's the platform hostname (e.g. `<project>.up.railway.app`). A value that doesn't match rejects every request with `400 Invalid host header`, including `/health`. Leave unset to skip the check | `api.example.org` |
+| `TRUST_PROXY_IP_HEADERS` | Set to `1` when the app runs behind a proxy or load balancer. **Without it every rate limit becomes one global bucket** shared by all visitors, because every request appears to come from the proxy's address. It also lets the app trust `X-Forwarded-Proto`, so redirects it generates use `https://` instead of an `http://` URL the browser blocks as mixed content | `1` |
 | `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
 | `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
 | `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
@@ -264,7 +264,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 | Variable | Required | Description | Example |
 |---|---|---|---|
-| `VITE_API_URL` | Yes | Backend base URL | `http://localhost:8000` |
+| `VITE_API_URL` | Yes | Backend base URL. Must include the `http://` or `https://` scheme — without one, axios treats it as a relative path and API calls silently resolve against the frontend's own domain | `http://localhost:8000` |
 | `VITE_BEHOLD_FEED_URL` | No | Public [Behold](https://behold.so) JSON feed for the home-page Instagram grid. If unset/unreachable, the grid shows a shimmer placeholder | `https://feeds.behold.so/<feed-id>` |
 | `VITE_SQUARE_APP_ID` | No | Square application id for the checkout card element (sandbox ids start with `sandbox-`). **Unset = dev mode:** payment step stays simulated | `sandbox-sq0idb-...` |
 | `VITE_SQUARE_LOCATION_ID` | No | Square location id — same one as the backend's `SQUARE_LOCATION_ID` | `L4X...` |
@@ -373,7 +373,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, request body size limit, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (runs against a dedicated `shpe_test` Postgres database; requires the database container to be running)
 ```
@@ -548,7 +548,7 @@ Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local dev
 
 The frontend deploys to **Vercel** (paid tier — the free Hobby plan does not permit commercial use, and the site sells merch) and the backend to **Railway**, with DNS at the registrar.
 
-**Frontend.** Import the repo in Vercel with root directory `frontend`; the framework, build command (`npm run build`), and output directory (`dist`) are detected automatically. Set `VITE_API_URL` (no trailing slash), `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID`, and `VITE_BEHOLD_FEED_URL` for **both** Production and Preview — these are baked in at build time, so changing one needs a redeploy rather than a restart. `frontend/vercel.json` supplies the single-page-app fallback (needed so emailed `/verify-email` and `/reset-password` links resolve) plus security and caching headers.
+**Frontend.** Import the repo in Vercel with root directory `frontend`; the framework, build command (`npm run build`), and output directory (`dist`) are detected automatically. Set `VITE_API_URL` (full URL including `https://`, no trailing slash), `VITE_SQUARE_APP_ID`, `VITE_SQUARE_LOCATION_ID`, and `VITE_BEHOLD_FEED_URL` for **both** Production and Preview — these are baked in at build time, so changing one needs a redeploy **with the build cache disabled** rather than a restart; a cached rebuild reproduces the old bundle unchanged. `frontend/vercel.json` supplies the single-page-app fallback (needed so emailed `/verify-email` and `/reset-password` links resolve) plus security and caching headers.
 
 > **Set the site domain before the first deploy.** `frontend/index.html` hardcodes the production domain in four absolute URLs — `canonical`, `og:url`, `og:image`, `twitter:image` — grouped in a single commented block at the top of `<head>`. They have to be absolute, because link-preview scrapers (Facebook, iMessage, LinkedIn, Discord) do not reliably resolve relative paths; a relative `og:image` is the usual reason a shared link renders a preview card with no picture. Change all four together if the domain moves, then redeploy. Preview the result with Facebook's [Sharing Debugger](https://developers.facebook.com/tools/debug/) — it also force-refreshes the scraper's cache, which otherwise holds a stale card for days.
 
@@ -590,13 +590,15 @@ From there the president assigns every other role from `/members`, and adds real
 
 1. Generate a fresh `SECRET_KEY` — do not reuse the development one.
 2. Set `ENVIRONMENT=production`. The app then refuses to start unless Square, SMTP and the four `GDRIVE_*` variables are fully configured and `CORS_ORIGINS` no longer points at localhost. It also stops serving the API schema — confirm `/docs`, `/redoc`, and `/openapi.json` all return 404 once deployed.
-3. Set `TRUST_PROXY_IP_HEADERS=1`. Verify it worked: exhaust a rate limit from one network, then immediately try from a different one — the second must succeed.
-4. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
-5. Confirm `alembic upgrade head` ran (`alembic current` should report a revision), then run `python bootstrap.py` to create the chapter structure (see above), and install the three top-tier seats once those accounts exist and are verified.
-6. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
-7. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
-8. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
-9. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
+3. Set `TRUST_PROXY_IP_HEADERS=1`. It does two jobs — rate-limit bucketing and trusting `X-Forwarded-Proto` — so verify both: exhaust a rate limit from one network and immediately retry from a different one (the second must succeed), and confirm no response carries an `http://` `Location` header.
+4. Set `ALLOWED_HOSTS` to the **API's** own hostname, not the frontend's, then check `curl -s https://<api>/health` returns `{"status":"ok"}` and not `Invalid host header`. Read the body — a wrong value 400s every route while still returning correct CORS headers, so a status-only check looks healthy.
+5. Load the deployed site and open the browser console on `/calendar` and `/shop`. These are the first pages to call the API, and a wrong `VITE_API_URL` (missing `https://`) or a blocked mixed-content redirect shows up **only** there — `curl` and the health checks both pass regardless.
+6. Point DNS at Vercel (frontend) and Railway (backend), and wait for both certificates to issue.
+7. Confirm `alembic upgrade head` ran (`alembic current` should report a revision), then run `python bootstrap.py` to create the chapter structure (see above), and install the three top-tier seats once those accounts exist and are verified.
+8. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
+9. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
+10. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
+11. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
 
 ## Running Tests
 
@@ -610,3 +612,4 @@ python -m pytest tests/
 Tests run against a dedicated `shpe_test` Postgres database (separate from the `shpe` dev database, configured via `TEST_DATABASE_URL` — see [Environment Variables](#environment-variables)) using fixtures from `tests/conftest.py`. The `shpe_test` database needs to exist first — see step 2 of [Getting Started](#getting-started) if you haven't created it yet.
 
 You do **not** need to run migrations against `shpe_test`. The suite builds its schema directly from the models and drops it again each run, so it's independent of migration history — which also means a passing test run is not evidence that your migrations are correct. Check those by applying them to a real database.
+

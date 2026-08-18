@@ -63,7 +63,11 @@ async def get_upcoming_events(
     return [_event_out(e) for e in session.exec(stmt).all()]
 
 
-@router.get('/', response_model=list[EventOut])
+# Path is '' (not '/') so the full path is exactly /events, which is what every
+# caller uses. With '/' the router serves /events/ and answers /events with a
+# 307 — and behind Railway that Location comes back as http://, which the
+# browser blocks as mixed content on an https page. See "What NOT to do".
+@router.get('', response_model=list[EventOut])
 async def get_all_events(session: SessionDependencies):
     return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
 
