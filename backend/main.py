@@ -19,6 +19,7 @@ from config import is_production, square_is_production
 from database import create_db, engine
 from services.body_limit import DEFAULT_MAX_BODY_BYTES, BodyLimitMiddleware
 from services.dependencies import SessionDependencies
+from services.forwarded_proto import ForwardedProtoMiddleware
 from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 from services.event_tracker_services import sync_events
@@ -198,6 +199,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Added LAST, so it ends up OUTERMOST (add_middleware inserts at index 0) and
+# corrects scope["scheme"] before anything downstream reads it — the router's
+# redirect_slashes being the one that bit us. Outside CORS is fine: this
+# middleware only edits the scope and never produces a response, so it cannot
+# emit anything that would miss the CORS headers. Requires
+# TRUST_PROXY_IP_HEADERS=1; it is a no-op locally and in tests.
+app.add_middleware(ForwardedProtoMiddleware)
 
 @app.get("/health", include_in_schema=False)
 def health():

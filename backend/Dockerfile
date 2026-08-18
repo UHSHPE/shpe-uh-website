@@ -26,7 +26,14 @@ EXPOSE 8000
 #   reasons: the slowapi rate limiter keeps its counters in process memory,
 #   so N workers makes every limit N times looser; and SQLite is a single
 #   file on a single-attach volume.
-# --proxy-headers makes the app honour X-Forwarded-Proto, so FastAPI's
-#   trailing-slash redirects emit https:// rather than a http:// redirect
-#   that browsers block as mixed content.
-CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --no-server-header"]
+# NOTE: --proxy-headers is deliberately NOT set, and neither is
+#   --forwarded-allow-ips. Forwarded headers are handled in the app instead:
+#   services/forwarded_proto.py takes the scheme (so redirects emit https://
+#   rather than an http:// one browsers block as mixed content) and
+#   services/rate_limit.py takes the client IP. Both read the RIGHTMOST entry;
+#   uvicorn's middleware reads the leftmost, which the client supplies and can
+#   spoof. --proxy-headers was previously set here with a comment claiming it
+#   fixed the scheme -- it did not, because --forwarded-allow-ips defaults to
+#   127.0.0.1 and the platform proxy is never that, so the headers were
+#   ignored and the comment hid a live bug. Both need TRUST_PROXY_IP_HEADERS=1.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --no-server-header"]
