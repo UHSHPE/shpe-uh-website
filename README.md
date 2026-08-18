@@ -415,7 +415,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | GET | `/health/db` | No | Readiness check that does query the database — for manual verification after a deploy |
 | POST | `/login` | No | Authenticate and receive a JWT token (rate limited, configurable via `RATE_LIMIT_LOGIN`); 403 until the account's email is verified; 429 after too many failed attempts (temporary account lock) |
 | POST | `/signup` | No | Register a new account (unverified) and email a verification link; returns a message, not a token (rate limited, configurable via `RATE_LIMIT_SIGNUP`). CougarNet email and PSID are each unique to one account — a conflict with a verified account is rejected, while a conflict with an unverified one replaces that pending signup and sends a fresh link. If the email cannot be sent the request fails rather than claiming success — sign up again to retry |
-| POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token |
+| POST | `/verify-email` | No | Confirm a signup with the emailed token and receive a JWT token. Links are single-use; re-using one reports that the account is already verified (and issues no token) rather than looking like a failure — mail scanners routinely open the link before the member does |
 | POST | `/password-reset/request` | No | Email a reset link if the account exists (always returns 200; rate limited, configurable via `RATE_LIMIT_PASSWORD_RESET`) |
 | POST | `/password-reset/confirm` | No | Set a new password using a valid reset token |
 | GET | `/me` | Yes | Current user profile (includes points and `resume_filename`) |

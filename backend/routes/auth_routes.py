@@ -200,13 +200,40 @@ async def verify_email(req: EmailVerifyConfirm, session: SessionDependencies):
         select(EmailVerificationToken).where(
             EmailVerificationToken.token_hash == hash_reset_token(req.token))
     ).first()
-    if db_token is None or db_token.used_at is not None or db_token.expires_at <= utcnow():
+    if db_token is None:
         raise invalid
 
     user = get_user_by_user_id(session, db_token.user_id)
     # The token's user can be gone (e.g. a stale link after the account was
     # reclaimed by a later signup) — treat that as an invalid token.
     if user is None:
+        raise invalid
+
+    # A spent token whose account IS verified is the ordinary case, not an
+    # error: the link was single-use and something consumed it first. On
+    # @cougarnet.uh.edu that is routinely Microsoft Defender Safe Links, which
+    # fetches URLs out of incoming mail to scan them and, where it renders
+    # JavaScript, runs this very page — so the scanner verifies the account and
+    # the member's own click is the SECOND use. A page refresh does the same.
+    # Reported as 400 it read as "signup failed" on an account that was already
+    # working, and the member's natural retry then hit the 409 from the signup
+    # route instead. 409 lets the page say "already verified — sign in".
+    #
+    # Deliberately still NO token issued: whoever holds this string may be a
+    # link scanner or a mailbox the message was forwarded to, and a spent token
+    # must never mint a session. This only reports state.
+    #
+    # Checked before expiry on purpose — an account verified 25 hours ago is
+    # still verified, and "sign in" is the right advice either way.
+    if db_token.used_at is not None:
+        if user.email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This email is already verified. Please sign in.",
+            )
+        raise invalid
+
+    if db_token.expires_at <= utcnow():
         raise invalid
 
     user.email_verified = True
