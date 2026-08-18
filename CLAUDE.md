@@ -315,7 +315,7 @@ Target: frontend on **Vercel Pro** (paid tier — the free Hobby tier bans comme
 | `/` | `pages/home.jsx` | No |
 | `/forgot-password` | `pages/forgot-password.jsx` | No |
 | `/reset-password` | `pages/reset-password.jsx` (token via `?token=`) | No |
-| `/verify-email` | `pages/verify-email.jsx` (token via `?token=`; verifies then routes into dues checkout) | No |
+| `/verify-email` | `pages/verify-email.jsx` (token via `?token=`; verifies then routes into dues checkout. Three states — `verifying`/`already`/`error`; `already` is the 409 for a spent token on a verified account) | No |
 | `/about` | `pages/about.jsx` | No |
 | `/membershpe` | `pages/membershpe.jsx` | No |
 | `/sponsors` | `pages/sponsors.jsx` | No |

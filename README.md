@@ -396,7 +396,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | `/shop/order/:code` | Order confirmation and live status (looked up by code + buyer email) | No |
 | `/signin` | Sign in | No |
 | `/signup` | Sign up — five steps (Account, Academic, Personal, Background, Membership), each validated before you can continue; ends on a "check your email" screen | No |
-| `/verify-email` | Confirm a new account from the emailed link, then route into chapter-dues checkout | No |
+| `/verify-email` | Confirm a new account from the emailed link, then route into chapter-dues checkout. A link that was already used shows that the account is verified and points to sign-in, rather than reporting a failure | No |
 | `/forgot-password` | Request a password-reset email | No |
 | `/reset-password` | Choose a new password (opened from the emailed link) | No |
 | `/dashboard` | Member dashboard | Yes |
