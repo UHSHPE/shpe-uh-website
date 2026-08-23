@@ -356,7 +356,7 @@ shpe-uh-website/
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
-│       ├── hooks/          # useDocumentTitle — sets the browser tab title per page
+│       ├── hooks/          # useDocumentTitle (browser tab title per page), usePagination (10-per-page list paging)
 │       ├── utils/          # Shared helpers (money formatting, order-status styling, cart re-pricing, event colors/labels/duration)
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions

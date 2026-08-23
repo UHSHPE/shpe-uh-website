@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { getUpcomingEvents, getNotifications, markNotificationRead } from '../api/api';
 import useDocumentTitle from "../hooks/useDocumentTitle";
+import usePagination from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 function PointsBadge({ points }) {
   return (
@@ -197,6 +199,10 @@ export default function Dashboard() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
+  // Slices only what's rendered — unreadCount above still counts the whole
+  // history, so the header badge stays a true total.
+  const notifsPager = usePagination(notifications);
+
   return (
     <div style={{
       maxWidth: '800px',
@@ -283,11 +289,14 @@ export default function Dashboard() {
         ) : notifications.length === 0 ? (
           <p style={{ color: '#6b7280' }}>You're all caught up — no notifications.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {notifications.map(n => (
-              <NotificationItem key={n.id} notification={n} onRead={handleRead} />
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {notifsPager.pageItems.map(n => (
+                <NotificationItem key={n.id} notification={n} onRead={handleRead} />
+              ))}
+            </div>
+            <Pagination {...notifsPager} label="notifications" />
+          </>
         )}
       </motion.div>
 
