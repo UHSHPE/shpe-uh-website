@@ -18,7 +18,7 @@ from services.event_tracker_services import (
     COMMITTEE_ROLES,
     EBOARD,
     SHEET_TZ,
-    event_key,
+    local_date,
     get_event_type,
     parse_date,
     parse_row,
@@ -29,6 +29,12 @@ from services.event_tracker_services import (
 
 
 # --- helpers ---
+
+def parse(row, sheet_row=7):
+    """parse_row with a stand-in sheet row number. These tests are about field
+    mapping; identity (the row number) is exercised in test_event_sync.py."""
+    return parse_row(row, sheet_row)
+
 
 def sheet_row(**overrides):
     """Build a raw sheet-row dict keyed by the real column headers (COLUMNS
@@ -86,18 +92,21 @@ def test_parse_date_blank_raises():
         parse_date("")
 
 
-# --- event_key ---
+# --- local_date ---
 
-def test_event_key_normalizes_case_and_whitespace():
-    assert event_key(date(2026, 8, 5), "  GBM   1 ") == "2026-08-05|gbm 1"
+def test_local_date_is_the_central_day_not_the_utc_one():
+    # A 7 PM Central event stores as 00:00 UTC the NEXT day. sync_events pairs
+    # the sheet row number with the CENTRAL date, so reading the UTC date here
+    # would put the event on the wrong day and break identity for every
+    # evening event -- which is most of them.
+    start_utc = to_utc(datetime(2026, 8, 5, 19, 0))
+    assert start_utc.date() == date(2026, 8, 6)
+    assert local_date(start_utc) == date(2026, 8, 5)
 
-def test_event_key_differs_when_only_the_date_changes():
-    # Pins the reschedule behavior relied on in test_event_sync.py: moving
-    # the same-named event to a new date produces a DIFFERENT key, so a sync
-    # treats it as a new event rather than an edit of the old one.
-    key_on_aug_5 = event_key(date(2026, 8, 5), "GBM 1")
-    key_on_aug_12 = event_key(date(2026, 8, 12), "GBM 1")
-    assert key_on_aug_5 != key_on_aug_12
+def test_local_date_round_trips_parse_rows_start_time():
+    parsed = parse(sheet_row(date="08/05", start_time="6:00 PM"))
+    year = datetime.now(SHEET_TZ).year
+    assert local_date(parsed["start_time"]) == date(year, 8, 5)
 
 
 # --- parse_row ---
@@ -113,13 +122,13 @@ def test_parse_row_happy_path_maps_all_eight_fields():
         end_time="7:00 PM",
     )
 
-    parsed = parse_row(row)
+    parsed = parse(row, 7)
 
     assert set(parsed.keys()) == {
-        "source_row_id", "title", "description", "location", "start_time", "end_time",
+        "sheet_row", "title", "description", "location", "start_time", "end_time",
         "event_type", "host_roles",
     }
-    assert parsed["source_row_id"] == event_key(date(year, 8, 5), "GBM 1")
+    assert parsed["sheet_row"] == 7
     assert parsed["title"] == "GBM 1"
     assert parsed["description"] == "Come hang out with SHPE!"
     assert parsed["location"] == "PGH 232"
@@ -131,31 +140,31 @@ def test_parse_row_happy_path_maps_all_eight_fields():
     assert parsed["host_roles"] == [Role.marketing_chair]
 
 def test_parse_row_blank_name_returns_none():
-    assert parse_row(sheet_row(name="")) is None
+    assert parse(sheet_row(name="")) is None
 
 def test_parse_row_whitespace_only_name_returns_none():
-    assert parse_row(sheet_row(name="   ")) is None
+    assert parse(sheet_row(name="   ")) is None
 
 def test_parse_row_missing_start_time_defaults_to_local_midnight():
     row = sheet_row()
     del row[COLUMNS["start_time"]]
     year = datetime.now(SHEET_TZ).year
 
-    parsed = parse_row(row)
+    parsed = parse(row)
 
     assert parsed["start_time"] == to_utc(datetime(year, 8, 5, 0, 0))
 
 def test_parse_row_all_day_start_defaults_to_local_midnight():
     year = datetime.now(SHEET_TZ).year
-    parsed = parse_row(sheet_row(start_time="All Day"))
+    parsed = parse(sheet_row(start_time="All Day"))
     assert parsed["start_time"] == to_utc(datetime(year, 8, 5, 0, 0))
 
 def test_parse_row_blank_end_time_is_none():
-    parsed = parse_row(sheet_row(end_time=""))
+    parsed = parse(sheet_row(end_time=""))
     assert parsed["end_time"] is None
 
 def test_parse_row_title_whitespace_is_collapsed():
-    parsed = parse_row(sheet_row(name="  GBM   1  "))
+    parsed = parse(sheet_row(name="  GBM   1  "))
     assert parsed["title"] == "GBM 1"
 
 
@@ -165,14 +174,14 @@ def test_august_event_converts_cdt_to_utc_same_day():
     """August is Central Daylight Time (UTC-5): 6:00 PM local -> 23:00 UTC
     the SAME day."""
     year = datetime.now(SHEET_TZ).year
-    parsed = parse_row(sheet_row(date="08/05", start_time="6:00 PM"))
+    parsed = parse(sheet_row(date="08/05", start_time="6:00 PM"))
     assert parsed["start_time"] == datetime(year, 8, 5, 23, 0)
 
 def test_january_event_converts_cst_to_utc_next_day():
     """January is Central Standard Time (UTC-6): 6:00 PM local -> 00:00 UTC
     the NEXT day."""
     year = datetime.now(SHEET_TZ).year
-    parsed = parse_row(sheet_row(date="01/15", start_time="6:00 PM"))
+    parsed = parse(sheet_row(date="01/15", start_time="6:00 PM"))
     assert parsed["start_time"] == datetime(year, 1, 16, 0, 0)
 
 
@@ -180,14 +189,14 @@ def test_january_event_converts_cst_to_utc_next_day():
 
 @pytest.mark.parametrize("name", ["C&E Retreat", "C&E RETREAT", "  c&e   retreat  "])
 def test_parse_row_excludes_hidden_events_regardless_of_case_or_spacing(name):
-    assert parse_row(sheet_row(name=name)) is None
+    assert parse(sheet_row(name=name)) is None
 
 def test_excluded_event_with_a_garbage_date_is_dropped_without_raising():
     # The exclusion check runs before parse_date, so it short-circuits -- a
     # bad date on an already-excluded row never reaches the code that would
     # otherwise raise on it.
     row = sheet_row(name="C&E Retreat", date="not-a-date")
-    assert parse_row(row) is None
+    assert parse(row) is None
 
 
 # --- get_event_type: OWNER(S) values -> event_type ---
@@ -347,7 +356,7 @@ def test_parse_row_bare_eboard_owner_keeps_none_in_host_roles():
     # The critical behavior change: host_roles must NOT filter out the bare
     # "eboard" resolution just because it's None -- only true non-matches
     # (NO_MATCH) get dropped.
-    parsed = parse_row(sheet_row(owners="EBoard"))
+    parsed = parse(sheet_row(owners="EBoard"))
     assert parsed["event_type"] == "eboard"
     assert parsed["host_roles"] == [None]
 
@@ -355,5 +364,5 @@ def test_parse_row_bare_eboard_owner_keeps_none_in_host_roles():
 def test_parse_row_outside_org_collab_does_not_pollute_host_roles():
     row = sheet_row(owners="Social Chair - Anahi Salinas")
     row[COLUMNS["collab(s)"]] = "NSBE"
-    parsed = parse_row(row)
+    parsed = parse(row)
     assert parsed["host_roles"] == [Role.social_chair]

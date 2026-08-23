@@ -5,6 +5,7 @@
 
 from models.user.user_enums import Role
 from services.attendance_services import record_sign_in, record_sign_out
+from services.time_services import utcnow
 from tests.conftest import make_event, make_user
 from tests.event_tests.conftest import link_host, make_committee
 
@@ -62,6 +63,34 @@ def test_all_events_lists_every_event_without_codes(chair_client, session, commi
     assert ids == {mine.id, not_mine.id}
     assert "sign_in_code" not in resp.text
     assert "sign_out_code" not in resp.text
+
+
+def test_all_events_hides_a_soft_deleted_event(chair_client, session, committee):
+    live = make_event(session, title="Mixer")
+    hidden = make_event(session, title="Cancelled Mixer", deleted_at=utcnow())
+    link_host(session, live, committee)
+    link_host(session, hidden, committee)
+
+    resp = chair_client.get("/events/all")
+
+    assert {e["id"] for e in resp.json()} == {live.id}
+
+
+def test_upcoming_hides_a_soft_deleted_event(client, session):
+    live = make_event(session, title="Mixer")
+    make_event(session, title="Cancelled Mixer", deleted_at=utcnow())
+
+    resp = client.get("/events/upcoming")
+
+    assert {e["id"] for e in resp.json()} == {live.id}
+
+
+def test_setting_a_reminder_on_a_soft_deleted_event_is_a_404(client, session):
+    # get_live_event turns a hidden event into the route's ordinary 404, so a
+    # member can't subscribe to mail about an event that's off the calendar.
+    hidden = make_event(session, title="Cancelled Mixer", deleted_at=utcnow())
+
+    assert client.post(f"/events/{hidden.id}/remind").status_code == 404
 
 
 def test_regular_member_cannot_reach_mine_or_all(client):

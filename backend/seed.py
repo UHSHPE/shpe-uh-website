@@ -407,15 +407,27 @@ def seed_products(s: Session):
     print(f"Seeded {len(products)} products.")
 
 
+SAMPLE_EVENT_TITLES = [
+    "General Meeting",
+    "Resume Workshop",
+    "STEM Outreach — Seguin Middle School",
+]
+
+
 def seed_events(s: Session):
     """Sample calendar events, dated relative to now.
 
     Guarded like every other seeder: without this check each seed.py run added
     another copy of all three (a top-up run for new accounts had piled up 15).
-    The filter is `source_row_id IS NULL` so it only counts hand-seeded rows —
-    events pulled from the Google Sheet carry a key and must not suppress this.
+
+    The guard is on the titles THIS seeder owns, per CLAUDE.md's seeder rule.
+    It used to proxy that with `source_row_id IS NULL`, but that column is gone
+    — identity is now the sheet row number, and `sheet_row IS NULL` is a
+    strictly wider set (it also matches past sheet events, which the migration
+    leaves without a row), so reusing it would let one stale event suppress the
+    whole seeder.
     """
-    if s.exec(select(Event).where(Event.source_row_id == None)).first():  # noqa: E711
+    if s.exec(select(Event).where(Event.title.in_(SAMPLE_EVENT_TITLES))).first():
         print("Skipped events — already seeded.")
         return
 

@@ -9,6 +9,7 @@ from models.event_attendance import (
 from models.event_reminder import EventReminder, EventReminderOut
 from models.user.user import User
 from services import attendance_services
+from services.event_services import get_live_event, live_events
 from services.dependencies import (
     SessionDependencies,
     get_current_user,
@@ -56,7 +57,7 @@ async def get_upcoming_events(
     now = utcnow()
     cutoff = now + timedelta(days=days)
     stmt = (
-        select(Event)
+        live_events()
         .where(Event.start_time >= now, Event.start_time <= cutoff)
         .order_by(Event.start_time)
     )
@@ -69,7 +70,7 @@ async def get_upcoming_events(
 # browser blocks as mixed content on an https page. See "What NOT to do".
 @router.get('', response_model=list[EventOut])
 async def get_all_events(session: SessionDependencies):
-    return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
+    return [_event_out(e) for e in session.exec(live_events().order_by(Event.start_time)).all()]
 
 
 # --- QR attendance & points ---
@@ -169,7 +170,7 @@ async def get_all_events_for_chairs(
     """Every chapter event, read-only, no codes. Not public — same gate as
     /events/mine. Lets a chair/E-Board member see the full calendar (not
     just what they personally host) without leaking any codes."""
-    return [_event_out(e) for e in session.exec(select(Event).order_by(Event.start_time)).all()]
+    return [_event_out(e) for e in session.exec(live_events().order_by(Event.start_time)).all()]
 
 
 @router.get('/code/{code}', response_model=CodePreviewOut)
@@ -245,7 +246,7 @@ async def get_event_scan_count(
     per-event endpoint. Same two-layer guard as /events/{id}/attendance:
     require_event_host (coarse role gate) plus host_scoped_events
     (per-event scoping)."""
-    event = session.get(Event, event_id)
+    event = get_live_event(session, event_id)
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
@@ -270,7 +271,7 @@ async def get_event_attendance(
     Scoped through EventHost (attendance_services.host_scoped_events) —
     same as /events/mine — so a chair can't read another committee's
     roster. The president bypasses, same as everywhere else."""
-    event = session.get(Event, event_id)
+    event = get_live_event(session, event_id)
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
@@ -331,7 +332,7 @@ async def set_event_reminder(
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDependencies,
 ):
-    event = session.get(Event, event_id)
+    event = get_live_event(session, event_id)
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
