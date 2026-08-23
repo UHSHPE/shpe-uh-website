@@ -39,7 +39,7 @@ export default function Home() {
 	}, []);
 	
 	return (
-		<section className="text-[#001F5B] overflow-x-hidden mt-20">
+		<section className="text-[#001F5B] overflow-x-hidden">
 			<section className="relative min-h-[90vh] w-full overflow-hidden">
 
 				{/* Image and pattern section */}

@@ -65,7 +65,7 @@ const sponsors = [
 
 function HeroSection() {
   return (
-    <div className="relative min-h-screen flex items-center overflow-hidden bg-[#1a2858]">
+    <div className="relative min-h-[calc(100vh-var(--header-height))] flex items-center overflow-hidden bg-[#1a2858]">
       <img
         src={shpeSpirit}
         alt=""
@@ -73,7 +73,7 @@ function HeroSection() {
         style={{ mixBlendMode: 'multiply' }}
       />
 
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-8 pt-20 flex flex-col md:flex-row items-center gap-8 md:gap-16">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-8 flex flex-col md:flex-row items-center gap-8 md:gap-16">
         <div className="flex-1">
           <h1
             className="font-bold leading-none text-center"

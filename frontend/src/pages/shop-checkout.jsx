@@ -251,7 +251,7 @@ export default function ShopCheckout() {
 
   if (lines.length === 0) {
     return (
-      <div style={{ maxWidth: "640px", margin: "0 auto", padding: "140px 20px 72px", textAlign: "center", fontFamily: "var(--font-body)" }}>
+      <div style={{ maxWidth: "640px", margin: "0 auto", padding: "60px 20px 72px", textAlign: "center", fontFamily: "var(--font-body)" }}>
         <p style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 700, color: "var(--ink)" }}>Your cart is empty</p>
         <p style={{ margin: "0 0 18px", color: "var(--muted)", fontSize: "14px" }}>Add something from the shop to check out.</p>
         <Link to="/shop" className="primaryBtn" style={{ display: "inline-block", padding: "11px 22px", fontSize: "14px" }}>
@@ -262,7 +262,7 @@ export default function ShopCheckout() {
   }
 
   return (
-    <div style={{ maxWidth: "960px", margin: "0 auto", padding: "108px 20px 72px", fontFamily: "var(--font-body)" }}>
+    <div style={{ maxWidth: "960px", margin: "0 auto", padding: "28px 20px 72px", fontFamily: "var(--font-body)" }}>
       {/* Title + step indicator */}
       <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "24px", flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: "28px", fontWeight: 800, color: "var(--shpe-blue)" }}>Checkout</h1>

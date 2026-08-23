@@ -37,7 +37,7 @@ export default function ShopManagerPage() {
     <div style={{
       maxWidth: '1040px',
       margin: '0 auto',
-      padding: '96px 20px 80px',
+      padding: '16px 20px 80px',
       fontFamily: 'Work Sans, sans-serif',
     }}>
       <ShopManager />

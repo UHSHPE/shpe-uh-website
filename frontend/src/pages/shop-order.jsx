@@ -55,7 +55,7 @@ export default function ShopOrder() {
   const wrap = {
     maxWidth: "640px",
     margin: "0 auto",
-    padding: "120px 20px 72px",
+    padding: "40px 20px 72px",
     fontFamily: "var(--font-body)",
   };
 

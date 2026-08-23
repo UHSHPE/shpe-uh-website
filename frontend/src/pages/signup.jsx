@@ -312,7 +312,7 @@ export default function SignUp() {
     return (
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "calc(100vh - var(--header-height))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -357,7 +357,7 @@ export default function SignUp() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "calc(100vh - var(--header-height))",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

@@ -79,7 +79,7 @@ export default function Profile() {
 
   if (!user) {
     return (
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '120px 16px', fontFamily: 'Work Sans, sans-serif' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 16px', fontFamily: 'Work Sans, sans-serif' }}>
         <p style={{ color: '#6b7280' }}>Loading your profile…</p>
       </div>
     );
@@ -145,7 +145,7 @@ export default function Profile() {
     <div style={{
       maxWidth: '800px',
       margin: '0 auto',
-      padding: '96px 16px 80px',
+      padding: '16px 16px 80px',
       fontFamily: 'Work Sans, sans-serif',
     }}>
       {/* Hero strip */}

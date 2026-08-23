@@ -201,7 +201,7 @@ export default function Dashboard() {
     <div style={{
       maxWidth: '800px',
       margin: '0 auto',
-      padding: '96px 16px 80px',
+      padding: '16px 16px 80px',
       fontFamily: 'Work Sans, sans-serif',
     }}>
       {/* Hero strip */}

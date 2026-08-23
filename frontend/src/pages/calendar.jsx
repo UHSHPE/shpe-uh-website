@@ -151,7 +151,7 @@ export default function Calendar() {
     <div style={{
       maxWidth: '880px',
       margin: '0 auto',
-      padding: '96px 16px 80px',
+      padding: '16px 16px 80px',
       fontFamily: 'Work Sans, sans-serif',
     }}>
       <motion.div

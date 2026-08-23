@@ -23,7 +23,7 @@ export default function DuesBanner() {
     <div
       role="alert"
       style={{
-        position: "fixed",
+        position: "sticky",
         top: "var(--header-height)",
         left: 0,
         right: 0,

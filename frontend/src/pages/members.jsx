@@ -428,7 +428,7 @@ export default function MembersPage() {
     <div style={{
       maxWidth: "1040px",
       margin: "0 auto",
-      padding: "96px 20px 80px",
+      padding: "16px 20px 80px",
       fontFamily: "Work Sans, sans-serif",
     }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>

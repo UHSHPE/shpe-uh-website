@@ -64,7 +64,7 @@ export default function MyEventsPage() {
   const events = tab === "mine" ? mineEvents : allEvents;
 
   return (
-    <div style={{ maxWidth: "1040px", margin: "0 auto", padding: "96px 20px 80px", fontFamily: "Work Sans, sans-serif" }}>
+    <div style={{ maxWidth: "1040px", margin: "0 auto", padding: "16px 20px 80px", fontFamily: "Work Sans, sans-serif" }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
         <h1 style={{ margin: "0 0 6px", fontSize: "30px", fontWeight: 800, color: "var(--shpe-navy)" }}>Events</h1>
         <p style={{ margin: "0 0 24px", fontSize: "14px", color: "var(--muted)" }}>
