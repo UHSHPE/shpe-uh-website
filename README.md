@@ -232,9 +232,13 @@ if cfg: cfg[0].refresh(gt.Request()); print('token OK')
 
 #### Event tracker sheet sync (optional, one-time setup)
 
-When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. Events are matched by date + name, so editing an event's description, time, location, or owning committee in the sheet updates the calendar entry in place on the next sync.
+When configured, the backend reads the chapter's event-tracker spreadsheet once a day (6 AM Central) and reconciles it into the events calendar. Access is **read-only** — the backend never writes to the sheet. **Events are matched by the spreadsheet row they live on**, so editing an event's name, description, time, location, or owning committee in the sheet updates the same calendar entry in place on the next sync — renaming an event no longer creates a duplicate.
 
-> **Moving an event to a different day, or renaming it, creates a second calendar entry** rather than replacing the first — the old one has to be removed by hand. The sync only ever adds and updates; it never deletes, so removing a row from the sheet also leaves its calendar entry in place.
+> **Clearing a row removes the event from the calendar.** It's hidden, not destroyed — re-filling the row brings the same event back, and anything already hidden can be restored in the database.
+>
+> **Moving an event to a different day** means moving it to the row for that day, which the sync reads as the old event being removed and a new one added. The calendar ends up correct, but anyone who set an email reminder for it loses that reminder.
+>
+> **Events that have already started are never changed.** Editing or clearing a past row does nothing — that's what keeps check-in rosters and awarded points intact.
 
 > Unlike the Drive resume sync above, a **service account is the right choice here** — it only needs read access to a sheet you share with it, so the personal-Drive storage limitation doesn't apply.
 
@@ -254,7 +258,7 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 
 > Keep the service-account JSON out of version control — treat it like a password. `backend/secrets/` and `backend/.env` are both already gitignored.
 
-> **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1**; if the fall sheet is still configured when the year rolls over, its events get re-read as next year's and appear on the calendar a second time.
+> **Each semester has its own tracker sheet.** Dates in the sheet are `MM/DD` with no year, so the sync assumes the current year — which is correct as long as `SHEET_ID` points at the sheet for the semester you're in. **Switch `SHEET_ID` to the spring sheet before January 1.** If the fall sheet is still configured when the year rolls over, its rows all read as past events and are simply left alone, so nothing breaks — but the spring events won't appear until you switch.
 
 **Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `COLLAB(S)?`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
 
@@ -352,7 +356,7 @@ shpe-uh-website/
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
-│       ├── hooks/          # useDocumentTitle — sets the browser tab title per page
+│       ├── hooks/          # useDocumentTitle (browser tab title per page), usePagination (10-per-page list paging)
 │       ├── utils/          # Shared helpers (money formatting, order-status styling, cart re-pricing, event colors/labels/duration)
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
@@ -373,7 +377,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance/event-visibility services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (runs against a dedicated `shpe_test` Postgres database; requires the database container to be running)
 ```
@@ -422,12 +426,12 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
 | DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive; if Drive is unreachable the local copy is still removed and the backend keeps its reference to the Drive file, so a later upload replaces it instead of leaving a stray copy) |
-| GET | `/events` | No | All events (powers the public calendar) |
-| GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days |
+| GET | `/events` | No | All events (powers the public calendar). Events removed from the tracker sheet are hidden |
+| GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days. Events removed from the tracker sheet are hidden |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |
 | DELETE | `/events/{id}/remind` | Yes | Cancel an unsent reminder |
 | GET | `/events/reminders/me` | Yes | Current user's active reminders |
-| POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice. Too early (more than ~1 hour before the event) is rejected |
+| POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice. Too early (more than ~1 hour before the event) is rejected, and a code for an event removed from the tracker sheet stops working |
 | GET | `/events/code/{code}` | Optional | Preview a scanned code before recording anything — event name/time/location and whether check-in is open yet, expired, or already recorded (fills in with a valid token) |
 | GET | `/events/mine` | Chair/E-Board | Events they host, with the sign-in/sign-out codes to render as QR |
 | GET | `/events/all` | Chair/E-Board | Every chapter event, read-only (no codes) |

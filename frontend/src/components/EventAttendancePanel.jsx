@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { getEventAttendance } from "../api/api";
 import { formatClock, formatDuration, formatEventTime } from "../utils/events";
+import usePagination from "../hooks/usePagination";
+import Pagination from "./Pagination";
 
 // Read-only attendance roster that expands under an event card on
 // pages/my-events.jsx. No manual add/adjust — that's an explicit follow-up
@@ -26,6 +28,10 @@ export default function EventAttendancePanel({ event }) {
   }, [event.id]);
 
   const signedOutCount = rows?.filter((r) => r.signed_out_at).length ?? 0;
+
+  // Slices only the rendered rows — the header stats above still read the
+  // full roster.
+  const pager = usePagination(rows ?? []);
 
   return (
     <div
@@ -73,7 +79,8 @@ export default function EventAttendancePanel({ event }) {
           No one has checked in yet.
         </p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <>
+          <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "620px" }}>
             <thead>
               <tr style={{ fontSize: "11px", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted-soft)" }}>
@@ -86,7 +93,7 @@ export default function EventAttendancePanel({ event }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {pager.pageItems.map((r) => (
                 <tr key={r.user_id} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={tdStyle}>
                     <span style={{ fontWeight: 700, color: "var(--ink)" }}>
@@ -112,7 +119,13 @@ export default function EventAttendancePanel({ event }) {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+          {/* Outside the horizontal scroller, so the controls don't slide off
+              with the table. Padding matches the cells' 20px gutter. */}
+          <div style={{ padding: "0 20px 16px" }}>
+            <Pagination {...pager} label="attendees" />
+          </div>
+        </>
       )}
     </div>
   );

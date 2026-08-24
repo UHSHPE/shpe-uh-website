@@ -61,7 +61,7 @@ export default function VerifyEmail() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "calc(100vh - var(--header-height))",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

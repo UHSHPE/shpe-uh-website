@@ -30,10 +30,10 @@ export function ScrollTransitionHero() {
       {/* Title Section - Zooms in */}
       <motion.div
         style={{ opacity: titleOpacity, scale: titleScale, y: titleY }}
-        className="sticky top-0 overflow-hidden max-h-screen flex items-center justify-center"
+        className="sticky top-[var(--header-height)] overflow-hidden max-h-[calc(100vh-var(--header-height))] flex items-center justify-center"
       >
 
-        <div className="relative z-10 flex min-h-screen items-center justify-center w-full">
+        <div className="relative z-10 flex min-h-[calc(100vh-var(--header-height))] items-center justify-center w-full">
           <h1 className="leading-none font-bold flex flex-col" style={{ fontFamily: 'Work Sans, sans-serif' }}>
             <span className="text-[#1a2858] text-[58px] md:text-[116px] top-2 md:top-5 left-8 md:left-12 italic relative">our</span>
             

@@ -310,3 +310,41 @@ def test_host_scoped_events_regular_member_sees_nothing(session, user):
     link_host(session, event, social)
 
     assert host_scoped_events(session, user) == []
+
+
+# --- soft-deleted events are invisible everywhere ---
+
+def test_resolve_code_ignores_a_soft_deleted_event(session):
+    # An event pulled from the tracker sheet is off the calendar, so its QR
+    # must stop awarding points -- otherwise a code already printed on a
+    # flyer keeps working for an event that no longer exists.
+    event = make_event(session, sign_in_code="in-abc", sign_out_code="out-abc")
+    event.deleted_at = utcnow()
+    session.add(event)
+    session.commit()
+
+    assert attendance_services.resolve_code(session, "in-abc") is None
+    assert attendance_services.resolve_code(session, "out-abc") is None
+
+def test_host_scoped_events_hides_a_soft_deleted_event_from_its_chair(session):
+    social = make_committee(session, name="Social", chair_role=Role.social_chair)
+    social_chair = make_chair(session, social)
+    live = make_event(session, title="Mixer")
+    hidden = make_event(session, title="Cancelled Mixer", deleted_at=utcnow())
+    link_host(session, live, social)
+    link_host(session, hidden, social)
+
+    events = host_scoped_events(session, social_chair)
+
+    assert [e.id for e in events] == [live.id]
+
+def test_host_scoped_events_hides_a_soft_deleted_event_from_the_president(session):
+    # The president's branch is a separate query (full access, no EventHost
+    # join), so it needs the filter of its own.
+    president = make_user(session, role=Role.president)
+    live = make_event(session, title="Mixer")
+    make_event(session, title="Cancelled Mixer", deleted_at=utcnow())
+
+    events = host_scoped_events(session, president)
+
+    assert [e.id for e in events] == [live.id]

@@ -5,7 +5,7 @@ export default function Gallery() {
   useDocumentTitle("Gallery");
   // Header and Footer are already rendered globally in App.jsx.
   return (
-    <div className="bg-white min-h-screen mt-30">
+    <div className="bg-white min-h-screen pt-10">
       <GalleryApproved />
     </div>
   );

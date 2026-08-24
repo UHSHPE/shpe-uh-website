@@ -8,7 +8,9 @@ import { isChair, isEboard } from "../utils/shop";
 import { eventColor, eventTypeLabel, formatEventDay, formatEventTime } from "../utils/events";
 import EventQrModal from "../components/EventQrModal";
 import EventAttendancePanel from "../components/EventAttendancePanel";
+import Pagination from "../components/Pagination";
 import useDocumentTitle from "../hooks/useDocumentTitle";
+import usePagination from "../hooks/usePagination";
 
 // Chair/E-Board Events page — My Events (with QR + attendance) and All
 // Events (read-only, no codes). Route gate mirrors pages/shop-manager.jsx:
@@ -49,6 +51,11 @@ export default function MyEventsPage() {
     };
   }, [authorized]);
 
+  const events = tab === "mine" ? mineEvents : allEvents;
+  // Above the early returns below — a hook can't be called conditionally.
+  // Switching tabs swaps the whole list, so it resets to page 1.
+  const pager = usePagination(events, { resetKey: tab });
+
   if (!user) {
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--blue)", fontWeight: 600, fontFamily: "Work Sans, sans-serif" }}>
@@ -61,10 +68,8 @@ export default function MyEventsPage() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const events = tab === "mine" ? mineEvents : allEvents;
-
   return (
-    <div style={{ maxWidth: "1040px", margin: "0 auto", padding: "96px 20px 80px", fontFamily: "Work Sans, sans-serif" }}>
+    <div style={{ maxWidth: "1040px", margin: "0 auto", padding: "16px 20px 80px", fontFamily: "Work Sans, sans-serif" }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
         <h1 style={{ margin: "0 0 6px", fontSize: "30px", fontWeight: 800, color: "var(--shpe-navy)" }}>Events</h1>
         <p style={{ margin: "0 0 24px", fontSize: "14px", color: "var(--muted)" }}>
@@ -118,7 +123,7 @@ export default function MyEventsPage() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {events.map((ev) => (
+          {pager.pageItems.map((ev) => (
             <div key={ev.id}>
               <div
                 style={{
@@ -206,6 +211,7 @@ export default function MyEventsPage() {
               {tab === "mine" && expandedId === ev.id && <EventAttendancePanel event={ev} />}
             </div>
           ))}
+          <Pagination {...pager} label="events" />
         </div>
       )}
 

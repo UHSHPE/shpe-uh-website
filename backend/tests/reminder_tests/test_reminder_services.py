@@ -144,3 +144,23 @@ def test_sends_one_email_per_due_reminder(session, sent_emails):
 
     assert count == 2
     assert {email["to"] for email in sent_emails} == {"test@gmail.com", "other@gmail.com"}
+
+
+def test_no_email_for_a_soft_deleted_event(session, sent_emails):
+    # An event swept out of the tracker sheet is off the calendar -- reminding
+    # a member to attend it would be worse than silence. The reminder row is
+    # normally deleted by the sweep itself; this covers an event hidden by any
+    # other route (a manual UPDATE, say) so the dispatcher fails safe.
+    user = make_user(session)
+    event = make_event(session, title="Cancelled Workshop", start_in=timedelta(hours=12))
+    reminder = _add_reminder(session, user, event)
+    event.deleted_at = utcnow()
+    session.add(event)
+    session.commit()
+
+    count = send_due_reminders(session)
+
+    assert count == 0
+    assert sent_emails == []
+    session.refresh(reminder)
+    assert reminder.sent_at is None   # stays unsent, not silently consumed

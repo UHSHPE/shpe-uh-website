@@ -4,7 +4,16 @@ from sqlmodel import SQLModel, Field
 
 class Event(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    source_row_id: str | None = Field(default=None, index=True, unique=True)
+    # Which row of the event-tracker sheet this event came from -- the sync's
+    # identity. The tracker is a fixed skeleton (rows 1..n pre-laid out by
+    # date, chairs fill in a free row, nothing ever shifts), so the row number
+    # is stable across any content edit -- unlike the old date|title key,
+    # which forked a new identity every time someone renamed or moved an
+    # event and left the stale row behind. Deliberately NOT unique: the
+    # skeleton reuses slots, so a soft-deleted event and its replacement can
+    # both hold row 40. NULL means "not from the sheet" (seeded, hand-added,
+    # or a pre-migration past event) -- sync_events never touches those.
+    sheet_row: int | None = Field(default=None, index=True)
     title: str
     description: str | None = None
     location: str | None = None
@@ -14,6 +23,13 @@ class Event(SQLModel, table=True):
     event_type: str | None = None #aka projects, professional, eboard, etc
     sign_in_code: str | None = Field(default=None, index=True, unique=True)
     sign_out_code: str | None = Field(default=None, index=True, unique=True)
+    # Soft delete: stamped when the event's sheet row is cleared. Nothing
+    # hard-deletes an Event -- EventReminder/EventHost/EventAttendance all
+    # carry a plain foreign_key="event.id" with no ondelete and no ORM
+    # Relationship(), so a real delete raises ForeignKeyViolation and (since
+    # sync_events commits once at the end) would roll back the whole batch.
+    # Every read path filters on this via services/event_services.py.
+    deleted_at: datetime | None = Field(default=None, index=True)
 
 
 class EventOut(SQLModel):

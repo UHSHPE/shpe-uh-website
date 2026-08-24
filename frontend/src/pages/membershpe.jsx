@@ -5,14 +5,14 @@ import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export function Hero() {
   return (
-    <div className="relative w-full min-h-screen overflow-clip">
+    <div className="relative w-full min-h-[calc(100vh-var(--header-height))] overflow-clip">
       <img
         src={confetti}
         alt="Confetti background"
         className="absolute block top-25 w-full h-full object-cover"
       />
       <div
-        className="relative z-10 flex flex-col min-h-screen items-center justify-center gap-7"
+        className="relative z-10 flex flex-col min-h-[calc(100vh-var(--header-height))] items-center justify-center gap-7"
         style={{
           display: "flex",
           alignItems: "center",

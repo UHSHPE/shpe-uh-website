@@ -5,6 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { DUES_PRODUCT_NAME } from "../utils/dues";
 import StatusPill from "./StatusPill";
+import Pagination from "./Pagination";
+import usePagination from "../hooks/usePagination";
 import { formatCents, formatOrderDate, orderItemsSummary } from "../utils/shop";
 
 // "My orders" card on the profile page — shows the most recent order with
@@ -15,6 +17,10 @@ export default function MyOrders() {
   const [expanded, setExpanded] = useState(false);
   const { user } = useAuth();
   const { addItem, showToast } = useCart();
+
+  // Collapsed still shows just the latest order; this paginates the expanded
+  // view, which was the unbounded half.
+  const pager = usePagination(orders ?? []);
 
   useEffect(() => {
     getMyShopOrders()
@@ -92,7 +98,7 @@ export default function MyOrders() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {/* Orders arrive newest-first — collapsed view is just the latest. */}
-        {(expanded ? (orders ?? []) : (orders ?? []).slice(0, 1)).map((order) => (
+        {(expanded ? pager.pageItems : (orders ?? []).slice(0, 1)).map((order) => (
           <div
             key={order.id}
             style={{
@@ -137,6 +143,8 @@ export default function MyOrders() {
           </div>
         ))}
       </div>
+
+      {expanded && <Pagination {...pager} label="orders" />}
 
       {(orders?.length ?? 0) > 1 && (
         <button

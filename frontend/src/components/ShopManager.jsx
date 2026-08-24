@@ -19,6 +19,8 @@ import StatusPill from "./StatusPill";
 import { formatCents, formatOrderDate, orderItemsSummary, typeLabel } from "../utils/shop";
 import { ChevronDownIcon, CheckIcon, CloseIcon, ImageIcon, PencilIcon, PlusIcon, TrashIcon } from "./shopIcons";
 import ConfirmDialog from "./ConfirmDialog";
+import Pagination from "./Pagination";
+import usePagination from "../hooks/usePagination";
 
 const APPAREL_SIZES = ["S", "M", "L", "XL", "2XL"];
 
@@ -208,6 +210,16 @@ export default function ShopManager() {
 
   const visibleOrders = orders.filter((o) => orderFilter === "all" || o.status === orderFilter);
 
+  // One pager per list. All four run unconditionally, above the tab branches
+  // below — a hook can't be called conditionally, and the retired pager's
+  // controls live inside a collapse. `counts`, `unread` and `markAllRead`
+  // above deliberately keep reading the full arrays, so the badges stay
+  // totals rather than per-page counts.
+  const liveProductsPager = usePagination(liveProducts);
+  const retiredPager = usePagination(retiredProducts);
+  const ordersPager = usePagination(visibleOrders, { resetKey: orderFilter });
+  const notifsPager = usePagination(notifications);
+
   const tabs = [
     { key: "overview", label: "Overview" },
     { key: "products", label: "Products" },
@@ -318,7 +330,7 @@ export default function ShopManager() {
                 <span>Status</span>
                 <span style={{ textAlign: "right" }}>Edit</span>
               </div>
-              {liveProducts.map((p) => (
+              {liveProductsPager.pageItems.map((p) => (
                 <div key={p.id} style={{ ...productRow, borderBottom: "1px solid var(--surface-soft)" }}>
                   <div
                     style={{
@@ -371,6 +383,8 @@ export default function ShopManager() {
               )}
             </div>
 
+            <Pagination {...liveProductsPager} label="products" />
+
             {/* Retired (soft-deleted) products — restorable, never destroyed */}
             <div style={{ marginTop: "18px", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
               <button
@@ -396,13 +410,14 @@ export default function ShopManager() {
               </button>
 
               {retiredOpen && (
+                <>
                 <div style={{ borderTop: "1px solid var(--border)", overflowX: "auto" }}>
                   {retiredProducts.length === 0 ? (
                     <div style={{ padding: "20px 16px", textAlign: "center", color: "var(--muted)", fontSize: "13px" }}>
                       Nothing retired yet — retired products land here and can be restored.
                     </div>
                   ) : (
-                    retiredProducts.map((p) => (
+                    retiredPager.pageItems.map((p) => (
                       <div key={p.id} style={{ ...productRow, borderBottom: "1px solid var(--surface-soft)", opacity: 0.7 }}>
                         <div
                           style={{
@@ -459,6 +474,12 @@ export default function ShopManager() {
                     ))
                   )}
                 </div>
+                {/* Outside the scroller, so the controls don't slide off with
+                    the table. */}
+                <div style={{ padding: "0 16px 14px" }}>
+                  <Pagination {...retiredPager} label="retired products" />
+                </div>
+                </>
               )}
             </div>
           </>
@@ -507,7 +528,7 @@ export default function ShopManager() {
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {visibleOrders.map((order) => {
+              {ordersPager.pageItems.map((order) => {
                 const expanded = expandedId === order.id;
                 return (
                   <div key={order.id} style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
@@ -629,6 +650,7 @@ export default function ShopManager() {
                 );
               })}
             </div>
+            <Pagination {...ordersPager} label="orders" />
           </>
         )}
 
@@ -654,7 +676,7 @@ export default function ShopManager() {
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {notifications.map((n) =>
+              {notifsPager.pageItems.map((n) =>
                 n.is_read ? (
                   <div key={n.id} style={{ border: "1px solid var(--border)", borderLeft: "4px solid var(--border)", borderRadius: "10px", padding: "12px 16px", background: "#fff", display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start" }}>
                     <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)" }}>{n.body}</p>
@@ -675,6 +697,7 @@ export default function ShopManager() {
                 )
               )}
             </div>
+            <Pagination {...notifsPager} label="notifications" />
           </>
         )}
         {/* SETTINGS */}

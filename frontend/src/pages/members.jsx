@@ -20,7 +20,9 @@ import {
   TOP_TIER_ROLES,
 } from "../utils/shop";
 import ConfirmDialog from "../components/ConfirmDialog";
+import Pagination from "../components/Pagination";
 import useDocumentTitle from "../hooks/useDocumentTitle";
+import usePagination from "../hooks/usePagination";
 
 // Members directory for the president and both VPs: chapter-wide stats
 // (accounts, dues paid vs not), member lookup, role assignment, and the
@@ -359,6 +361,13 @@ export default function MembersPage() {
     });
   }, [members, tab, search, duesFilter, roleFilter]);
 
+  // Slices only the rendered rows — `visible` above still drives the counts
+  // and the tab badges. Any of the four controls above the table changing
+  // sends the reader back to page 1.
+  const pager = usePagination(visible, {
+    resetKey: `${tab}|${search}|${duesFilter}|${roleFilter}`,
+  });
+
   const tabCounts = useMemo(() => ({
     all: members?.length ?? 0,
     eboard: members?.filter((m) => isEboardRole(m.role)).length ?? 0,
@@ -428,7 +437,7 @@ export default function MembersPage() {
     <div style={{
       maxWidth: "1040px",
       margin: "0 auto",
-      padding: "96px 20px 80px",
+      padding: "16px 20px 80px",
       fontFamily: "Work Sans, sans-serif",
     }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
@@ -596,7 +605,7 @@ export default function MembersPage() {
           </p>
         )}
 
-        {visible.map((m) => {
+        {pager.pageItems.map((m) => {
           const isSelf = m.id === user.id;
           // Only the president may change a top-tier role (president or
           // either VP) — the backend 403s a VP here, so don't offer a select
@@ -653,11 +662,12 @@ export default function MembersPage() {
         })}
       </div>
 
+      <Pagination {...pager} label="accounts" />
+
       {members !== null && (
         <p style={{ margin: "12px 4px 0", fontSize: "12px", color: "var(--muted-soft)" }}>
-          Showing {visible.length} of {members.length} accounts. Changing a chair role also
-          updates that committee's chair automatically. The About page roster is maintained
-          by hand and does not change.
+          Changing a chair role also updates that committee's chair automatically.
+          The About page roster is maintained by hand and does not change.
         </p>
       )}
       </>

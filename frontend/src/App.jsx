@@ -39,8 +39,10 @@ export default function App() {
 	return (
 		<div className="app">
 			{!bare && <Header />}
-			{!bare && <DuesBanner />}
-			<main className="main">
+			<main className={`main${bare ? ' bare' : ''}`}>
+				{/* Sticky, not fixed, and inside <main> so it occupies real layout
+				    space instead of covering the top of every page's content. */}
+				{!bare && <DuesBanner />}
 				<Routes>
 					<Route path="/" element={<Home />} />
 					<Route path="/about" element={<About />} />

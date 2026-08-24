@@ -10,6 +10,7 @@ from models.event_attendance import EventAttendance
 from models.event_host import EventHost
 from models.user.user import User
 from models.user.user_enums import EBOARD_ROLES, Role
+from services.event_services import live_events
 from services.event_tracker_services import SHEET_TZ, to_utc
 from services.time_services import utcnow
 
@@ -54,11 +55,15 @@ def resolve_code(session, code: str) -> tuple[Event, str] | None:
     """(event, "in" | "out") for a scanned code, or None if it matches
     neither column. Both columns are unique-indexed, so each branch is an
     index hit; because the action rides on *which code was scanned*, a
-    mislabeled QR can't happen."""
-    event = session.exec(select(Event).where(Event.sign_in_code == code)).first()
+    mislabeled QR can't happen.
+
+    Goes through live_events() so a soft-deleted event's code stops working --
+    an event pulled from the sheet is off the calendar, and its QR must not
+    keep awarding points."""
+    event = session.exec(live_events().where(Event.sign_in_code == code)).first()
     if event:
         return event, "in"
-    event = session.exec(select(Event).where(Event.sign_out_code == code)).first()
+    event = session.exec(live_events().where(Event.sign_out_code == code)).first()
     if event:
         return event, "out"
     return None
@@ -200,7 +205,7 @@ def host_scoped_events(session, user: User) -> list[Event]:
     event's codes.
     """
     if user.role == Role.president:
-        return session.exec(select(Event).order_by(Event.start_time)).all()
+        return session.exec(live_events().order_by(Event.start_time)).all()
 
     committee_ids = set(session.exec(
         select(CommitteeMembership.committee_id).where(
@@ -219,7 +224,7 @@ def host_scoped_events(session, user: User) -> list[Event]:
         return []
 
     return session.exec(
-        select(Event)
+        live_events()
         .join(EventHost, EventHost.event_id == Event.id)
         .where(EventHost.committee_id.in_(committee_ids))
         .distinct()

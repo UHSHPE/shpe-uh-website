@@ -43,7 +43,7 @@ export default function Shop() {
       style={{
         maxWidth: "1200px",
         margin: "0 auto",
-        padding: "108px 20px 72px",
+        padding: "28px 20px 72px",
         fontFamily: "var(--font-body)",
       }}
     >
