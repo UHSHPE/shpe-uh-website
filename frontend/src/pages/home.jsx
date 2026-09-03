@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import shpeSpirit from "../assets/images/SHPESpiritWeb.png"
+import shpeSpirit from "../assets/images/SHPESpiritWeb.jpg"
 import shpeLogo from "../assets/images/shpelogo.png"
 import homeDecor from "../assets/images/homeDecor.png"
 import waves from "../assets/images/waves.png"
@@ -46,11 +46,22 @@ export default function Home() {
 				<div className='absolute h-full w-[80%]'>
 					{/* Image and Shadow Section */}
 					<div className='shadowWrapper absolute z-80 w-full h-full' style={{ filter: "drop-shadow(6px 12px 20px rgba(0,0,0,0.8))"}}>
-						<div className="imageClip absolute left-0 top-0 h-full w-full overflow-hidden md:[clip-path:polygon(0_0,15%_0,66%_100%,0_100%)] lg:[clip-path:polygon(0_0,15%_0,60%_100%,0_100%)]">
+						<div className="absolute left-0 top-0 h-full w-full overflow-hidden">
 							<img
 							src={shpeSpirit}
 							alt="SHPE members"
-							className="absolute h-full w-full object-cover object-[95%_center]"
+							/* These widths do two jobs at once, so changing one changes both.
+							   They set how far right the photo panel reaches (ending well clear
+							   of the headline column, which starts at 60% of the viewport), and
+							   they drive the crop: object-cover only crops on the axis where the
+							   image overflows, so object-position-x below does nothing unless the
+							   image is WIDER than its box. At w-full the box is ~1.42 wide-to-tall
+							   against a 1.33 photo, which crops vertically and shows the darker
+							   left of the frame; narrowing past the photo's ratio restores
+							   horizontal cropping and lets the 95% land on the bright right side.
+							   Mobile keeps w-full — it is portrait enough to crop horizontally
+							   already. */
+							className="absolute h-full w-full md:w-[70%] lg:w-[64%] object-cover object-[95%_center]"
 							/>
 						</div>
 					</div>
