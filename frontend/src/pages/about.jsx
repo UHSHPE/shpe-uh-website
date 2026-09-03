@@ -4,9 +4,41 @@ import { useRef } from 'react';
 import { useInView } from 'framer-motion';
 import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
 import pillarImg from '../assets/images/pillar.png'
-import Daniel from '../assets/images/Eboard_Photos/Daniel.JPG'
-import Carlos from '../assets/images/Eboard_Photos/Carlos.JPG'
-import Gabriela from '../assets/images/Eboard_Photos/Gaby.JPG'
+// 2026-2027 leadership headshots, one per roster seat below. The sources are
+// full-resolution shoot exports (2-17 MB each); everything committed here is
+// downscaled to an 800px max edge, because MemberCard renders them as 160px
+// circles. Don't drop an original in beside them.
+import DanielLopezGil from '../assets/images/leadership/eboard/daniel-lopez-gil.jpg'
+import GabrielaLorenzo from '../assets/images/leadership/eboard/gabriela-lorenzo.jpg'
+import CarlosAlba from '../assets/images/leadership/eboard/carlos-alba.jpg'
+import JadenGomez from '../assets/images/leadership/eboard/jaden-gomez.jpg'
+import SaraSanchez from '../assets/images/leadership/eboard/sara-sanchez.jpg'
+import JenniferBonilla from '../assets/images/leadership/eboard/jennifer-bonilla.jpg'
+import SantiagoGonzalez from '../assets/images/leadership/eboard/santiago-gonzalez.jpg'
+import FernandoVaca from '../assets/images/leadership/eboard/fernando-vaca.jpg'
+import AlejandroCastro from '../assets/images/leadership/eboard/alejandro-castro.jpg'
+import AngelMontoya from '../assets/images/leadership/chairs/angel-montoya.jpg'
+import SophiaRodriguez from '../assets/images/leadership/chairs/sophia-rodriguez.jpg'
+import SmileyTrenton from '../assets/images/leadership/chairs/smiley-trenton.jpg'
+import EanPlasencia from '../assets/images/leadership/chairs/ean-plasencia.jpg'
+import SaraRomero from '../assets/images/leadership/chairs/sara-romero.jpg'
+import DavidCohen from '../assets/images/leadership/chairs/david-cohen.jpg'
+import EthanLopez from '../assets/images/leadership/chairs/ethan-lopez.jpg'
+import ValeriaZabala from '../assets/images/leadership/chairs/valeria-zabala.jpg'
+import GabrielaBarreno from '../assets/images/leadership/chairs/gabriela-barreno.jpg'
+import NicolasHorton from '../assets/images/leadership/chairs/nicolas-horton.jpg'
+import MiaFlores from '../assets/images/leadership/chairs/mia-flores.jpg'
+import KhrisFlores from '../assets/images/leadership/chairs/khris-flores.jpg'
+import RhonmarMarges from '../assets/images/leadership/chairs/rhonmar-marges.jpg'
+import LorenzoRamos from '../assets/images/leadership/chairs/lorenzo-ramos.jpg'
+import AlfonsoSalas from '../assets/images/leadership/chairs/alfonso-salas.jpg'
+import IsabelaMorales from '../assets/images/leadership/chairs/isabela-morales.jpg'
+import BlakeWeaver from '../assets/images/leadership/chairs/blake-weaver.jpg'
+import AlexiUrbina from '../assets/images/leadership/chairs/alexi-urbina.jpg'
+import MarylinUriostegui from '../assets/images/leadership/chairs/marylin-uriostegui.jpg'
+import AnahiSalinas from '../assets/images/leadership/chairs/anahi-salinas.jpg'
+import SamuelAvendano from '../assets/images/leadership/chairs/samuel-avendano.jpg'
+import ElvinPaz from '../assets/images/leadership/chairs/elvin-paz.jpg'
 import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export function ScrollTransitionHero() {
@@ -203,46 +235,46 @@ export function VisionSection() {
 
 /* E-BOARD & CHAIRS */
 
-// 2026-2027 E-Board. Photos exist only for returning members (Daniel, Gabriela,
-// Carlos); everyone else falls back to an initials placeholder until a photo is added.
+// 2026-2027 E-Board. Every seat has a headshot; MemberCard's initials placeholder
+// is the fallback for a seat filled before its photo exists.
 const boardMembers = [
-  { name: 'Daniel Lopez Gil', position: 'President', email: 'president@shpeuh.org', img: Daniel },
-  { name: 'Gabriela Lorenzo', position: 'Vice President Internal', email: 'vp.internal@shpeuh.org', img: Gabriela },
-  { name: 'Carlos Alba', position: 'Vice President External', email: 'vp.external@shpeuh.org', img: Carlos },
-  { name: 'Jaden Gomez', position: 'Treasurer', email: 'treasurer@shpeuh.org' },
-  { name: 'Sara Sanchez', position: 'Secretary', email: 'secretary@shpeuh.org' },
-  { name: 'Jennifer Bonilla', position: 'Communications Director', email: 'comm.director@shpeuh.org' },
-  { name: 'Santiago Gonzalez', position: 'New Member Representative', email: 'new.member.rep@shpeuh.org' },
-  { name: 'Fernando Vaca', position: 'Regional Representative', email: 'regional.rep@shpeuh.org' },
-  { name: 'Alejandro Castro', position: 'Director of Internal Affairs', email: 'director.internal@shpeuh.org' }
+  { name: 'Daniel Lopez Gil', position: 'President', email: 'president@shpeuh.org', img: DanielLopezGil },
+  { name: 'Gabriela Lorenzo', position: 'Vice President Internal', email: 'vp.internal@shpeuh.org', img: GabrielaLorenzo },
+  { name: 'Carlos Alba', position: 'Vice President External', email: 'vp.external@shpeuh.org', img: CarlosAlba },
+  { name: 'Jaden Gomez', position: 'Treasurer', email: 'treasurer@shpeuh.org', img: JadenGomez },
+  { name: 'Sara Sanchez', position: 'Secretary', email: 'secretary@shpeuh.org', img: SaraSanchez },
+  { name: 'Jennifer Bonilla', position: 'Communications Director', email: 'comm.director@shpeuh.org', img: JenniferBonilla },
+  { name: 'Santiago Gonzalez', position: 'New Member Representative', email: 'new.member.rep@shpeuh.org', img: SantiagoGonzalez },
+  { name: 'Fernando Vaca', position: 'Regional Representative', email: 'regional.rep@shpeuh.org', img: FernandoVaca },
+  { name: 'Alejandro Castro', position: 'Director of Internal Affairs', email: 'director.internal@shpeuh.org', img: AlejandroCastro }
 ];
 
 // 2026-2027 chair roster. Emails are the committee role-based addresses
 // (@shpeuhchair.org), which stay constant regardless of who holds the role.
-// Photos are not yet available — cards fall back to an initials placeholder.
+// Every seat has a headshot.
 const chairs = [
-  { name: 'Angel Montoya', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
-  { name: 'Sophia Rodriguez', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org' },
-  { name: 'Smiley Trenton', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org' },
-  { name: 'Ean Plasencia', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org' },
-  { name: 'Sara Romero', position: 'Career Fair Chair', email: 'Career.Fair@shpeuhchair.org' },
-  { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
-  { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org' },
-  { name: 'Valeria Zabala', position: 'Marketing Chair', email: 'Marketing@shpeuhchair.org' },
-  { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: 'Member.Relations@shpeuhchair.org' },
-  { name: 'Nicolas Horton', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
-  { name: 'Mia Flores', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org' },
-  { name: 'Khris Flores', position: 'Outreach Chair', email: 'Outreach@shpeuhchair.org' },
-  { name: 'Rhonmar Joseph Marges', position: 'Professional Chair', email: 'Professional@shpeuhchair.org' },
-  { name: 'Lorenzo Ramos', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org' },
-  { name: 'Alfonso Salas', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org' },
-  { name: 'Isabela Morales', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
-  { name: 'Blake Weaver', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org' },
-  { name: 'Alexi Urbina', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
-  { name: 'Marylin Uriostegui', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org' },
-  { name: 'Anahi Salinas', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
-  { name: 'Samuel Avendano', position: 'Social Chair', email: 'Social@shpeuhchair.org' },
-  { name: 'Elvin Paz', position: 'Web Development Chair', email: 'Web.Dev@shpeuhchair.org' }
+  { name: 'Angel Montoya', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org', img: AngelMontoya },
+  { name: 'Sophia Rodriguez', position: 'Academic Co-Chair', email: 'academics@shpeuhchair.org', img: SophiaRodriguez },
+  { name: 'Smiley Trenton', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org', img: SmileyTrenton },
+  { name: 'Ean Plasencia', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org', img: EanPlasencia },
+  { name: 'Sara Romero', position: 'Career Fair Chair', email: 'Career.Fair@shpeuhchair.org', img: SaraRomero },
+  { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org', img: DavidCohen },
+  { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org', img: EthanLopez },
+  { name: 'Valeria Zabala', position: 'Marketing Chair', email: 'Marketing@shpeuhchair.org', img: ValeriaZabala },
+  { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: 'Member.Relations@shpeuhchair.org', img: GabrielaBarreno },
+  { name: 'Nicolas Horton', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org', img: NicolasHorton },
+  { name: 'Mia Flores', position: 'MentorSHPE Coordinator', email: 'MentorSHPE@shpeuhchair.org', img: MiaFlores },
+  { name: 'Khris Flores', position: 'Outreach Chair', email: 'Outreach@shpeuhchair.org', img: KhrisFlores },
+  { name: 'Rhonmar Joseph Marges', position: 'Professional Chair', email: 'Professional@shpeuhchair.org', img: RhonmarMarges },
+  { name: 'Lorenzo Ramos', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org', img: LorenzoRamos },
+  { name: 'Alfonso Salas', position: 'Project Co-Chair', email: 'projects@shpeuhchair.org', img: AlfonsoSalas },
+  { name: 'Isabela Morales', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org', img: IsabelaMorales },
+  { name: 'Blake Weaver', position: 'SHPE Jr. Coordinator', email: 'SHPE.Jr@shpeuhchair.org', img: BlakeWeaver },
+  { name: 'Alexi Urbina', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org', img: AlexiUrbina },
+  { name: 'Marylin Uriostegui', position: 'SHPEtina Co-Chair', email: 'shpetina@shpeuhchair.org', img: MarylinUriostegui },
+  { name: 'Anahi Salinas', position: 'Social Chair', email: 'Social@shpeuhchair.org', img: AnahiSalinas },
+  { name: 'Samuel Avendano', position: 'Social Chair', email: 'Social@shpeuhchair.org', img: SamuelAvendano },
+  { name: 'Elvin Paz', position: 'Web Development Chair', email: 'Web.Dev@shpeuhchair.org', img: ElvinPaz }
 ];
 
 function getInitials(name) {
