@@ -2,7 +2,7 @@
 import { motion } from 'framer-motion';
 import { useInView } from 'framer-motion';
 import { useRef } from 'react';
-import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
+import shpeSpirit from '../assets/images/SHPESpiritWeb.jpg';
 import LYB         from '../assets/images/sponsors/lyondellbasell.png';
 import WILLIAMS    from '../assets/images/sponsors/williams.png';
 import ABB         from '../assets/images/sponsors/abb.png';

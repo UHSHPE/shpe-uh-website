@@ -2,7 +2,7 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
 import { useInView } from 'framer-motion';
-import shpeSpirit from '../assets/images/SHPESpiritWeb.png';
+import shpeSpirit from '../assets/images/SHPESpiritWeb.jpg';
 import pillarImg from '../assets/images/pillar.png'
 // 2026-2027 leadership headshots, one per roster seat below. The sources are
 // full-resolution shoot exports (2-17 MB each); everything committed here is

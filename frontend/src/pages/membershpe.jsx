@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom"
 import confetti from "../assets/membershpeImages/confettiBackground.png"
-import shpeSpirit from "../assets/images/SHPESpiritWeb.png"
+import shpeSpirit from "../assets/images/SHPESpiritWeb.jpg"
 import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export function Hero() {
