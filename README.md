@@ -361,8 +361,8 @@ shpe-uh-website/
 │       ├── pages/          # One file per route, incl. attend.jsx (mobile QR check-in) and my-events.jsx (chair Events page)
 │       └── App.jsx         # Route definitions
 └── backend/
-    ├── main.py             # FastAPI app: routers, health checks, request body size ceiling + background loops (reminder emails, daily event-sheet sync)
-    ├── config.py           # DATA_DIR — where uploaded files are written; also whether this is the live deployment
+    ├── main.py             # FastAPI app: routers, health checks, middleware stack + background loops (reminder emails, daily event-sheet sync); production boot gate
+    ├── config.py           # DATA_DIR (where uploaded files are written), whether this is the live deployment, CORS origins, API-docs gating, request body ceiling
     ├── get_drive_refresh_token.py  # One-time helper for Google Drive resume-sync setup
     ├── database.py         # Postgres engine (DATABASE_URL), session factory, seed.py's local-database guard
     ├── alembic.ini         # Alembic config (the database URL comes from alembic/env.py, not this file)

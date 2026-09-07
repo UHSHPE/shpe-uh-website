@@ -91,9 +91,9 @@ def test_oversized_upload_is_rejected_without_authentication(unauth_client):
     """413 rather than 401 is the proof that the rejection happens before the
     router — i.e. before get_current_user, and before the form parser writes
     the body to disk. That half of the defect needed no credentials."""
-    from main import _max_body_bytes
+    from config import max_body_bytes
 
-    oversized = b"%PDF-1.4\n" + b"0" * (_max_body_bytes() + 1)
+    oversized = b"%PDF-1.4\n" + b"0" * (max_body_bytes() + 1)
 
     res = unauth_client.post(
         "/me/resume",
@@ -113,7 +113,7 @@ def test_chunked_upload_over_the_cap_returns_413_not_a_parse_error(unauth_client
     reported as a malformed request unless the middleware overrides the
     response. The DoS was prevented either way; the status code was the lie.
     """
-    from main import _max_body_bytes
+    from config import max_body_bytes
 
     boundary = "----probe"
     head = (
@@ -127,7 +127,7 @@ def test_chunked_upload_over_the_cap_returns_413_not_a_parse_error(unauth_client
         # is no Content-Length and the counting receive() has to catch it.
         yield head
         chunk = b"0" * 100_000
-        for _ in range((_max_body_bytes() // len(chunk)) + 2):
+        for _ in range((max_body_bytes() // len(chunk)) + 2):
             yield chunk
 
     res = unauth_client.post(

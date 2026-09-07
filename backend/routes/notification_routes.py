@@ -1,12 +1,13 @@
+"""
+Read routes for a member's own in-app notifications.
+"""
+
 from models.notification import Notification, NotificationOut
 from models.user.user import User
 from services.dependencies import SessionDependencies, get_current_user
 
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
-
-
 from typing import Annotated
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -16,6 +17,7 @@ async def get_notifications(
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDependencies,
 ):
+    """Return the current user's notifications, newest first."""
     return session.exec(
         select(Notification)
         .where(Notification.user_id == user.id)
@@ -29,6 +31,7 @@ async def mark_notification_read(
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDependencies,
 ):
+    """Mark one of the current user's notifications read; 404 if it isn't theirs."""
     notification = session.get(Notification, notification_id)
     if not notification or notification.user_id != user.id:
         raise HTTPException(status_code=404, detail="Notification not found")
