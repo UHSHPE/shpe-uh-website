@@ -1,5 +1,5 @@
 # Unit tests for services/attendance_services.py -- points rule, code
-# minting/resolution, expiry, sign-in/out idempotency, and chair scoping.
+# resolution, expiry, sign-in/out idempotency, and chair scoping.
 # API-level behavior (status codes, response shapes) lives in
 # test_attend_endpoint.py and test_chair_events_endpoints.py.
 
@@ -10,7 +10,6 @@ from models.user.user_enums import Role
 from services import attendance_services
 from services.attendance_services import (
     default_points,
-    ensure_event_codes,
     host_scoped_events,
     is_expired,
     record_sign_in,
@@ -50,27 +49,6 @@ def test_default_points_shpe_jr_gm_is_not_eboard():
     # conditions are required.
     event = Event(title="SHPE JR 1ST GM", start_time=datetime(2026, 8, 5), event_type="shpe_jr")
     assert default_points(event) == (2, 2)
-
-
-# --- ensure_event_codes ---
-
-def test_ensure_event_codes_mints_both_columns(session):
-    event = make_event(session, sign_in_code=None, sign_out_code=None)
-    ensure_event_codes(session, event)
-    session.refresh(event)
-    assert event.sign_in_code
-    assert event.sign_out_code
-    assert event.sign_in_code != event.sign_out_code
-
-
-def test_ensure_event_codes_is_idempotent(session):
-    event = make_event(session, sign_in_code=None, sign_out_code=None)
-    ensure_event_codes(session, event)
-    first_in, first_out = event.sign_in_code, event.sign_out_code
-
-    ensure_event_codes(session, event)
-    session.refresh(event)
-    assert (event.sign_in_code, event.sign_out_code) == (first_in, first_out)
 
 
 # --- resolve_code ---
