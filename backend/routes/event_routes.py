@@ -136,12 +136,11 @@ async def get_my_hosted_events(
     session: SessionDependencies,
 ):
     """Events this chair/E-Board member hosts, WITH sign-in/out codes. Codes
-    are minted on first view (ensure_event_codes is idempotent)."""
+    are minted when the event is created; this endpoint only reads them."""
     events = attendance_services.host_scoped_events(session, user)
 
     out = []
     for event in events:
-        attendance_services.ensure_event_codes(session, event)
         sign_in_points, _ = attendance_services.default_points(event)
         attendee_count = len(session.exec(
             select(EventAttendance).where(EventAttendance.event_id == event.id)

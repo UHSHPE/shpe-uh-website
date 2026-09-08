@@ -1,5 +1,6 @@
 import pytest
 import os
+import secrets
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -172,6 +173,8 @@ def make_event(session, *, start_in=timedelta(days=7), **overrides):
         end_time=None,
         points_value=10,
         event_type="General Meeting",
+        sign_in_code=secrets.token_urlsafe(16),
+        sign_out_code=secrets.token_urlsafe(16),
     )
     fields.update(overrides)
     event = Event(**fields)

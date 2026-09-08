@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy.exc import IntegrityError
@@ -33,22 +32,6 @@ def default_points(event: Event) -> tuple[int, int]:
     if event.event_type == "eboard" and "GM" in event.title:
         return (3, 2)
     return (2, 2)
-
-
-def ensure_event_codes(session, event: Event) -> None:
-    """Mint sign-in/out codes the first time an event's codes are needed.
-    Idempotent — a no-op once both columns are already set."""
-    changed = False
-    if not event.sign_in_code:
-        event.sign_in_code = secrets.token_urlsafe(16)
-        changed = True
-    if not event.sign_out_code:
-        event.sign_out_code = secrets.token_urlsafe(16)
-        changed = True
-    if changed:
-        session.add(event)
-        session.commit()
-        session.refresh(event)
 
 
 def resolve_code(session, code: str) -> tuple[Event, str] | None:
