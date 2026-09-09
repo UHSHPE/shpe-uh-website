@@ -40,7 +40,7 @@ export default function Home() {
 	
 	return (
 		<section className="text-[#001F5B] overflow-x-hidden">
-			<section className="relative min-h-[500px] sm:min-h-[90vh] w-full overflow-hidden">
+			<section className="relative min-h-[480px] sm:min-h-[90vh] w-full overflow-hidden">
 
 				{/* Image and pattern section */}
 				<div className='absolute h-full w-[80%] hidden md:block'>
@@ -101,9 +101,9 @@ export default function Home() {
 			
 			<section
 				id="info"
-				className="bg-white md:py-20 py-5 flex flex-row w-screen items-center justify-evenly flex-wrap gap-20"
+				className="bg-white md:py-20 py-5 px-10 flex flex-row w-screen items-center justify-evenly flex-wrap gap-20"
 			>
-				<div className="flex flex-col md:items-end flex-1 ml-10 w-[75%] md:text-right">
+				<div className="flex flex-col md:items-end flex-1 w-[75%] md:text-right">
 					<h2 className="text-[#D33A02] font-semibold text-3xl mb-3">
 						What we do?
 					</h2>
