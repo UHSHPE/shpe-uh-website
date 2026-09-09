@@ -428,7 +428,10 @@ a{ color:inherit; text-decoration:none; }
     transition:max-height 0.3s ease;
     padding:0 16px;
   }
-  .mobileNavPanel.open{ max-height:340px; }
+  .mobileNavPanel.open {
+    max-height: calc(100dvh - var(--header-height));
+    overflow-y: auto;
+  }  
   .mobileNavGrid{
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
