@@ -455,8 +455,16 @@ a{ color:inherit; text-decoration:none; }
     background:rgba(0, 58, 112, 0.08);
     border-radius:12px;
   }
-  .footerInner{ flex-direction:column; }
-  .footerRight{ text-align:left; }
+  .footerInner{ flex-direction:column; align-items:center;}
+  .footerLeft {
+    flex-direction:column;
+    align-items:center;
+    gap: 15px;
+  }
+  .footerContact {
+    text-align:center;
+  }
+  .footerRight{ text-align:center; }
   .socialRow{ justify-content:flex-start; }
 }
 
