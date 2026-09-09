@@ -40,28 +40,22 @@ export default function Home() {
 	
 	return (
 		<section className="text-[#001F5B] overflow-x-hidden">
-			<section className="relative min-h-[90vh] w-full overflow-hidden">
+			<section className="relative min-h-[500px] sm:min-h-[90vh] w-full overflow-hidden">
 
 				{/* Image and pattern section */}
-				<div className='absolute h-full w-[80%]'>
+				<div className='absolute h-full w-[80%] hidden md:block'>
 					{/* Image and Shadow Section */}
 					<div className='shadowWrapper absolute z-80 w-full h-full' style={{ filter: "drop-shadow(6px 12px 20px rgba(0,0,0,0.8))"}}>
-						<div className="absolute left-0 top-0 h-full w-full overflow-hidden">
-							<img
+						<div
+						className="imageClip absolute left-0 top-0 h-full w-full overflow-hidden"
+						style={{
+							clipPath: "polygon(0 0, clamp(10%, 15vw, 20%) 0, clamp(55%, 65vw, 75%) 100%, 0 100%)",
+						}}
+						>							
+						<img
 							src={shpeSpirit}
 							alt="SHPE members"
-							/* These widths do two jobs at once, so changing one changes both.
-							   They set how far right the photo panel reaches (ending well clear
-							   of the headline column, which starts at 60% of the viewport), and
-							   they drive the crop: object-cover only crops on the axis where the
-							   image overflows, so object-position-x below does nothing unless the
-							   image is WIDER than its box. At w-full the box is ~1.42 wide-to-tall
-							   against a 1.33 photo, which crops vertically and shows the darker
-							   left of the frame; narrowing past the photo's ratio restores
-							   horizontal cropping and lets the 95% land on the bright right side.
-							   Mobile keeps w-full — it is portrait enough to crop horizontally
-							   already. */
-							className="absolute h-full w-full md:w-[70%] lg:w-[64%] object-cover object-[95%_center]"
+							className="absolute h-full w-full object-cover object-[95%_center]"
 							/>
 						</div>
 					</div>
@@ -70,13 +64,18 @@ export default function Home() {
 					<img
 						src={polygons}
 						alt="Polygon decoration"
-						className="absolute md:right-[1%] lg:right-[20%] top-0 z-10 h-full max-w-none object-contain"
+						className="absolute top-0 z-10 h-full object-contain"
+						style={{
+							width: "min(68vw, 986px)",
+							right: "clamp(1%, 14vw, 20%)",
+							objectPosition: "top",
+						}}
 					/>
 				</div>
 
 				{/* Right: headline + CTA */}
-				<div className="absolute h-full z-100 w-[40%] right-0 flex flex-col items-center justify-evenly">
-					<p className="font-semibold text-[64px] leading-tight tracking-tight text-center">
+				<div className="absolute inset-y-0 right-0 z-100 w-full px-6 md:w-[40%] md:px-0 flex flex-col items-center justify-center gap-10 md:justify-evenly md:gap-0">
+					<p className="font-semibold text-[clamp(1.75rem,8vw,3.5rem)] leading-tight tracking-tight text-center">
 						<span className="text-[#D33A02]">Join</span> the{' '}
 						<span className="text-[#FD652F]">leading</span>
 						<br />
@@ -84,7 +83,7 @@ export default function Home() {
 						<span className="text-[#72A9BE]">STEM</span>
 					</p>
 
-					<p className="text-center font-semibold text-[50px] leading-snug tracking-tight [text-shadow:0_4px_4px_#fff] text-[#001F5B]">
+					<p className="text-center font-semibold text-[clamp(1.35rem,6vw,3rem)] leading-snug tracking-tight [text-shadow:0_4px_4px_#fff] text-[#001F5B]">
 						Your journey<br/>starts at SHPE
 						<br />
 						<span className="text-[#C8102E]">University of<br/>Houston</span>
@@ -101,9 +100,9 @@ export default function Home() {
 			</section>
 			<section
 				id="info"
-				className="bg-white py-20 flex flex-row w-screen items-center justify-evenly flex-wrap"
+				className="bg-white md:py-20 py-5 flex flex-row w-screen items-center justify-evenly flex-wrap gap-20"
 			>
-				<div className="flex flex-col items-end flex-1 ml-10 w-[75%] text-right">
+				<div className="flex flex-col md:items-end flex-1 ml-10 w-[75%] md:text-right">
 					<h2 className="text-[#D33A02] font-semibold text-3xl mb-3">
 						What we do?
 					</h2>
@@ -120,7 +119,7 @@ export default function Home() {
 					</p>
 				</div>
 
-				<div className="flex-1 flex items-center justify-center">
+				<div className="flex-1 items-center justify-center hidden md:block">
 					<img
 						src={shpeLogo}
 						alt="SHPE logo"
@@ -131,7 +130,7 @@ export default function Home() {
 
 			<section
 				id="insta"
-				className="relative bg-white px-[8%] py-16 overflow-hidden"
+				className="relative bg-white px-[8%] py-16"
 			>
 				{/* homeDecor.png — floating circles background */}
 				<div className="absolute inset-0 z-0 pointer-events-none">
@@ -186,7 +185,7 @@ export default function Home() {
 
 			<section
 				id="newsletter"
-				className="relative min-h-[500px] bg-[#001F5B] overflow-hidden flex flex-col items-center justify-center pb-20 px-4 text-center"
+				className="relative md:min-h-[400px] bg-[#001F5B] overflow-hidden flex flex-col items-center justify-center md:py-0 py-10 px-4 text-center"
 			>
 				{/* waves.png background */}
 				<div className="absolute inset-0 z-0 pointer-events-none">
