@@ -455,6 +455,9 @@ a{ color:inherit; text-decoration:none; }
     background:rgba(0, 58, 112, 0.08);
     border-radius:12px;
   }
+}
+
+@media (max-width: 800px) {
   .footerInner{ flex-direction:column; align-items:center;}
   .footerLeft {
     flex-direction:column;
@@ -540,6 +543,7 @@ a{ color:inherit; text-decoration:none; }
   width: 18px;
   border-top: 2px solid var(--border);
 }
+
 /* the root sits flush — nothing above it to connect to */
 .orgTree > li { padding-left: 0; }
 .orgTree > li::before,
