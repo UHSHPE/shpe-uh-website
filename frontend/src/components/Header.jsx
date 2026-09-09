@@ -176,17 +176,20 @@ export default function Header() {
           </div>
         </div>
 
-        <CartButton className="cartBtnMobile" />
-        <button
-          type="button"
-          className="mobileMenuBtn"
-          aria-label="Toggle navigation menu"
-          aria-expanded={isMobileMenuOpen}
-          aria-controls="mobile-nav-panel"
-          onClick={() => setIsMobileMenuOpen((open) => !open)}
-        >
-          Menu
-        </button>
+        <div className="mobileControls flex items-center gap-5">
+          <CartButton className="cartBtnMobile" />
+          <button
+            type="button"
+            className="mobileMenuBtn"
+            aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-nav-panel"
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+          >
+            Menu
+          </button>
+        </div>
+
 
         <nav className="nav">
           {navLinks.map((l) => (
