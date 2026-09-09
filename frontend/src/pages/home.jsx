@@ -186,7 +186,7 @@ export default function Home() {
 
 			<section
 				id="newsletter"
-				className="relative md:min-h-[400px] bg-[#001F5B] overflow-hidden flex flex-col items-center justify-center md:py-0 py-10 px-4 text-center"
+				className="relative md:min-h-[400px] bg-[#001F5B] overflow-hidden flex flex-col items-center justify-center md:py-0 py-25 px-4 text-center"
 			>
 				{/* waves.png background */}
 				<div className="absolute inset-0 z-0 pointer-events-none">
@@ -194,11 +194,11 @@ export default function Home() {
 						src={waves}
 						alt=""
 						aria-hidden="true"
-						className="w-full h-full object-cover object-top "
+						className="w-full h-full object-cover"
 					/>
 				</div>
 
-				<h2 className="relative z-1 text-white font-semibold text-[clamp(1.5rem,4vw,2.5rem)] mb-2">
+				<h2 className="relative z-1 text-white font-semibold text-[clamp(1.8rem,4vw,2.5rem)] sm:mb-2 mb-0">
 					NEWSLETTER INTEREST FORM
 				</h2>
 

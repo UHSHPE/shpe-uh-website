@@ -176,7 +176,7 @@ export default function Header() {
           </div>
         </div>
 
-        <div className="mobileControls flex items-center gap-5">
+        <div className="mobileControls flex items-center md:gap-5 gap-2">
           <CartButton className="cartBtnMobile" />
           <button
             type="button"
