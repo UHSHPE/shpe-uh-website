@@ -213,7 +213,7 @@ export default function Header() {
             <button
               className="primaryBtn"
               onClick={() => navigate("/signin")}
-              style={{ marginLeft: "8px", fontSize: "14px", padding: "6px 16px" }}
+              style={{ fontSize: "14px", padding: "6px 16px" }}
             >
               Sign In
             </button>
