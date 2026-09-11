@@ -346,7 +346,7 @@ export function ChairsSection() {
               key={index}
               {...chair}
               // Elvin is the lone trailing card on the 3-col grid — center it.
-              className={index === chairs.length - 1 ? 'md:col-start-2' : ''}
+              // className={index === chairs.length - 1 ? 'md:col-start-2' : ''}
             />
           ))}
         </div>
