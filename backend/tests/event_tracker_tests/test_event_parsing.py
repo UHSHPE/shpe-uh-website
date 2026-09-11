@@ -52,6 +52,7 @@ def sheet_row(**overrides):
         owners="Marketing Chair - Valeria Zabala",
     )
     fields["collab(s)"] = ""
+    fields.setdefault("pillars", "")
     fields.update(overrides)
     return {COLUMNS[key]: value for key, value in fields.items()}
 
@@ -111,7 +112,7 @@ def test_local_date_round_trips_parse_rows_start_time():
 
 # --- parse_row ---
 
-def test_parse_row_happy_path_maps_all_eight_fields():
+def test_parse_row_happy_path_maps_every_field():
     year = datetime.now(SHEET_TZ).year
     row = sheet_row(
         name="GBM 1",
@@ -126,7 +127,7 @@ def test_parse_row_happy_path_maps_all_eight_fields():
 
     assert set(parsed.keys()) == {
         "sheet_row", "title", "description", "location", "start_time", "end_time",
-        "event_type", "host_roles",
+        "event_type", "host_roles", "pillars",
     }
     assert parsed["sheet_row"] == 7
     assert parsed["title"] == "GBM 1"
@@ -366,3 +367,53 @@ def test_parse_row_outside_org_collab_does_not_pollute_host_roles():
     row[COLUMNS["collab(s)"]] = "NSBE"
     parsed = parse(row)
     assert parsed["host_roles"] == [Role.social_chair]
+
+
+# --- PILLAR(S) -> Event.pillars ---
+
+def test_pillar_cell_is_parsed_to_canonical_keys():
+    assert parse(sheet_row(pillars="Professional Development"))["pillars"] == "professional"
+
+
+def test_multi_pillar_cell_keeps_every_recognized_key():
+    """18 live rows list two or more; one lists all five."""
+    parsed = parse(sheet_row(pillars="Community Outreach, Leadership Development"))
+    assert parsed["pillars"] == "community,leadership"
+
+
+def test_blank_pillar_cell_stores_null():
+    """40 of 108 named rows in the live sheet -- the common case, not an edge."""
+    assert parse(sheet_row(pillars=""))["pillars"] is None
+
+
+def test_unrecognized_pillar_is_dropped_not_guessed():
+    """A new dropdown option must degrade to 'no pillar', not raise mid-sync
+    and take the whole row down with it."""
+    assert parse(sheet_row(pillars="Vibes Development"))["pillars"] is None
+
+
+def test_sheet_wording_community_outreach_maps_to_the_community_pillar():
+    """The sheet says 'Community Outreach'; the About page brands the same
+    pillar 'Community Development'. Both must resolve to one key."""
+    assert parse(sheet_row(pillars="Community Outreach"))["pillars"] == "community"
+    assert parse(sheet_row(pillars="Community Development"))["pillars"] == "community"
+
+
+# --- OWNER(S) / COLLAB(S)? spelling divergences ---
+
+def test_singular_wellness_athletic_resolves_like_the_plural():
+    """The sheet's OWNER(S) dropdown says 'Wellness & Athletic' (singular)
+    while COLLAB(S)? and the lookup said 'Wellness & Athletics'. The mismatch
+    silently filed 11 live events under 'eboard' and logged a warning per row
+    — the third such divergence after project/projects and shpe jr./shpe jr.
+    """
+    both = "Wellness & Athletic - Smiley Trenton | Ean Plasencia"
+    assert get_event_type(both) == "athletic"
+    assert get_event_type("Wellness & Athletics") == "athletic"
+    assert resolve_committee("Wellness & Athletic") is Role.athletic_chair
+
+
+def test_chair_names_joined_by_a_pipe_are_still_stripped():
+    """Two co-chairs separated by '|' after the dash — the shape that made
+    this look like a normalizer bug rather than a spelling divergence."""
+    assert get_event_type("Outreach - Ana Reyes | Luis Gomez") == "outreach"

@@ -24,7 +24,7 @@ from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 from services.event_tracker_services import sync_events
 
-from routes import admin_routes, auth_routes, committee_routes, event_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
+from routes import admin_routes, auth_routes, committee_routes, event_routes, leaderboard_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
 
 # The imports above already pull .env in as a side effect (database.py calls
 # this too), but main.py reads env vars of its own — including one at import
@@ -224,6 +224,7 @@ app.include_router(admin_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(committee_routes.router)
 app.include_router(event_routes.router)
+app.include_router(leaderboard_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(pw_reset_routes.router)
 app.include_router(resume_routes.router)

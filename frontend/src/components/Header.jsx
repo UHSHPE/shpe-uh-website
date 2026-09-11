@@ -176,17 +176,20 @@ export default function Header() {
           </div>
         </div>
 
-        <CartButton className="cartBtnMobile" />
-        <button
-          type="button"
-          className="mobileMenuBtn"
-          aria-label="Toggle navigation menu"
-          aria-expanded={isMobileMenuOpen}
-          aria-controls="mobile-nav-panel"
-          onClick={() => setIsMobileMenuOpen((open) => !open)}
-        >
-          Menu
-        </button>
+        <div className="mobileControls flex items-center md:gap-5 gap-2">
+          <CartButton className="cartBtnMobile" />
+          <button
+            type="button"
+            className="mobileMenuBtn"
+            aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-nav-panel"
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+          >
+            Menu
+          </button>
+        </div>
+
 
         <nav className="nav">
           {navLinks.map((l) => (
@@ -210,7 +213,7 @@ export default function Header() {
             <button
               className="primaryBtn"
               onClick={() => navigate("/signin")}
-              style={{ marginLeft: "8px", fontSize: "14px", padding: "6px 16px" }}
+              style={{ fontSize: "14px", padding: "6px 16px" }}
             >
               Sign In
             </button>

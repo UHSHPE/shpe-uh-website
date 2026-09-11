@@ -21,7 +21,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
-- **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot: 2 for signing in and 2 for signing out of a regular event, 3 and 2 for a general meeting, plus 2 for bringing a new member. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host
+- **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot based on the event's pillar, matching the chapter point-system chart: 4 for signing in to a Community Outreach event, 3 for any other pillar, and 2 when no pillar is set on the event; sign-out is 2 throughout, general meetings award at least 3, and bringing a new member adds 2. An event tagged with several pillars awards the highest of them, not the sum. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host
 
 ## Tech Stack
 
@@ -437,6 +437,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | GET | `/events/all` | Chair/E-Board | Every chapter event, read-only (no codes) |
 | GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
 | GET | `/events/{id}/scan-count` | Chair only | Live sign-in/sign-out counts for one event, for the QR modal to poll |
+| GET | `/leaderboard` | No | Public chapter points leaderboard: every verified member, ranked by total points, with a breakdown of where those points came from across the 5 Core Pillars |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair). Joining again when you are already a member is a no-op that returns 200 and notifies nobody; joins are rate limited per account (`RATE_LIMIT_COMMITTEE_JOIN`). The internal E-Board rows are not joinable and return 404 |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |

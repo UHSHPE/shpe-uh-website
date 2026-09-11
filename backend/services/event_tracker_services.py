@@ -1,4 +1,5 @@
 import json, os, logging, re
+import secrets
 from datetime import datetime, date, time
 from zoneinfo import ZoneInfo
 import gspread
@@ -9,11 +10,11 @@ from models.committee import Committee
 from models.event import Event
 from models.event_host import EventHost
 from models.event_reminder import EventReminder
-from models.user.user_enums import Role   # leaf enum module -- no circular import
+from models.user.user_enums import Role   
 from services.event_services import live_events
 from services.reminder_services import reschedule_reminders
+from services.pillars import parse_pillars, serialize_pillars
 from services.time_services import utcnow
-
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -27,7 +28,8 @@ COLUMNS = {"date":"DATE",
            "start_time":"START TIME",
            "end_time":"END TIME",
            "owners":"OWNER(S)",
-           "collab(s)": "COLLAB(S)?",}
+           "collab(s)": "COLLAB(S)?",
+           "pillars": "PILLAR(S)",}
 
 # Event names (normalized: lowercased, whitespace-collapsed) to keep off the public calendar
 EXCLUDED_EVENTS = {
@@ -47,22 +49,10 @@ EXCLUDED_EVENTS = {
     "official closing of term",
 }
 
-# OWNER(S) / COLLAB(S)? -> chair Role. Keys are the SHEET's spelling
-# (lowercased, whitespace-collapsed), deliberately not Committee.name --
-# "wellness & athletics", "project", "shpe jr.", "eec", "cfc" all differ from
-# the DB names in seed.py. Role is the anchor because Committee.chair_role
-# and require_chair already key on it, so a committee rename in seed.py
-# can't break this link. "&" and the trailing "." are NOT normalized away --
-# they're part of the correct key.
-#
-# "project"/"projects" and "shpe jr."/"shpe jr" are the tell that the two
-# dropdowns (OWNER(S) vs COLLAB(S)?) are independently maintained option
-# lists that don't always agree -- two divergences in fourteen committees is
-# a high enough rate that there are probably more. Extra aliases cost
-# nothing; a missing one is a silent misfile.
 COMMITTEE_ROLES = {
     "academic":             Role.academic_chair,
     "wellness & athletics": Role.athletic_chair,
+    "wellness & athletic":  Role.athletic_chair,   # singular: the OWNER(S) spelling
     "cfc":                  Role.career_fair_chair,
     "eec":                  Role.eec_chair,
     "marketing":            Role.marketing_chair,
@@ -79,16 +69,6 @@ COMMITTEE_ROLES = {
     "web development":      Role.web_dev_chair,
 }
 
-# The sheet's own abbreviations for E-Board positions -- not Role display
-# values ("vpe" vs "Vice President External", "communications" vs
-# "Communication Director"). Now a dict, not a set: each specific position
-# maps onto the Committee row seed.py creates for it (EBOARD_COMMITTEES) so
-# EventHost rows get written -- the same reason COMMITTEE_ROLES is a dict.
-# The bare "eboard" catch-all maps to None deliberately: seed.py also
-# creates one generic "E-Board" committee with chair_role=None for exactly
-# this value. None here is a REAL match (a specific, if generic, committee),
-# never confused with "no match at all" -- see resolve_committee's docstring
-# and the NO_MATCH sentinel below.
 EBOARD: dict[str, Role | None] = {
     "president": Role.president,
     "vpe": Role.vpe,
@@ -224,6 +204,12 @@ def parse_row(row: dict, sheet_row: int) -> dict | None:
         "start_time": to_utc(start_local),
         "end_time": to_utc(end_local) if end_local else None,
         "event_type": get_event_type(row.get(COLUMNS["owners"])),
+        # Drives how many points a QR scan awards (see
+        # attendance_services.default_points). Multi-value and often
+        # blank -- both handled by parse_pillars, which drops anything
+        # unrecognized rather than guessing, so a new dropdown option
+        # degrades to "no pillar" instead of raising mid-sync.
+        "pillars": serialize_pillars(parse_pillars(row.get(COLUMNS["pillars"]))),
         "host_roles": [r for r in (resolve_committee(row.get(COLUMNS["owners"])),
                                    resolve_committee(row.get(COLUMNS["collab(s)"])))
                        if r is not NO_MATCH],
@@ -361,6 +347,9 @@ def sync_events(session) -> tuple[int, int]:
             event = existing
         else:
             event = Event(**data)
+            event.sign_in_code = secrets.token_urlsafe(nbytes=16)
+            event.sign_out_code = secrets.token_urlsafe(nbytes=16)
+
             session.add(event)
             session.flush()          # a new Event has no .id until this
             created += 1

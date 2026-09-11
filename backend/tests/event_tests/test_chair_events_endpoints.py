@@ -27,15 +27,21 @@ def test_my_events_returns_only_hosted_events_with_codes(chair_client, session, 
     assert body[0]["attendee_count"] == 0
 
 
-def test_my_events_mints_codes_on_first_view(chair_client, session, committee):
-    event = make_event(session, sign_in_code=None, sign_out_code=None)
+def test_my_events_reads_existing_codes_without_writes(chair_client, session, committee, monkeypatch):
+    event = make_event(session, sign_in_code="existing-in", sign_out_code="existing-out")
     link_host(session, event, committee)
 
-    chair_client.get("/events/mine")
+    def unexpected_commit():
+        raise AssertionError("Reading hosted events must not commit")
 
+    monkeypatch.setattr(session, "commit", unexpected_commit)
+    response = chair_client.get("/events/mine")
+
+    assert response.status_code == 200
+    assert response.json()[0]["sign_in_code"] == "existing-in"
+    assert response.json()[0]["sign_out_code"] == "existing-out"
     session.refresh(event)
-    assert event.sign_in_code
-    assert event.sign_out_code
+    assert (event.sign_in_code, event.sign_out_code) == ("existing-in", "existing-out")
 
 
 def test_chair_cannot_see_another_committees_codes(chair_client, session, committee):
