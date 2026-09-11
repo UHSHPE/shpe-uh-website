@@ -22,7 +22,6 @@ import SophiaRodriguez from '../assets/images/leadership/chairs/sophia-rodriguez
 import SmileyTrenton from '../assets/images/leadership/chairs/smiley-trenton.jpg'
 import EanPlasencia from '../assets/images/leadership/chairs/ean-plasencia.jpg'
 import SaraRomero from '../assets/images/leadership/chairs/sara-romero.jpg'
-import DavidCohen from '../assets/images/leadership/chairs/david-cohen.jpg'
 import EthanLopez from '../assets/images/leadership/chairs/ethan-lopez.jpg'
 import ValeriaZabala from '../assets/images/leadership/chairs/valeria-zabala.jpg'
 import GabrielaBarreno from '../assets/images/leadership/chairs/gabriela-barreno.jpg'
@@ -258,7 +257,6 @@ const chairs = [
   { name: 'Smiley Trenton', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org', img: SmileyTrenton },
   { name: 'Ean Plasencia', position: 'Athletic & Wellness Co-Chair', email: 'Athletic.and.Wellness@shpeuhchair.org', img: EanPlasencia },
   { name: 'Sara Romero', position: 'Career Fair Chair', email: 'Career.Fair@shpeuhchair.org', img: SaraRomero },
-  { name: 'David Cohen', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org', img: DavidCohen },
   { name: 'Ethan Lopez', position: 'Engineering Events Coordinator', email: 'Engineering.Events.Coordinator@shpeuhchair.org', img: EthanLopez },
   { name: 'Valeria Zabala', position: 'Marketing Chair', email: 'Marketing@shpeuhchair.org', img: ValeriaZabala },
   { name: 'Gabriela Barreno', position: 'Member Relations Chair', email: 'Member.Relations@shpeuhchair.org', img: GabrielaBarreno },
