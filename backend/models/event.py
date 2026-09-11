@@ -21,6 +21,12 @@ class Event(SQLModel, table=True):
     end_time: datetime | None = None
     points_value: int = Field(default=0, ge=0)
     event_type: str | None = None #aka projects, professional, eboard, etc
+    # Comma-joined canonical pillar keys from the tracker sheet's PILLAR(S)
+    # column (see services/pillars.py) -- e.g. "community,leadership". NULL
+    # means the cell was blank or held nothing recognized, which is 40 of 108
+    # named rows in the live sheet and scores NO_PILLAR_POINTS. This drives
+    # how many points a QR scan awards, so it is real state, not a cache.
+    pillars: str | None = None
     sign_in_code: str | None = Field(default=None, index=True, unique=True)
     sign_out_code: str | None = Field(default=None, index=True, unique=True)
     # Soft delete: stamped when the event's sheet row is cleared. Nothing

@@ -78,6 +78,12 @@ export function getAllEvents() {
   return api.get("/events");
 }
 
+// Public — the leaderboard renders on /membershpe, an unauthenticated page,
+// so this must NOT send authHeaders().
+export function getLeaderboard() {
+  return api.get("/leaderboard");
+}
+
 export function getCommittees() {
   return api.get("/committees", { headers: authHeaders() });
 }

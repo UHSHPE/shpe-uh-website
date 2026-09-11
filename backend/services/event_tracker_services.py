@@ -13,6 +13,7 @@ from models.event_reminder import EventReminder
 from models.user.user_enums import Role   
 from services.event_services import live_events
 from services.reminder_services import reschedule_reminders
+from services.pillars import parse_pillars, serialize_pillars
 from services.time_services import utcnow
 
 load_dotenv()
@@ -27,7 +28,8 @@ COLUMNS = {"date":"DATE",
            "start_time":"START TIME",
            "end_time":"END TIME",
            "owners":"OWNER(S)",
-           "collab(s)": "COLLAB(S)?",}
+           "collab(s)": "COLLAB(S)?",
+           "pillars": "PILLAR(S)",}
 
 # Event names (normalized: lowercased, whitespace-collapsed) to keep off the public calendar
 EXCLUDED_EVENTS = {
@@ -50,6 +52,7 @@ EXCLUDED_EVENTS = {
 COMMITTEE_ROLES = {
     "academic":             Role.academic_chair,
     "wellness & athletics": Role.athletic_chair,
+    "wellness & athletic":  Role.athletic_chair,   # singular: the OWNER(S) spelling
     "cfc":                  Role.career_fair_chair,
     "eec":                  Role.eec_chair,
     "marketing":            Role.marketing_chair,
@@ -201,6 +204,12 @@ def parse_row(row: dict, sheet_row: int) -> dict | None:
         "start_time": to_utc(start_local),
         "end_time": to_utc(end_local) if end_local else None,
         "event_type": get_event_type(row.get(COLUMNS["owners"])),
+        # Drives how many points a QR scan awards (see
+        # attendance_services.default_points). Multi-value and often
+        # blank -- both handled by parse_pillars, which drops anything
+        # unrecognized rather than guessing, so a new dropdown option
+        # degrades to "no pillar" instead of raising mid-sync.
+        "pillars": serialize_pillars(parse_pillars(row.get(COLUMNS["pillars"]))),
         "host_roles": [r for r in (resolve_committee(row.get(COLUMNS["owners"])),
                                    resolve_committee(row.get(COLUMNS["collab(s)"])))
                        if r is not NO_MATCH],
