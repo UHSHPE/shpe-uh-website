@@ -300,6 +300,21 @@ export function getAdminMembers(params = {}) {
   return api.get("/admin/members", { headers: authHeaders(), params });
 }
 
+// One member's full profile — everything the signup form collected, their
+// committees, and whether a resume is on file. President/VP only.
+export function getAdminMember(userId) {
+  return api.get(`/admin/members/${userId}`, { headers: authHeaders() });
+}
+
+// A member's resume PDF, for the president and both VPs. Blob for the same
+// reason as getResumeBlob: a bearer token can't ride on an <iframe>/<a href>.
+export function getMemberResumeBlob(userId) {
+  return api.get(`/admin/members/${userId}/resume`, {
+    headers: authHeaders(),
+    responseType: "blob",
+  });
+}
+
 export function getAdminStats() {
   return api.get("/admin/stats", { headers: authHeaders() });
 }

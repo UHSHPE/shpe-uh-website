@@ -20,6 +20,7 @@ import {
   TOP_TIER_ROLES,
 } from "../utils/shop";
 import ConfirmDialog from "../components/ConfirmDialog";
+import MemberDetailModal from "../components/MemberDetailModal";
 import Pagination from "../components/Pagination";
 import useDocumentTitle from "../hooks/useDocumentTitle";
 import usePagination from "../hooks/usePagination";
@@ -316,7 +317,11 @@ export default function MembersPage() {
   // value here (rather than mutating on change) means the <select> can be
   // driven entirely from state — cancelling snaps it back on its own, with
   // no DOM poking.
-  const [pendingRole, setPendingRole] = useState(null);      // {member, role}
+  const [pendingRole, setPendingRole] = useState(null);
+  // Which row's full profile is open. Holds the directory row (not just the
+  // id) so the modal header can name the member before the detail fetch
+  // resolves, instead of flashing an empty title.
+  const [detailMember, setDetailMember] = useState(null);      // {member, role}
   const [pendingReport, setPendingReport] = useState(null);  // {node, supervisorRole}
 
   // The president and both VPs reach this page; VPs are limited below.
@@ -612,7 +617,21 @@ export default function MembersPage() {
           // that can't succeed.
           const locked = isSelf || (!viewerIsPresident && TOP_TIER_ROLES.includes(m.role));
           return (
-            <div key={m.id} style={{ ...memberRow, borderBottom: "1px solid var(--surface-soft)" }}>
+            <div
+              key={m.id}
+              className="memberRow"
+              role="button"
+              tabIndex={0}
+              onClick={() => setDetailMember(m)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setDetailMember(m);
+                }
+              }}
+              title="View full profile"
+              style={{ ...memberRow, borderBottom: "1px solid var(--surface-soft)", cursor: "pointer" }}
+            >
               <div style={{ minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--ink)", lineHeight: 1.25 }}>
                   {m.first_name} {m.last_name}
@@ -629,6 +648,11 @@ export default function MembersPage() {
               <span style={{ fontSize: "13px", color: "var(--ink-soft)" }}>{m.classification}</span>
               <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>{m.points}</span>
               <span><DuesPill paid={m.has_paid_dues} /></span>
+              {/* The role control is an action, not part of the row's
+                  "open this profile" affordance — without this, picking a
+                  role would also fire the row's onClick and open the modal
+                  behind the confirm dialog. */}
+              <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
               {locked ? (
                 // Your own role (no self-lockout), or the president's when a
                 // VP is viewing — both are refused by the backend.
@@ -657,6 +681,7 @@ export default function MembersPage() {
                   ))}
                 </select>
               )}
+              </div>
             </div>
           );
         })}
@@ -666,11 +691,20 @@ export default function MembersPage() {
 
       {members !== null && (
         <p style={{ margin: "12px 4px 0", fontSize: "12px", color: "var(--muted-soft)" }}>
+          Click a member to see their full profile, committees, and resume.
           Changing a chair role also updates that committee's chair automatically.
           The About page roster is maintained by hand and does not change.
         </p>
       )}
       </>
+      )}
+
+      {detailMember && (
+        <MemberDetailModal
+          memberId={detailMember.id}
+          fallbackName={`${detailMember.first_name} ${detailMember.last_name}`}
+          onClose={() => setDetailMember(null)}
+        />
       )}
 
       {pendingRole && (
