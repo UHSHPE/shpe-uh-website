@@ -90,3 +90,28 @@ def president_client(session, president):
     app.dependency_overrides[get_current_user] = lambda: president
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def officer(session):
+    """An E-Board officer who chairs nothing — the case code_scoped_events
+    widens (every event's QR) while host_scoped_events stays narrow (no
+    roster). Treasurer specifically: an EBOARD_ROLES member with no
+    CommitteeMembership rows and no president bypass."""
+    return make_user(
+        session,
+        cougarnet_email="treasurer@cougarnet.uh.edu",
+        personal_email="treasurer@gmail.com",
+        psid="7777777",
+        role=Role.treasurer,
+    )
+
+
+@pytest.fixture
+def officer_client(session, officer):
+    from main import app
+
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_current_user] = lambda: officer
+    yield TestClient(app)
+    app.dependency_overrides.clear()

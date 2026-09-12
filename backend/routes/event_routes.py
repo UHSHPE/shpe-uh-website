@@ -1,4 +1,4 @@
-from models.event import Event, EventChairOut, EventOut
+from models.event import Event, EventAllOut, EventChairOut, EventOut
 from models.event_attendance import (
     AttendanceOut,
     AttendRequest,
@@ -7,8 +7,9 @@ from models.event_attendance import (
     EventAttendance,
 )
 from models.event_reminder import EventReminder, EventReminderOut
+from models.event_stats import EventStatsOut
 from models.user.user import User
-from services import attendance_services
+from services import attendance_services, event_stats_services
 from services.event_services import get_live_event, live_events
 from services.dependencies import (
     SessionDependencies,
@@ -136,15 +137,20 @@ async def get_my_hosted_events(
     session: SessionDependencies,
 ):
     """Events this chair/E-Board member hosts, WITH sign-in/out codes. Codes
-    are minted when the event is created; this endpoint only reads them."""
+    are minted when the event is created, or lazily here for an event that
+    predates that (seeded/hand-added rows)."""
     events = attendance_services.host_scoped_events(session, user)
+    # Seeded and hand-added events have no codes (only sync_events mints
+    # them at creation), and EventChairOut declares both non-optional -- so
+    # without this a president, who is scoped to every event, 500s here on
+    # response validation.
+    attendance_services.ensure_event_codes(session, events)
+    counts = attendance_services.attendee_counts(session, [e.id for e in events])
 
     out = []
     for event in events:
         sign_in_points, _ = attendance_services.default_points(event)
-        attendee_count = len(session.exec(
-            select(EventAttendance).where(EventAttendance.event_id == event.id)
-        ).all())
+        attendee_count = counts.get(event.id, 0)
         out.append(EventChairOut(
             id=event.id,
             title=event.title,
@@ -161,15 +167,41 @@ async def get_my_hosted_events(
     return out
 
 
-@router.get('/all', response_model=list[EventOut])
+@router.get('/all', response_model=list[EventAllOut])
 async def get_all_events_for_chairs(
     user: Annotated[User, Depends(require_event_host)],
     session: SessionDependencies,
 ):
-    """Every chapter event, read-only, no codes. Not public — same gate as
-    /events/mine. Lets a chair/E-Board member see the full calendar (not
-    just what they personally host) without leaking any codes."""
-    return [_event_out(e) for e in session.exec(live_events().order_by(Event.start_time)).all()]
+    """Every chapter event for a chair/E-Board member — same gate as
+    /events/mine, but each row also reports what this caller may do with it.
+
+    An E-Board member gets the sign-in/out codes for every event (officers
+    cover the door at events they didn't organize; see
+    attendance_services.code_scoped_events), a chair gets them only for what
+    they host, and everyone else on a given row gets nulls. can_view_roster
+    tracks the narrower host_scoped_events set, since a roster carries names
+    and emails while a code doesn't. Both are advisory for the UI — every
+    downstream endpoint re-checks.
+    """
+    events = session.exec(live_events().order_by(Event.start_time)).all()
+    coded = attendance_services.code_scoped_events(session, user)
+    attendance_services.ensure_event_codes(session, coded)
+    coded_ids = {e.id for e in coded}
+    roster_ids = {e.id for e in attendance_services.host_scoped_events(session, user)}
+    counts = attendance_services.attendee_counts(session, [e.id for e in events])
+
+    out = []
+    for event in events:
+        base = _event_out(event)
+        may_see_codes = event.id in coded_ids
+        out.append(EventAllOut(
+            **base.model_dump(),
+            sign_in_code=event.sign_in_code if may_see_codes else None,
+            sign_out_code=event.sign_out_code if may_see_codes else None,
+            attendee_count=counts.get(event.id, 0),
+            can_view_roster=event.id in roster_ids,
+        ))
+    return out
 
 
 @router.get('/code/{code}', response_model=CodePreviewOut)
@@ -249,8 +281,12 @@ async def get_event_scan_count(
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
-    hosted_ids = {e.id for e in attendance_services.host_scoped_events(session, user)}
-    if event_id not in hosted_ids:
+    # Scoped to code_scoped_events, NOT host_scoped_events: this counter is
+    # the readout beside a presented QR, so anyone who may present the code
+    # must be able to poll it, and two integers identify nobody. The roster
+    # endpoint below keeps the narrower scope.
+    coded_ids = {e.id for e in attendance_services.code_scoped_events(session, user)}
+    if event_id not in coded_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this event's attendance",
@@ -258,6 +294,30 @@ async def get_event_scan_count(
 
     signed_in, signed_out = attendance_services.scan_counts(session, event_id)
     return {"signed_in": signed_in, "signed_out": signed_out}
+
+
+@router.get('/{event_id}/stats', response_model=EventStatsOut)
+async def get_event_stats(
+    event_id: int,
+    user: Annotated[User, Depends(require_event_host)],
+    session: SessionDependencies,
+):
+    """Aggregate attendance statistics for one event — turnout, dwell time,
+    classification / college / major / membership breakdowns.
+
+    Gated on require_event_host alone, with NO per-event scoping, which is
+    the deliberate difference from /attendance below. Everything here is a
+    count or an average: there is no name, email, PSID or user id anywhere in
+    EventStatsOut, so a chair reading another committee's numbers learns how
+    many juniors showed up, never who. That is also the constraint to keep —
+    a field that identifies an attendee belongs on AttendanceOut, behind the
+    host scoping, not here.
+    """
+    event = get_live_event(session, event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    return event_stats_services.build_event_stats(session, event)
 
 
 @router.get('/{event_id}/attendance', response_model=list[AttendanceOut])

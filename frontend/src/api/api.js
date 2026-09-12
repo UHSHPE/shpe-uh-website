@@ -143,10 +143,19 @@ export function getMyEvents() {
   return api.get("/events/mine", { headers: authHeaders() });
 }
 
-// Every chapter event, read-only — no codes. Same chair/E-Board gate as
+// Every chapter event, with per-row sign_in_code/sign_out_code (null unless
+// the caller may present that event's QR — E-Board gets every event, a chair
+// gets what they host) and can_view_roster. Same chair/E-Board gate as
 // getMyEvents.
 export function getAllChairEvents() {
   return api.get("/events/all", { headers: authHeaders() });
+}
+
+// Aggregate attendance statistics for one event — counts and averages only,
+// no attendee is named, which is why any chair/E-Board member can read it
+// for ANY event (unlike getEventAttendance, which is host-scoped).
+export function getEventStats(eventId) {
+  return api.get(`/events/${eventId}/stats`, { headers: authHeaders() });
 }
 
 // Attendance roster for one event — 403 unless the caller hosts it.
@@ -164,7 +173,7 @@ export function getAttendPreview(code) {
 }
 
 // Live scan counter for the QR modal / present view — chair/E-Board only,
-// scoped to events they host. Poll this instead of re-fetching getMyEvents,
+// scoped to events whose QR they may present. Poll this instead of re-fetching getMyEvents,
 // which would re-mint codes and ship every hosted event's secrets per poll.
 export function getEventScanCount(eventId) {
   return api.get(`/events/${eventId}/scan-count`, { headers: authHeaders() });
