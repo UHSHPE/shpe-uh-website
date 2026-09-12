@@ -1,9 +1,12 @@
+"""Manage shop orders, inventory, and dues eligibility from orders and sheet claims."""
+
 import secrets
 from datetime import datetime
 from collections import defaultdict
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 from models.notification import Notification
+from models.dues_import import ImportedDues
 from models.shop.order import Order, OrderCreate, OrderItem, OrderItemOut, OrderOut, OrderStatus
 from models.shop.product import Product, ProductType
 from models.shop.shop_settings import ShopSettings
@@ -66,37 +69,66 @@ def current_dues_period_start() -> datetime:
 
 
 def has_paid_dues(session: Session, user_id: int) -> bool:
-    """True when the user has a non-cancelled dues order in the CURRENT
-    membership period (dues reset every May 30 — see current_dues_period_start).
-    Matched on the OrderItem name snapshot."""
-    row = session.exec(
+    """Check current dues coverage from orders and verified sheet claims.
+
+    Args:
+        session: Database session used to look up payment records.
+        user_id: Website member to check.
+    Returns:
+        True when either source covers the current membership period.
+    """
+    period_start = current_dues_period_start()
+    dues_order = session.exec(
         select(OrderItem)
         .join(Order)
         .where(
             Order.user_id == user_id,
             Order.status != OrderStatus.cancelled,
             OrderItem.product_name == DUES_PRODUCT_NAME,
-            Order.created_at >= current_dues_period_start(),
+            Order.created_at >= period_start,
         )
     ).first()
-    return row is not None
+    if dues_order is not None:
+        return True
+    return session.exec(
+        select(ImportedDues.id)
+        .join(User, User.psid == ImportedDues.psid)
+        .where(
+            User.id == user_id,
+            ImportedDues.verified == True,
+            ImportedDues.period_start == period_start,
+        )
+    ).first() is not None
 
 
 def dues_paid_user_ids(session: Session) -> set[int]:
-    """User ids with a non-cancelled dues order in the current membership
-    period — the batch version of has_paid_dues for the president's member
-    directory and stats (avoids one query per member)."""
-    rows = session.exec(
+    """Combine paid member IDs from orders and verified sheet claims.
+
+    Args:
+        session: Database session used to query both payment sources.
+    Returns:
+        Unique member IDs with dues paid for the current membership period.
+    """
+    period_start = current_dues_period_start()
+    order_user_ids = session.exec(
         select(Order.user_id)
         .join(OrderItem, OrderItem.order_id == Order.id)
         .where(
             Order.user_id != None,  # noqa: E711
             Order.status != OrderStatus.cancelled,
             OrderItem.product_name == DUES_PRODUCT_NAME,
-            Order.created_at >= current_dues_period_start(),
+            Order.created_at >= period_start,
         )
     ).all()
-    return set(rows)
+    imported_user_ids = session.exec(
+        select(User.id)
+        .join(ImportedDues, ImportedDues.psid == User.psid)
+        .where(
+            ImportedDues.verified == True,
+            ImportedDues.period_start == period_start,
+        )
+    ).all()
+    return set(order_user_ids) | set(imported_user_ids)
 
 
 def enforce_dues_rules(

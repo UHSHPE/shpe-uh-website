@@ -1,3 +1,4 @@
+/** Manage authentication and refresh member status when the website regains focus. */
 import { createContext, useContext, useState, useEffect } from "react";
 import { getMe, setUnauthorizedHandler } from "../api/api";
 
@@ -20,12 +21,30 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!token) return;
+    let active = true;
     getMe(token)
-      .then((res) => setUser(res.data))
+      .then((res) => { if (active) setUser(res.data); })
       .catch(() => {
+        if (!active) return;
         localStorage.removeItem("token");
         setToken(null);
       });
+
+    /** Refresh dues status after returning from another tab or window. */
+    function refreshOnReturn() {
+      if (document.visibilityState !== "visible") return;
+      getMe(token)
+        .then((res) => { if (active) setUser(res.data); })
+        .catch(() => {});
+    }
+
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
   }, [token]);
 
   function login(newToken) {

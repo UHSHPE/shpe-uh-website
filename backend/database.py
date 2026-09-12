@@ -12,6 +12,7 @@ from config import PRODUCT_IMAGE_DIR, RESUME_DIR
 # and tests/conftest.py (builds the test schema from it). Dropping an import
 # here silently removes that table from migrations and from the test database.
 import models.user.user  # noqa: F401
+import models.dues_import  # noqa: F401
 import models.user.multi_selections.user_race_ethnicity  # noqa: F401
 import models.user.multi_selections.user_prof_dev  # noqa: F401
 import models.user.multi_selections.user_interested_industries  # noqa: F401
