@@ -91,6 +91,13 @@ def disable_event_tracker_sync(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def disable_dues_import_sync(monkeypatch):
+    """Keep tests from using the live membership spreadsheet."""
+    monkeypatch.delenv("DUES_SHEET_ID", raising=False)
+    monkeypatch.delenv("DUES_TRACKER_CREDENTIALS", raising=False)
+
+
 # send_email branches on SMTP_HOST at call time, so a developer with real SMTP
 # credentials in backend/.env would have tests mailing live addresses through
 # the chapter's relay — and, now that signup 502s on a failed send, a relay

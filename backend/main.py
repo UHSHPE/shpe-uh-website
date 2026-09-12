@@ -1,9 +1,11 @@
+"""Configure the API, register routes, and manage recurring background work."""
+
 import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from services import drive_services, square_services
+from services import drive_services, dues_import_services, square_services
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -24,7 +26,7 @@ from services.rate_limit import limiter
 from services.reminder_services import send_due_reminders
 from services.event_tracker_services import sync_events
 
-from routes import admin_routes, auth_routes, committee_routes, event_routes, leaderboard_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
+from routes import admin_routes, auth_routes, committee_routes, dues_routes, event_routes, leaderboard_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
 
 # The imports above already pull .env in as a side effect (database.py calls
 # this too), but main.py reads env vars of its own — including one at import
@@ -33,6 +35,7 @@ from routes import admin_routes, auth_routes, committee_routes, event_routes, le
 load_dotenv()
 
 REMINDER_CHECK_SECONDS = 60
+DUES_SYNC_SECONDS = 600
 
 SYNC_TZ = ZoneInfo("America/Chicago")   # the sheet's timezone
 SYNC_HOUR = 6                           # 6 AM Central — daily event-sheet sync time
@@ -69,16 +72,35 @@ async def event_sync_loop():
             logging.exception("Event sheet sync failed")
         await asyncio.sleep(seconds_until(SYNC_HOUR))
 
-# Inits the DB and starts the background loops (reminder emails + daily event-sheet sync)
+def dispatch_dues_sync():
+    """Run a configured dues import in its own database session."""
+    if dues_import_services.is_configured():
+        with Session(engine) as session:
+            dues_import_services.sync_dues(session)
+
+
+async def dues_sync_loop():
+    """Sync dues immediately and every ten minutes without blocking the API."""
+    while True:
+        try:
+            await asyncio.to_thread(dispatch_dues_sync)
+        except Exception:
+            logging.exception("Membership dues sync failed")
+        await asyncio.sleep(DUES_SYNC_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app):
+    """Start background jobs and cancel them when the application stops."""
     assert_production_config()
     create_db()
-    reminder_task = asyncio.create_task(reminder_loop())
-    event_sync_task = asyncio.create_task(event_sync_loop())
-    yield
-    reminder_task.cancel()
-    event_sync_task.cancel()
+    tasks = [asyncio.create_task(job()) for job in (reminder_loop, event_sync_loop, dues_sync_loop)]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 def cors_origins() -> list[str]:
     """Browser origins allowed to call the API.
@@ -221,6 +243,7 @@ def health_db(session: SessionDependencies):
     return {"status": "ok", "db": "ok"}
 
 app.include_router(admin_routes.router)
+app.include_router(dues_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(committee_routes.router)
 app.include_router(event_routes.router)

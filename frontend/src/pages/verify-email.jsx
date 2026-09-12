@@ -1,3 +1,4 @@
+/** Verify a member's email and offer dues checkout only when payment is outstanding. */
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { verifyEmail, getMe } from "../api/api";
@@ -33,11 +34,12 @@ export default function VerifyEmail() {
         const jwt = res.data.access_token;
         login(jwt);
 
-        // New members are routed into dues checkout, same as the old signup
-        // flow — now that they're verified and signed in. Best-effort: any
-        // failure just lands them on the home page.
         try {
           const me = await getMe(jwt);
+          if (me.data.has_paid_dues) {
+            navigate("/", { replace: true });
+            return;
+          }
           const dest = await startDuesCheckout({ shirtSize: me.data.shirt_size, addItem });
           if (dest) {
             showToast(

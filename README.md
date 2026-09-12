@@ -152,6 +152,8 @@ Frontend runs at **http://localhost:5173**.
 | `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | No | The same service-account key as a single-line JSON string (`jq -c . key.json`), for hosts with no way to mount a file. Takes precedence over `CREDENTIALS` | `{"type":"service_account",...}` |
 | `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
+| `DUES_TRACKER_CREDENTIALS` | No | Dedicated membership-sheet service-account key: a JSON file path locally or the JSON contents in a deployment secret | `secrets/dues-service-account.json` |
+| `DUES_SHEET_ID` | No | Id of the membership spreadsheet; dues imports are disabled unless this and `DUES_TRACKER_CREDENTIALS` are set | `1AbC...xyz` |
 
 ##### Deployment-only
 
@@ -264,6 +266,20 @@ When configured, the backend reads the chapter's event-tracker spreadsheet once 
 **Sheet format:** row 1 holds the column headers (`DATE`, `EVENT NAME`, `DESCRIPTION`, `LOCATION`, `START TIME`, `END TIME`, `OWNER(S)`, `COLLAB(S)?`), row 2 is a template/sample row that's always skipped, and real events start on row 3. `DATE` is `MM/DD` and times accept either 12-hour (`6:00 PM`) or 24-hour (`18:00`) formats — blank, `All Day`, or `TBD` times place the event at midnight. A row with no event name is ignored, and a row with an unreadable date is skipped without affecting the others.
 
 `OWNER(S)` and `COLLAB(S)?` are dropdowns, and they decide which committee an event is filed under. `OWNER(S)` is either `<Committee> Chair - <name>` or an E-Board position; `COLLAB(S)?` optionally names one more committee co-hosting the event, or an outside organization, which is ignored. Both are matched against the sheet's own spelling of each committee name, so **adding a new option to either dropdown needs a matching entry in `COMMITTEE_ROLES`** (`backend/services/event_tracker_services.py`) — otherwise the event is quietly filed under the E-Board instead.
+
+#### Membership-sheet dues import
+
+The backend imports dues at startup and every ten minutes using the dedicated `DUES_TRACKER_CREDENTIALS` and `DUES_SHEET_ID` settings. Give the service-account email **Viewer** access to the membership spreadsheet. Relative credential paths are resolved from the backend's working directory. The integration requests only `spreadsheets.readonly`.
+
+The **first worksheet** must contain one `Student PSID` header (currently column F) and one `Payment Verified?` header (currently column AA). Columns are located by header, and PSIDs are read as seven-digit strings so leading zeros survive. Only a `TRUE` checkbox grants dues; unchecked, blank, or unexpected values remain unverified claims.
+
+The spreadsheet title must contain exactly one consecutive academic-year pair, such as `2026-2027 SHPE UH Membership`. That title fixes the membership period to May 30 of the first year. Missing or ambiguous years and missing or duplicate required headers abort the import. Invalid PSIDs are skipped and reported.
+
+Verified claims count alongside website dues purchases in member status, statistics, and duplicate-purchase protection. An import creates no shop order. Payments are recognized even when the member registers after the import, and expire at the next May 30. Repeated imports and duplicate PSIDs create no duplicate claims; a checked duplicate wins. Once verified, a claim remains verified if its checkbox is later unchecked or its row disappears. Payment reversals require a deliberate correction to the imported record; sheet edits alone do not revoke dues.
+
+Presidents and vice presidents can trigger `POST /admin/dues/sync`. Success returns `processed` (unique valid PSIDs), `verified` (checked claims in this snapshot), `skipped` (invalid rows), and `period_start`. A running sync returns 409, invalid sheet structure returns 422, and missing configuration or an upstream/database failure returns 503. Failed imports preserve existing records. Returning to the browser tab refreshes `/me` so the dues banner reflects the imported status.
+
+Apply the database migration with `alembic upgrade head` before starting the updated backend. Tests mock Google access and run against the separate `shpe_test` database.
 
 ### `frontend/.env.local`
 
@@ -466,6 +482,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
 | GET | `/admin/members?search=&paid=&role=` | President / VP | Member directory with dues status; filter by name/email/PSID search, paid, or role |
 | GET | `/admin/stats` | President / VP | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
+| POST | `/admin/dues/sync` | President / VP | Import membership-sheet dues and return aggregate counts; overlapping sync requests return 409 |
 | GET | `/admin/roles` | President / VP | Every role the caller may assign (a VP's list omits President and both VP roles) |
 | PATCH | `/admin/members/{id}/role` | President / VP | Assign a member's role (chair roles also sync the committee's chair membership). A VP can't assign or change President or VP roles |
 | GET | `/admin/structure` | President / VP | The reporting tree: every e-board and chair role with its supervisor and who currently holds it |
@@ -619,4 +636,3 @@ python -m pytest tests/
 Tests run against a dedicated `shpe_test` Postgres database (separate from the `shpe` dev database, configured via `TEST_DATABASE_URL` — see [Environment Variables](#environment-variables)) using fixtures from `tests/conftest.py`. The `shpe_test` database needs to exist first — see step 2 of [Getting Started](#getting-started) if you haven't created it yet.
 
 You do **not** need to run migrations against `shpe_test`. The suite builds its schema directly from the models and drops it again each run, so it's independent of migration history — which also means a passing test run is not evidence that your migrations are correct. Check those by applying them to a real database.
-
