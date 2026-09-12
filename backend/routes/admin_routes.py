@@ -1,18 +1,38 @@
 from collections import Counter
+from pathlib import Path
 from typing import Annotated
 
+import config
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
 from models.committee import Committee, CommitteeMembership
 from models.role_report import RoleNodeOut, RoleReportUpdate
 from models.user.user import User
 from models.user.user_enums import Role, TOP_TIER_ROLES
-from models.user.user_schemas import AdminMemberOut, AdminRoleUpdate, AdminStatsOut
+from models.user.multi_selections.user_country_origin import UserCountryOrigin
+from models.user.multi_selections.user_interested_industries import UserInterestedIndustries
+from models.user.multi_selections.user_prof_dev import UserProfDev
+from models.user.multi_selections.user_race_ethnicity import UserRaceEthnicity
+from models.user.user_schemas import (
+    AdminMemberDetailOut,
+    AdminMemberOut,
+    AdminRoleUpdate,
+    AdminStatsOut,
+    MemberCommitteeOut,
+)
 from services import shop_services, structure_services, user_services
 from services.dependencies import SessionDependencies, require_role_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+# Re-exported as a module attribute rather than read as config.RESUME_DIR at
+# the call site, matching routes/resume_routes.py — the resume tests
+# monkeypatch this name to a tmp_path, and going through the config module
+# would bypass the patch.
+RESUME_DIR = config.RESUME_DIR
 
 
 def _member_out(user: User, paid: bool) -> AdminMemberOut:
@@ -51,6 +71,92 @@ def list_members(
     if paid is not None:
         rows = [r for r in rows if r.has_paid_dues == paid]
     return rows
+
+
+@router.get("/members/{user_id}", response_model=AdminMemberDetailOut)
+def get_member(
+    user_id: int,
+    actor: Annotated[User, Depends(require_role_admin)],
+    session: SessionDependencies,
+):
+    """One member's full profile — everything the signup form collected, plus
+    their committees and whether a resume is on file.
+
+    Declared BEFORE nothing in particular (it can't collide with /members,
+    which has one fewer path segment) but note it DOES sit on the same prefix
+    as /members/{user_id}/role — different method and depth, so no ordering
+    discipline is needed here.
+    """
+    member = session.get(User, user_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    countries = session.exec(
+        select(UserCountryOrigin).where(UserCountryOrigin.user_id == member.id)
+    ).all()
+    industries = session.exec(
+        select(UserInterestedIndustries).where(UserInterestedIndustries.user_id == member.id)
+    ).all()
+    prof_devs = session.exec(
+        select(UserProfDev).where(UserProfDev.user_id == member.id)
+    ).all()
+    races = session.exec(
+        select(UserRaceEthnicity).where(UserRaceEthnicity.user_id == member.id)
+    ).all()
+
+    memberships = session.exec(
+        select(CommitteeMembership, Committee)
+        .join(Committee, Committee.id == CommitteeMembership.committee_id)
+        .where(
+            CommitteeMembership.user_id == member.id,
+            CommitteeMembership.status == True,  # noqa: E712
+        )
+        .order_by(Committee.name)
+    ).all()
+
+    detail = AdminMemberDetailOut.model_validate(member)
+    detail.has_paid_dues = shop_services.has_paid_dues(session, member.id)
+    detail.country_origin = [c.country_origin for c in countries]
+    detail.interested_industries = [i.interested_industry for i in industries]
+    detail.prof_dev = [p.prof_dev for p in prof_devs]
+    detail.race_and_ethnicity = [r.race_and_ethnicity for r in races]
+    detail.committees = [
+        MemberCommitteeOut(id=committee.id, name=committee.name, is_chair=membership.is_chair)
+        for membership, committee in memberships
+    ]
+    return detail
+
+
+@router.get("/members/{user_id}/resume")
+def download_member_resume(
+    user_id: int,
+    actor: Annotated[User, Depends(require_role_admin)],
+    session: SessionDependencies,
+):
+    """A member's resume PDF, for the president and both VPs.
+
+    This is a deliberate narrowing of "resumes are private to the owner":
+    the resume book is a chapter asset the officers running it have to be
+    able to open, and require_role_admin is the same three-seat gate as the
+    rest of the members page. It is read-only on purpose — there is no admin
+    upload or delete, so the member stays the only one who can change or
+    remove their own file (and the Drive mirror stays in step with them).
+    Chairs are NOT included; widening past the three seats should be a
+    deliberate decision, not a side effect of adding a role.
+    """
+    member = session.get(User, user_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    path = Path(RESUME_DIR) / f"user_{member.id}.pdf"
+    if not member.resume_filename or not path.exists():
+        raise HTTPException(status_code=404, detail="No resume on file")
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=member.resume_filename,
+    )
 
 
 @router.get("/stats", response_model=AdminStatsOut)

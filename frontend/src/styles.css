@@ -548,3 +548,8 @@ a{ color:inherit; text-decoration:none; }
 .orgTree > li { padding-left: 0; }
 .orgTree > li::before,
 .orgTree > li::after { display: none; }
+
+/* Members directory rows open a profile modal on click. Hover feedback is the
+   one thing an inline style can't express, same exception as .orgTree. */
+.memberRow:hover { background: var(--surface-muted); }
+.memberRow:focus-visible { outline: 2px solid var(--shpe-blue); outline-offset: -2px; }

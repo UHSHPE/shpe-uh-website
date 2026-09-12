@@ -212,6 +212,47 @@ class AdminMemberOut(SQLModel):
     has_paid_dues: bool = False
 
 
+class MemberCommitteeOut(SQLModel):
+    """One committee a member belongs to, on AdminMemberDetailOut."""
+    id: int
+    name: str
+    is_chair: bool
+
+
+class AdminMemberDetailOut(AdminMemberOut):
+    """One member's full profile for GET /admin/members/{id} — the directory
+    row plus everything the signup form collected.
+
+    The multi-select lists are declared here as PLAIN lists with a
+    default_factory, deliberately NOT by inheriting UserMultiSelectedFields:
+    those carry validators requiring at least one row each, which is a rule
+    about what a SIGNUP must supply, not about what an existing account
+    happens to have. Reusing them would make this endpoint 500 on response
+    validation for any account whose child rows are missing — the same trap
+    /me already has (see CLAUDE.md's note on UserOut and bare make_user
+    fixtures), and an admin directory is exactly where the odd incomplete
+    account shows up.
+    """
+    birthday: date
+    gender: Gender
+    first_gen: bool
+    gpa: GPA | None = None
+    exp_grad_date: ExpGradDate
+    in_slack: bool
+    is_returning: MembershipStatus
+    email_verified: bool
+    # Presence of a resume on file; the PDF itself comes from
+    # GET /admin/members/{id}/resume.
+    resume_filename: str | None = None
+
+    country_origin: list[str] = Field(default_factory=list)
+    interested_industries: list[Industry] = Field(default_factory=list)
+    prof_dev: list[ProfDev] = Field(default_factory=list)
+    race_and_ethnicity: list[RaceEthnicity] = Field(default_factory=list)
+
+    committees: list[MemberCommitteeOut] = Field(default_factory=list)
+
+
 class AdminRoleUpdate(SQLModel):
     role: Role
 
