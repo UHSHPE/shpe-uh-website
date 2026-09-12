@@ -64,3 +64,25 @@ class EventChairOut(SQLModel):
     sign_in_code: str
     sign_out_code: str
     attendee_count: int
+
+
+class EventAllOut(EventOut):
+    """GET /events/all -- every chapter event for a chair/E-Board member.
+
+    EventOut plus, per-event, whatever the caller is actually allowed to do
+    with it. The codes are filled for events in
+    attendance_services.code_scoped_events (an E-Board member gets every
+    event, a chair gets what they host) and are None otherwise;
+    can_view_roster tracks the narrower host_scoped_events set that gates
+    GET /events/{id}/attendance. Both are carried on the payload so the page
+    can hide a button rather than offer one that 403s -- the enforcement is
+    still server-side on each of those endpoints.
+
+    This is the one schema that may carry a code outside EventChairOut;
+    EventOut itself must stay code-free, since it is public and powers
+    /calendar (test_public_events_endpoint_never_exposes_codes pins that).
+    """
+    sign_in_code: str | None = None
+    sign_out_code: str | None = None
+    attendee_count: int = 0
+    can_view_roster: bool = False

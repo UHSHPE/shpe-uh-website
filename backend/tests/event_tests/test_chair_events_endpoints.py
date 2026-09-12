@@ -3,6 +3,8 @@
 # chair_client fixture from tests/event_tests/conftest.py (a
 # Role.social_chair user chairing the "Social" committee).
 
+from datetime import timedelta
+
 from models.user.user_enums import Role
 from services.attendance_services import record_sign_in, record_sign_out
 from services.time_services import utcnow
@@ -55,7 +57,10 @@ def test_chair_cannot_see_another_committees_codes(chair_client, session, commit
     assert resp.json() == []
 
 
-def test_all_events_lists_every_event_without_codes(chair_client, session, committee):
+def test_all_events_gives_a_chair_codes_only_for_what_they_host(chair_client, session, committee):
+    # A chair sees the whole calendar, but /events/all hands out a code only
+    # where /events/mine already would -- so All Events adds visibility, not
+    # access. can_view_roster mirrors the same split.
     other = make_committee(session, name="EEC", chair_role=Role.eec_chair)
     mine = make_event(session, title="Mixer")
     not_mine = make_event(session, title="Robotics Night")
@@ -65,10 +70,76 @@ def test_all_events_lists_every_event_without_codes(chair_client, session, commi
     resp = chair_client.get("/events/all")
 
     assert resp.status_code == 200
-    ids = {e["id"] for e in resp.json()}
-    assert ids == {mine.id, not_mine.id}
-    assert "sign_in_code" not in resp.text
-    assert "sign_out_code" not in resp.text
+    by_id = {e["id"]: e for e in resp.json()}
+    assert set(by_id) == {mine.id, not_mine.id}
+
+    assert by_id[mine.id]["sign_in_code"]
+    assert by_id[mine.id]["sign_out_code"]
+    assert by_id[mine.id]["can_view_roster"] is True
+
+    assert by_id[not_mine.id]["sign_in_code"] is None
+    assert by_id[not_mine.id]["sign_out_code"] is None
+    assert by_id[not_mine.id]["can_view_roster"] is False
+
+
+def test_all_events_gives_an_officer_every_events_codes(officer_client, session):
+    # The widening the Events page is built on: an E-Board member covering
+    # the door at an event they didn't organize can still present the QR.
+    social = make_committee(session, name="Social", chair_role=Role.social_chair)
+    event = make_event(session, title="Mixer")
+    link_host(session, event, social)
+
+    body = officer_client.get("/events/all").json()
+
+    assert [e["id"] for e in body] == [event.id]
+    assert body[0]["sign_in_code"]
+    assert body[0]["sign_out_code"]
+
+
+def test_an_officers_code_access_does_not_extend_to_the_roster(officer_client, session):
+    # The line the widening deliberately stops at: a code and a scan counter
+    # identify nobody, a roster carries names and personal emails.
+    social = make_committee(session, name="Social", chair_role=Role.social_chair)
+    event = make_event(session, title="Mixer")
+    link_host(session, event, social)
+
+    body = officer_client.get("/events/all").json()
+    assert body[0]["sign_in_code"]
+    assert body[0]["can_view_roster"] is False
+
+    assert officer_client.get(f"/events/{event.id}/attendance").status_code == 403
+    # ...but the counter beside the QR they're allowed to present works.
+    assert officer_client.get(f"/events/{event.id}/scan-count").status_code == 200
+
+
+def test_all_events_mints_missing_codes(officer_client, session):
+    # Only sync_events mints at creation, so seeded and hand-added events
+    # start with NULL in both columns.
+    event = make_event(session, sign_in_code=None, sign_out_code=None)
+
+    body = officer_client.get("/events/all").json()
+
+    assert body[0]["sign_in_code"]
+    assert body[0]["sign_out_code"]
+    session.refresh(event)
+    assert event.sign_in_code == body[0]["sign_in_code"]
+
+
+def test_all_events_reports_attendee_counts(chair_client, session, committee):
+    event = make_event(session, start_in=timedelta(hours=1))
+    link_host(session, event, committee)
+    for i in range(2):
+        attendee = make_user(
+            session,
+            cougarnet_email=f"a{i}@cougarnet.uh.edu",
+            personal_email=f"a{i}@gmail.com",
+            psid=f"900000{i}",
+        )
+        record_sign_in(session, attendee, event)
+
+    body = chair_client.get("/events/all").json()
+
+    assert body[0]["attendee_count"] == 2
 
 
 def test_all_events_hides_a_soft_deleted_event(chair_client, session, committee):

@@ -10,7 +10,7 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Event Sheet Sync** — The calendar populates itself from the chapter's event-tracker Google Sheet, re-read once a day, so officers add events in the sheet they already maintain and never touch the website
 - **Email Reminders** — Members can request an email reminder for any upcoming event (sent 24h before, handled by a background loop)
 - **Dashboard** — Personalized member dashboard with upcoming events and notifications
-- **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder
+- **Profile** — Members can view their profile details and upload a PDF resume (view, replace, or remove it); resumes can be mirrored to a chapter Google Drive folder. Only the member — plus the president and both VPs, read-only, from the Members page — can open it
 - **Committees** — Browse, join, and leave committees; chairs and co-chairs can view rosters and broadcast messages to members
 - **Notifications** — In-app notification system for committee activity (joins, messages)
 - **Merch Shop** — Public storefront with cart and checkout (card, **Apple Pay**, and **Google Pay** payments via **Square**; runs in a simulated dev mode until Square credentials are configured). Buyers pay online and pick up in person at a chapter event. The comms director, marketing chair, and president manage products, orders, and shop settings from the Shop Manager page and are notified of every new order; buyers get an emailed receipt at checkout and another email when their order is ready for pickup
@@ -21,7 +21,8 @@ The official website for the **Society of Hispanic Professional Engineers (SHPE)
 - **Gallery** — Photo gallery with an approval workflow
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
-- **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot based on the event's pillar, matching the chapter point-system chart: 4 for signing in to a Community Outreach event, 3 for any other pillar, and 2 when no pillar is set on the event; sign-out is 2 throughout, general meetings award at least 3, and bringing a new member adds 2. An event tagged with several pillars awards the highest of them, not the sum. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host
+- **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot based on the event's pillar, matching the chapter point-system chart: 4 for signing in to a Community Outreach event, 3 for any other pillar, and 2 when no pillar is set on the event; sign-out is 2 throughout, general meetings award at least 3, and bringing a new member adds 2. An event tagged with several pillars awards the highest of them, not the sum. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host. E-Board members can present the QR for **any** chapter event from the All Events tab, since officers often cover the door at an event another committee organized
+- **Event Statistics** — Any chair or E-Board member can open a statistics panel on any event from the Events page: how many attended, how many scanned out, the average time people stayed, how many were attending their first chapter event ever, how many guests were brought, and breakdowns by classification (freshman through graduate), college, membership year, and the top five majors. These are counts and averages only — no attendee is named, which is why the panel is readable across committees while the named attendance roster stays limited to the event's own hosts
 
 ## Tech Stack
 
@@ -377,7 +378,7 @@ shpe-uh-website/
     ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
-    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance/event-visibility services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
+    ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance/event-statistics/event-visibility services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
     ├── validators/         # Input validation (email normalization)
     └── tests/              # pytest suite (runs against a dedicated `shpe_test` Postgres database; requires the database container to be running)
 ```
@@ -406,9 +407,9 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | `/dashboard` | Member dashboard | Yes |
 | `/committees` | Browse/join committees, chair tools | Yes |
 | `/profile` | Profile info, PDF resume, and order history | Yes |
-| `/members` | Member directory and org chart: chapter stats, member lookup, role assignment, and the reporting structure, across All/E-Board/Chairs/Structure tabs — president and VPs only | Yes |
+| `/members` | Member directory and org chart: chapter stats, member lookup, role assignment, and the reporting structure, across All/E-Board/Chairs/Structure tabs. Click any member for their full profile — contact details, academics, background answers, committees, and resume — president and VPs only | Yes |
 | `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
-| `/my-events` | Chair/E-Board Events page: My Events / All Events tabs, a QR modal (Sign in/Sign out, fullscreen "present" view, live scan counter) for each hosted event, and a read-only attendance roster | Yes |
+| `/my-events` | Chair/E-Board Events page: My Events / All Events tabs, a QR modal (Sign in/Sign out, fullscreen "present" view, live scan counter), a read-only attendance roster, and a per-event statistics panel. Both tabs open on the next upcoming event and page backwards into the past | Yes |
 | `/attend/:code` | Mobile QR check-in flow — reached only by scanning a code, not linked from navigation. No site header/footer/cart; renders its own "sign in to continue" screen if you're signed out | No |
 
 ## API Reference
@@ -434,9 +435,10 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | POST | `/events/attend` | Yes | Record a QR scan and award points; the scanned code itself says whether it's a sign-in or a sign-out. Scanning twice is safe — it never awards twice. Too early (more than ~1 hour before the event) is rejected, and a code for an event removed from the tracker sheet stops working |
 | GET | `/events/code/{code}` | Optional | Preview a scanned code before recording anything — event name/time/location and whether check-in is open yet, expired, or already recorded (fills in with a valid token) |
 | GET | `/events/mine` | Chair/E-Board | Events they host, with the sign-in/sign-out codes to render as QR |
-| GET | `/events/all` | Chair/E-Board | Every chapter event, read-only (no codes) |
+| GET | `/events/all` | Chair/E-Board | Every chapter event, with the QR codes for the events this caller may present (every event for E-Board, hosted events for a chair) |
 | GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
-| GET | `/events/{id}/scan-count` | Chair only | Live sign-in/sign-out counts for one event, for the QR modal to poll |
+| GET | `/events/{id}/stats` | Chair/E-Board | Aggregate statistics for any event — turnout, sign-outs, average time at the event, first-time attendees, guests brought, and classification / college / major / membership breakdowns. Counts only; no attendee is named |
+| GET | `/events/{id}/scan-count` | Chair/E-Board | Live sign-in/sign-out counts for one event, for the QR modal to poll |
 | GET | `/leaderboard` | No | Public chapter points leaderboard: every verified member, ranked by total points, with a breakdown of where those points came from across the 5 Core Pillars |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair). Joining again when you are already a member is a no-op that returns 200 and notifies nobody; joins are rate limited per account (`RATE_LIMIT_COMMITTEE_JOIN`). The internal E-Board rows are not joinable and return 404 |
@@ -473,7 +475,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 
 ## President & role assignment
 
-The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the **Members** page (`/members`) backed by the `/admin/*` endpoints. From there they can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member.
+The **President** role is the site-wide admin: shop manager access, every committee's chair tools (roster + messages on all committees), and the **Members** page (`/members`) backed by the `/admin/*` endpoints. From there they can look up any account, see who has and hasn't paid dues for the current membership year, and assign roles — vice presidents, e-board, committee chairs, or plain member. Clicking a member opens their full profile: contact details, academics, membership and background answers from signup, the committees they're in, and their resume. The president and both VPs are the only people who can read another member's resume — resumes are otherwise private to the member, and this view is read-only, so only the member can replace or delete their own file.
 
 **Both Vice Presidents share the Members page**, so role fixes don't wait on one person. Two limits keep the top of the chapter out of reach: a VP can't assign the President or either VP role (none appear in their dropdown), and a VP can't change the role of anyone who currently holds one. That covers both directions of the same risk — without it a VP could demote the president or their fellow VP, or promote an ally into a VP seat, and the chapter could end up with nobody holding full admin.
 

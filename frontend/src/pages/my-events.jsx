@@ -1,23 +1,32 @@
 /* eslint-disable no-unused-vars */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { getAllChairEvents, getMyEvents } from "../api/api";
 import { isChair, isEboard } from "../utils/shop";
-import { eventColor, eventTypeLabel, formatEventDay, formatEventTime } from "../utils/events";
+import { eventColor, eventTypeLabel, formatEventDay, formatEventTime, parseUTC } from "../utils/events";
 import EventQrModal from "../components/EventQrModal";
 import EventAttendancePanel from "../components/EventAttendancePanel";
+import EventStatsPanel from "../components/EventStatsPanel";
 import Pagination from "../components/Pagination";
 import useDocumentTitle from "../hooks/useDocumentTitle";
-import usePagination from "../hooks/usePagination";
+import usePagination, { PAGE_SIZE } from "../hooks/usePagination";
 
-// Chair/E-Board Events page — My Events (with QR + attendance) and All
-// Events (read-only, no codes). Route gate mirrors pages/shop-manager.jsx:
-// PrivateRoute handles "must be signed in", this page bounces anyone who
-// isn't a chair or E-Board member back to the dashboard. isChair is NOT a
-// superset of isEboard (the president is E-Board but not a chair), so both
-// checks are required.
+// Chair/E-Board Events page — My Events (what the caller hosts) and All
+// Events (the whole chapter calendar). Route gate mirrors
+// pages/shop-manager.jsx: PrivateRoute handles "must be signed in", this
+// page bounces anyone who isn't a chair or E-Board member back to the
+// dashboard. isChair is NOT a superset of isEboard (the president is E-Board
+// but not a chair), so both checks are required.
+//
+// Per-event permissions ride on the payload rather than being re-derived
+// from the role here: /events/all fills sign_in_code/sign_out_code only for
+// events whose QR this caller may present (every event for E-Board, hosted
+// events for a chair) and can_view_roster only for the narrower set that may
+// read names. Both are advisory — the endpoints behind each button re-check
+// server-side — so the point of reading them is to hide a button rather than
+// offer one that 403s.
 export default function MyEventsPage() {
   useDocumentTitle("Events");
   const { user } = useAuth();
@@ -27,7 +36,9 @@ export default function MyEventsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [qrEvent, setQrEvent] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  // Which card is expanded, and into which panel. One at a time: the panels
+  // are tall, and two open rosters push every other event off the screen.
+  const [expanded, setExpanded] = useState(null); // { id, panel: "attendance" | "stats" }
 
   const authorized = user && (isChair(user) || isEboard(user));
 
@@ -52,9 +63,21 @@ export default function MyEventsPage() {
   }, [authorized]);
 
   const events = tab === "mine" ? mineEvents : allEvents;
+
+  // Both lists run chronologically from the start of the semester, so page 1
+  // is the oldest events — the least useful place to land in November. Open
+  // on the page holding the next event that hasn't started yet, and leave the
+  // reader free to page backwards into the past from there.
+  const landingPage = useMemo(() => upcomingPage(events), [events]);
+
   // Above the early returns below — a hook can't be called conditionally.
-  // Switching tabs swaps the whole list, so it resets to page 1.
-  const pager = usePagination(events, { resetKey: tab });
+  // The length rides in resetKey because landingPage isn't knowable on the
+  // first render (the list is still being fetched); folding it in is what
+  // makes the jump fire once the data lands, as well as on a tab switch.
+  const pager = usePagination(events, {
+    resetKey: `${tab}|${events.length}`,
+    initialPage: landingPage,
+  });
 
   if (!user) {
     return (
@@ -68,12 +91,18 @@ export default function MyEventsPage() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  function togglePanel(eventId, panel) {
+    setExpanded((current) =>
+      current && current.id === eventId && current.panel === panel ? null : { id: eventId, panel }
+    );
+  }
+
   return (
     <div style={{ maxWidth: "1040px", margin: "0 auto", padding: "16px 20px 80px", fontFamily: "Work Sans, sans-serif" }}>
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
         <h1 style={{ margin: "0 0 6px", fontSize: "30px", fontWeight: 800, color: "var(--shpe-navy)" }}>Events</h1>
         <p style={{ margin: "0 0 24px", fontSize: "14px", color: "var(--muted)" }}>
-          Present a QR code at the door for sign-in and sign-out, and review who checked in.
+          Present a QR code at the door for sign-in and sign-out, review who checked in, and see how each event turned out.
         </p>
       </motion.div>
 
@@ -123,94 +152,102 @@ export default function MyEventsPage() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {pager.pageItems.map((ev) => (
-            <div key={ev.id}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "16px",
-                  background: "#fff",
-                  border: "1px solid var(--border)",
-                  borderLeft: `4px solid ${eventColor(ev.event_type)}`,
-                  borderRadius: expandedId === ev.id ? "12px 12px 0 0" : "12px",
-                  boxShadow: "var(--shadow-card)",
-                  padding: "18px 20px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: "220px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "4px" }}>
+          {pager.pageItems.map((ev) => {
+            // /events/mine only ever returns events this caller hosts, so
+            // both permissions are implicit there; /events/all says so
+            // per row.
+            const canPresentQr = tab === "mine" || Boolean(ev.sign_in_code);
+            const canViewRoster = tab === "mine" || ev.can_view_roster;
+            const openPanel = expanded && expanded.id === ev.id ? expanded.panel : null;
+
+            return (
+              <div key={ev.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "16px",
+                    background: "#fff",
+                    border: "1px solid var(--border)",
+                    borderLeft: `4px solid ${eventColor(ev.event_type)}`,
+                    borderRadius: openPanel ? "12px 12px 0 0" : "12px",
+                    boxShadow: "var(--shadow-card)",
+                    padding: "18px 20px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: "220px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          background: eventColor(ev.event_type),
+                          color: "#fff",
+                          borderRadius: "999px",
+                          padding: "2px 10px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {eventTypeLabel(ev.event_type)}
+                      </span>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: "16px", color: "var(--ink)" }}>{ev.title}</p>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>
+                      🕒 {formatEventDay(ev.start_time)} · {formatEventTime(ev.start_time, ev.end_time)}
+                    </p>
+                    {ev.location && (
+                      <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--muted)" }}>📍 {ev.location}</p>
+                    )}
+                  </div>
+
+                  {ev.points_value > 0 && (
                     <span
                       style={{
-                        display: "inline-block",
-                        background: eventColor(ev.event_type),
+                        background: "var(--shpe-red)",
                         color: "#fff",
                         borderRadius: "999px",
-                        padding: "2px 10px",
-                        fontSize: "11px",
+                        padding: "4px 10px",
+                        fontSize: "12px",
                         fontWeight: 700,
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      {eventTypeLabel(ev.event_type)}
+                      +{ev.points_value} pts
                     </span>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: "16px", color: "var(--ink)" }}>{ev.title}</p>
-                  </div>
-                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>
-                    🕒 {formatEventDay(ev.start_time)} · {formatEventTime(ev.start_time, ev.end_time)}
-                  </p>
-                  {ev.location && (
-                    <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--muted)" }}>📍 {ev.location}</p>
                   )}
+
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {canPresentQr && (
+                      <button
+                        onClick={() => setQrEvent(ev)}
+                        className="primaryBtn"
+                        style={{ padding: "8px 16px", fontSize: "13px" }}
+                      >
+                        Show QR
+                      </button>
+                    )}
+                    {canViewRoster && (
+                      <button
+                        onClick={() => togglePanel(ev.id, "attendance")}
+                        style={secondaryBtnStyle}
+                      >
+                        {openPanel === "attendance" ? "Hide attendance" : "Attendance"} ({ev.attendee_count})
+                      </button>
+                    )}
+                    {/* Statistics are aggregate-only, so this one is offered
+                        on every event — including other committees'. */}
+                    <button onClick={() => togglePanel(ev.id, "stats")} style={secondaryBtnStyle}>
+                      {openPanel === "stats" ? "Hide stats" : "Stats"}
+                    </button>
+                  </div>
                 </div>
 
-                {ev.points_value > 0 && (
-                  <span
-                    style={{
-                      background: "var(--shpe-red)",
-                      color: "#fff",
-                      borderRadius: "999px",
-                      padding: "4px 10px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    +{ev.points_value} pts
-                  </span>
-                )}
-
-                {tab === "mine" && (
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => setQrEvent(ev)}
-                      className="primaryBtn"
-                      style={{ padding: "8px 16px", fontSize: "13px" }}
-                    >
-                      Show QR
-                    </button>
-                    <button
-                      onClick={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
-                      style={{
-                        borderRadius: "999px",
-                        padding: "8px 16px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        border: "1px solid var(--border-strong)",
-                        background: "#fff",
-                        color: "var(--shpe-blue)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {expandedId === ev.id ? "Hide attendance" : "Attendance"} ({ev.attendee_count})
-                    </button>
-                  </div>
-                )}
+                {openPanel === "attendance" && <EventAttendancePanel event={ev} />}
+                {openPanel === "stats" && <EventStatsPanel event={ev} />}
               </div>
-
-              {tab === "mine" && expandedId === ev.id && <EventAttendancePanel event={ev} />}
-            </div>
-          ))}
+            );
+          })}
           <Pagination {...pager} label="events" />
         </div>
       )}
@@ -218,4 +255,27 @@ export default function MyEventsPage() {
       {qrEvent && <EventQrModal event={qrEvent} onClose={() => setQrEvent(null)} />}
     </div>
   );
+}
+
+const secondaryBtnStyle = {
+  borderRadius: "999px",
+  padding: "8px 16px",
+  fontSize: "13px",
+  fontWeight: 700,
+  border: "1px solid var(--border-strong)",
+  background: "#fff",
+  color: "var(--shpe-blue)",
+  cursor: "pointer",
+};
+
+// 1-based page holding the first event that hasn't started yet. An all-past
+// list lands on its LAST page (the most recent events) rather than page 1 —
+// once the semester is over, "the end of the list" is what someone opening
+// this page is looking for either way.
+function upcomingPage(events) {
+  if (events.length === 0) return 1;
+  const now = Date.now();
+  const index = events.findIndex((ev) => parseUTC(ev.start_time) >= now);
+  if (index === -1) return Math.max(1, Math.ceil(events.length / PAGE_SIZE));
+  return Math.floor(index / PAGE_SIZE) + 1;
 }

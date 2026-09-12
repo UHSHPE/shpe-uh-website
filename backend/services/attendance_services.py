@@ -1,5 +1,7 @@
+import secrets
 from datetime import datetime, time, timedelta, timezone
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -242,3 +244,64 @@ def host_scoped_events(session, user: User) -> list[Event]:
         .distinct()
         .order_by(Event.start_time)
     ).all()
+
+
+def ensure_event_codes(session, events: list[Event]) -> None:
+    """Mint sign-in/sign-out codes for any event that doesn't have them yet.
+
+    sync_events mints codes at creation time, but that only covers events
+    that came from the tracker sheet -- seeded and hand-added rows have NULL
+    in both columns, and EventChairOut declares them non-optional, so a
+    president (who is scoped to every event) loading /events/mine used to get
+    a 500 from response validation rather than a card. Idempotent: an event
+    that already has both codes is untouched, and the commit is skipped
+    entirely when nothing was minted, so the read paths stay read-only in the
+    common case.
+    """
+    minted = False
+    for event in events:
+        if event.sign_in_code and event.sign_out_code:
+            continue
+        event.sign_in_code = event.sign_in_code or secrets.token_urlsafe(nbytes=16)
+        event.sign_out_code = event.sign_out_code or secrets.token_urlsafe(nbytes=16)
+        session.add(event)
+        minted = True
+    if minted:
+        session.commit()
+
+
+def attendee_counts(session, event_ids: list[int]) -> dict[int, int]:
+    """{event_id: sign-in count} for a batch of events, in ONE query.
+
+    The chair Events page lists every chapter event, so a per-event count
+    (what /events/mine originally did) is an N+1 that grows with the
+    semester. Events with no attendance simply don't appear in the result --
+    callers should read it with .get(id, 0)."""
+    if not event_ids:
+        return {}
+    rows = session.exec(
+        select(EventAttendance.event_id, func.count())
+        .where(EventAttendance.event_id.in_(event_ids))
+        .group_by(EventAttendance.event_id)
+    ).all()
+    return {event_id: count for event_id, count in rows}
+
+
+def code_scoped_events(session, user: User) -> list[Event]:
+    """Events whose QR codes the caller may PRESENT, which is a wider set
+    than host_scoped_events.
+
+    An E-Board member gets every live event: officers cover the door at
+    events they didn't organize, and an officer who can't pull up the sign-in
+    QR is a member who can't earn points. Everyone else (a committee chair)
+    gets exactly what they host.
+
+    Deliberately separate from host_scoped_events, which stays narrow and
+    still gates GET /events/{id}/attendance: a roster carries names and
+    personal emails, while a QR code and its scan counter carry neither. The
+    two questions are "may you open the door" and "may you read who came
+    through it", and only the second is a privacy boundary.
+    """
+    if user.role in EBOARD_ROLES:
+        return session.exec(live_events().order_by(Event.start_time)).all()
+    return host_scoped_events(session, user)
