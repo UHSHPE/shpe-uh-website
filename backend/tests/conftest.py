@@ -91,14 +91,11 @@ def disable_event_tracker_sync(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
-# The membership-sheet dues import shares the event tracker's credentials but
-# has its own spreadsheet id, so clearing SHEET_ID above is not enough — a
-# developer with DUES_SHEET_ID in backend/.env would have the suite reading the
-# chapter's real dues sheet. is_configured() reads env at call time, so
-# clearing the id is all it takes to force the dev-mode no-op.
 @pytest.fixture(autouse=True)
 def disable_dues_import_sync(monkeypatch):
+    """Keep tests from using the live membership spreadsheet."""
     monkeypatch.delenv("DUES_SHEET_ID", raising=False)
+    monkeypatch.delenv("DUES_TRACKER_CREDENTIALS", raising=False)
 
 
 # send_email branches on SMTP_HOST at call time, so a developer with real SMTP
