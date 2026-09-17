@@ -4,9 +4,9 @@ server, and the guard that keeps seed.py off a deployed database."""
 import pytest
 
 import main
-from config import is_production, square_is_production
+from config import cors_origins, docs_urls, is_production, square_is_production
 from database import assert_local_database
-from main import assert_production_config, cors_origins, docs_urls
+from main import assert_production_config
 
 
 # --- health probes ---

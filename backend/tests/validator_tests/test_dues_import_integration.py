@@ -8,10 +8,9 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import select
 
-import main
 from models.dues_import import DuesSyncResult, ImportedDues
 from models.user.user_enums import Role
-from services import dues_import_services, shop_services
+from services import background_jobs, dues_import_services, shop_services
 from tests.admin_tests.conftest import president, president_client  # noqa: F401
 from tests.admin_tests.conftest import make_dues_order
 from tests.validator_tests.test_membershpe_verification import CURRENT_TITLE, FakeSheet, stub_sheet
@@ -174,7 +173,7 @@ def test_overlapping_sync_is_skipped_and_lock_is_released(monkeypatch):
 def test_background_loop_retries_failure_at_ten_minute_interval(monkeypatch):
     """Retry a failed background import on the next scheduled interval."""
     dispatch = Mock(side_effect=[ConnectionError("unavailable"), None])
-    monkeypatch.setattr(main, "dispatch_dues_sync", dispatch)
+    monkeypatch.setattr(background_jobs, "dispatch_dues_sync", dispatch)
     waits = []
 
     async def next_interval(seconds):
@@ -183,8 +182,8 @@ def test_background_loop_retries_failure_at_ten_minute_interval(monkeypatch):
         if len(waits) == 2:
             raise asyncio.CancelledError
 
-    monkeypatch.setattr(main.asyncio, "sleep", next_interval)
+    monkeypatch.setattr(background_jobs.asyncio, "sleep", next_interval)
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(main.dues_sync_loop())
+        asyncio.run(background_jobs.dues_sync_loop())
     assert dispatch.call_count == 2
     assert waits == [600, 600]
