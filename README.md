@@ -187,7 +187,8 @@ cd frontend && npm run lint && npm run build
   in the same PR, because it buries the real change in noise.
 - **Business logic goes in `backend/services/`**, not in the route. Routes parse, authorize, and
   delegate.
-- **Frontend API calls go through the `api` axios instance** in `src/api/api.js` — never a bare
+- **Frontend API calls go through the shared `api` axios instance** in `src/api/client.js`, using
+  the feature modules in `src/api/` — never a bare
   `fetch`, never a raw axios import.
 - **Every page calls `useDocumentTitle` once.** A page that skips it inherits the previous page's
   browser-tab title.

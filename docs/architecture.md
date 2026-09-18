@@ -25,7 +25,8 @@ Tracing one call end to end, because almost every feature follows this path:
 ```
 page in src/pages/          a component calls an API function
         │
-src/api/api.js              the shared axios instance adds the JWT and the base URL
+src/api/client.js           the shared axios instance adds the base URL and handles expired sessions
+src/api/*Api.js             feature modules add auth headers and call their backend endpoints
         │
         ▼  HTTP
 backend/main.py             middleware: body-size ceiling, CORS, host check, rate limiter
@@ -43,8 +44,9 @@ PostgreSQL
 Four conventions hold that path together, and breaking any of them fails in a confusing way
 rather than an obvious one:
 
-- **Every frontend API call goes through the `api` axios instance** in `src/api/api.js` — never a
-  bare `fetch`, never a raw axios import. It is what attaches the token and the base URL. (The one
+- **Every frontend API call goes through the shared `api` axios instance** in `src/api/client.js`
+  via a feature module in `src/api/` — never a bare `fetch`, never a raw axios import. The client
+  owns the base URL and expired-session handling; feature modules attach authentication. (The one
   exception is the home page's Behold Instagram feed, which is an external public CDN.)
 - **Business logic belongs in `services/`, not in the route.** Routes parse, authorize, and
   delegate. A rule written in a route is a rule the other three callers of that logic don't get.
@@ -62,7 +64,7 @@ shpe-uh-website/
 │   ├── index.html          # Page shell: title, favicons, description, Open Graph/Twitter card tags
 │   ├── public/             # Served at the site root: favicons, og-image.png, site.webmanifest, robots.txt
 │   └── src/
-│       ├── api/            # Axios instance + all API call functions (api.js)
+│       ├── api/            # Shared Axios client, feature API modules, and compatibility barrel
 │       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)

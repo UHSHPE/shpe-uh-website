@@ -40,7 +40,7 @@ jobs on every push/PR to `main` and `dev`; both must pass before merging to `mai
 ```
 backend/   main.py config.py database.py chapter_data.py seed.py bootstrap.py
            routes/ models/ services/ security/ validators/ alembic/ tests/
-frontend/src/   pages/ components/ context/ hooks/ utils/ api/api.js App.jsx styles.css
+frontend/src/   pages/ components/ context/ hooks/ utils/ api/ App.jsx styles.css
 ```
 
 - `config.py` — the single knob for every writable path (`DATA_DIR` → `RESUME_DIR`, `PRODUCT_IMAGE_DIR`), and the only place `ENVIRONMENT`/`SQUARE_ENVIRONMENT` are read.
@@ -69,7 +69,7 @@ Full annotated list in `README.md`. The ones that are easy to get wrong:
 
 ## Frontend Patterns
 
-- All API calls go through the `api` axios instance in `src/api/api.js` — never `fetch`, never a raw axios import. (Sole exception: the home page's Behold Instagram feed, an external public CDN.)
+- All API calls use the shared axios instance in `src/api/client.js` through the domain modules in `src/api/` — never `fetch`, never a raw axios import. `src/api/api.js` is the compatibility barrel. (Sole exception: the home page's Behold Instagram feed, an external public CDN.)
 - New API functions read the token via the internal `authHeaders()` helper — don't pass it as a parameter. **Public** endpoints must NOT send `authHeaders()`.
 - Pages in `src/pages/`, reusable UI in `src/components/`, routes in `App.jsx`.
 - **Every page calls `useDocumentTitle` once**, near the top. `index.html` has one static `<title>` for all routes, so a page that skips it inherits the previous page's title.
