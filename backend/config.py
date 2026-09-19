@@ -15,6 +15,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR") or BASE_DIR).resolve()
 UPLOAD_DIR = DATA_DIR / "uploads"
 RESUME_DIR = UPLOAD_DIR / "resumes"
 PRODUCT_IMAGE_DIR = UPLOAD_DIR / "products"
+GALLERY_IMAGE_DIR = UPLOAD_DIR / "gallery"
 
 # Deliberately no mkdir here. Importing config must stay free of side effects
 # so tests (which monkeypatch these paths to tmp_path) never touch real dirs;

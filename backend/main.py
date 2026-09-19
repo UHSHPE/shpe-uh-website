@@ -19,7 +19,7 @@ from services.body_limit import BodyLimitMiddleware
 from services.forwarded_proto import ForwardedProtoMiddleware
 from services.rate_limit import limiter
 
-from routes import admin_routes, auth_routes, committee_routes, dues_routes, event_routes, health_routes, leaderboard_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes
+from routes import admin_routes, auth_routes, committee_routes, dues_routes, event_routes, health_routes, leaderboard_routes, notification_routes, pw_reset_routes, resume_routes, shop_routes, gallery_routes
 
 
 @asynccontextmanager
@@ -128,6 +128,7 @@ app.include_router(notification_routes.router)
 app.include_router(pw_reset_routes.router)
 app.include_router(resume_routes.router)
 app.include_router(shop_routes.router)
+app.include_router(gallery_routes.router)
 
 if __name__ == "__main__":
     import uvicorn

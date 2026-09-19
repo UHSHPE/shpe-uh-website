@@ -37,6 +37,9 @@ SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair, Role.president}
 # modify a TOP_TIER role, so VPs can't reshape the presidency or each other.
 ROLE_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi}
 
+# Roles allowed to approve or reject gallery photos (the /gallery-admin/* endpoints).
+GALLERY_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi, Role.comm_director, Role.marketing_chair}
+
 # --- Org tiers ---------------------------------------------------------
 # Used for the members-page tabs and the reporting tree. Listed explicitly
 # rather than derived from the display string: `value.endswith("Chair")`

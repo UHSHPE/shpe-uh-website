@@ -30,6 +30,7 @@ import models.notification  # noqa: F401
 import models.shop.product  # noqa: F401
 import models.shop.order  # noqa: F401
 import models.shop.shop_settings  # noqa: F401
+import models.gallery_photo  # noqa: F401
 
 load_dotenv()
 
