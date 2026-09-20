@@ -119,7 +119,7 @@ def seed_test_user(s: Session):
 
 def seed_test_dues_order(s: Session):
     """Mark test@cougarnet.uh.edu as dues-paid: a paid order containing the
-    dues product (has_paid_dues matches on the OrderItem name snapshot).
+    dues product, plus the flag checkout would have set.
     test1@cougarnet.uh.edu deliberately gets none — it stays unpaid."""
     from services.shop_services import DUES_PRODUCT_NAME, generate_order_code
 
@@ -159,6 +159,9 @@ def seed_test_dues_order(s: Session):
         unit_price_cents=dues.price_cents,
         size="M",
     ))
+    # This bypasses create_order, so set what checkout would have set.
+    user.has_paid_dues = True
+    s.add(user)
     s.commit()
     print(f"Seeded paid T-Shirt Dues order ({order.order_code}) for test@cougarnet.uh.edu.")
 

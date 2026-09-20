@@ -40,6 +40,7 @@ for each integration live in [integrations.md](integrations.md).
 | `CREDENTIALS` | No | Path to the Google **service-account** JSON key used to read the event-tracker sheet. **Unset = dev mode:** the daily sync is skipped and the calendar shows only what's already in the database | `/path/to/service-account.json` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | No | The same service-account key as a single-line JSON string (`jq -c . key.json`), for hosts with no way to mount a file. Takes precedence over `CREDENTIALS` | `{"type":"service_account",...}` |
 | `SHEET_ID` | No | Id of the event-tracker spreadsheet (the long string in its URL) | `1AbC...xyz` |
+| `SLACK_URL` | No | Chapter Slack invite link. When set, a member who pays dues on the site and answered "no" to *In SHPE Slack* at signup gets the link in their receipt, and their `in_slack` flag flips once that email is away. **Unset = the receipt carries no invite** and nothing is flipped | `https://join.slack.com/t/shpeuh/shared_invite/zt-…` |
 | `DUES_TRACKER_CREDENTIALS` | No | Dedicated membership-sheet service-account key: a JSON file path locally or the JSON contents in a deployment secret | `secrets/dues-service-account.json` |
 | `DUES_SHEET_ID` | No | Id of the membership spreadsheet; dues imports are disabled unless this and `DUES_TRACKER_CREDENTIALS` are set | `1AbC...xyz` |
 

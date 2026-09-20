@@ -1,4 +1,5 @@
-"""Dues purchase rules — one T-Shirt Dues per member per year, signed-in only."""
+"""Dues purchase rules — one T-Shirt Dues per member per year, signed-in only,
+and final once paid."""
 
 from datetime import datetime, timedelta
 
@@ -7,6 +8,7 @@ from sqlmodel import select
 
 from main import app
 from models.shop.order import Order, OrderItem, OrderStatus
+from reset_dues import reset_dues
 from services import shop_services
 from services.dependencies import get_optional_user
 from tests.shop_tests.conftest import make_product, order_payload
@@ -55,15 +57,34 @@ def test_second_dues_purchase_is_rejected(unauth_client, session, signed_in, sen
     assert len(session.exec(select(Order)).all()) == 1
 
 
-def test_cancelled_dues_order_does_not_count_as_paid(unauth_client, session, signed_in, sent_emails):
-    dues = make_dues(session)
-    assert buy_dues(unauth_client, session, product=dues).status_code == 201
-    order = session.exec(select(Order)).one()
-    order.status = OrderStatus.cancelled
-    session.add(order)
-    session.commit()
+def test_a_dues_order_cannot_be_cancelled_from_paid(manager_client, unauth_client, session, signed_in, sent_emails):
+    assert buy_dues(unauth_client, session).status_code == 201
+    order_id = session.exec(select(Order)).one().id
 
-    assert buy_dues(unauth_client, session, product=dues).status_code == 201
+    res = manager_client.patch(f"/shop/orders/{order_id}", json={"status": "cancelled"})
+
+    assert res.status_code == 400
+    assert "final once paid" in res.json()["detail"]
+    assert session.get(Order, order_id).status is OrderStatus.paid
+
+
+def test_a_dues_order_cannot_be_cancelled_from_ready(manager_client, unauth_client, session, signed_in, sent_emails):
+    assert buy_dues(unauth_client, session).status_code == 201
+    order_id = session.exec(select(Order)).one().id
+    assert manager_client.patch(f"/shop/orders/{order_id}", json={"status": "ready"}).status_code == 200
+
+    res = manager_client.patch(f"/shop/orders/{order_id}", json={"status": "cancelled"})
+
+    assert res.status_code == 400
+    assert session.get(Order, order_id).status is OrderStatus.ready
+
+
+def test_a_merch_only_order_can_still_be_cancelled(manager_client, unauth_client, session, sent_emails):
+    product = make_product(session)
+    assert unauth_client.post("/shop/orders", json=order_payload(product)).status_code == 201
+    order_id = session.exec(select(Order)).one().id
+
+    assert manager_client.patch(f"/shop/orders/{order_id}", json={"status": "cancelled"}).status_code == 200
 
 
 def test_regular_products_are_unaffected(unauth_client, session, sent_emails):
@@ -131,20 +152,30 @@ def test_period_start_is_most_recent_may30(monkeypatch):
     assert shop_services.current_dues_period_start() == datetime(2026, 5, 30)
 
 
-def test_dues_from_before_the_reset_do_not_count(session, user):
-    start = shop_services.current_dues_period_start()
-    _seed_dues_order(session, user, created_at=start - timedelta(days=1))
-    assert shop_services.has_paid_dues(session, user.id) is False
+def test_reset_clears_every_paid_member(session, user):
+    user.has_paid_dues = True
+    session.add(user)
+    session.commit()
+
+    assert reset_dues(session) == 1
+    session.refresh(user)
+    assert user.has_paid_dues is False
 
 
-def test_dues_from_within_the_period_count(session, user):
-    start = shop_services.current_dues_period_start()
-    _seed_dues_order(session, user, created_at=start + timedelta(days=1))
-    assert shop_services.has_paid_dues(session, user.id) is True
+def test_reset_is_safe_to_run_twice(session, user):
+    user.has_paid_dues = True
+    session.add(user)
+    session.commit()
+
+    reset_dues(session)
+    assert reset_dues(session) == 0
+    session.refresh(user)
+    assert user.has_paid_dues is False
 
 
 def test_can_repurchase_after_the_reset(unauth_client, session, user, signed_in, sent_emails):
-    # Last year's dues (pre-reset) don't block buying this year's.
+    # Last year's dues don't block buying this year's, once the reset has run.
     _seed_dues_order(session, user, created_at=shop_services.current_dues_period_start() - timedelta(days=1))
-    res = buy_dues(unauth_client, session)
-    assert res.status_code == 201
+    reset_dues(session)
+
+    assert buy_dues(unauth_client, session).status_code == 201

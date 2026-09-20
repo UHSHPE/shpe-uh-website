@@ -59,4 +59,19 @@ From there the president assigns every other role from `/members`, and adds real
 9. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
 10. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
 11. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
+12. Schedule the yearly dues reset (see below).
+
+## Resetting dues each May 30
+
+`has_paid_dues` is a plain flag on the member with no record of which year it was earned in, so
+something has to retire last year's payments when the membership year rolls over. That is
+`backend/reset_dues.py` — one statement, safe to run twice, and it must run **on or just after
+May 30** or last year's members keep their benefits into the new year.
+
+```
+30 5 * * *  [ "$(date +\%m-\%d)" = "05-30" ] && cd /app/backend && python reset_dues.py
+```
+
+Unlike `seed.py` it has no local-database guard — it is meant to run against production. Check the
+cron log afterwards: it prints how many members it cleared.
 
