@@ -1,17 +1,19 @@
-"""Manage shop orders, inventory, and dues eligibility from orders and sheet claims."""
+"""Manage shop orders, inventory, and chapter-dues rules."""
 
 import secrets
 from datetime import datetime
 from collections import defaultdict
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
+
+import config
 from models.notification import Notification
-from models.dues_import import ImportedDues
 from models.shop.order import Order, OrderCreate, OrderItem, OrderItemOut, OrderOut, OrderStatus
 from models.shop.product import Product, ProductType
 from models.shop.shop_settings import ShopSettings
 from models.user.user import User
-from models.user.user_enums import SHOP_ADMIN_ROLES
+from models.user.user_enums import SHOP_ADMIN_ROLES, Role
+from services.committee_services import CHAIR_EMAILS
 from services.email_services import send_email
 from services.time_services import utcnow
 
@@ -68,78 +70,29 @@ def current_dues_period_start() -> datetime:
     return datetime(now.year - 1, DUES_RESET_MONTH, DUES_RESET_DAY)
 
 
-def has_paid_dues(session: Session, user_id: int) -> bool:
-    """Check current dues coverage from orders and verified sheet claims.
+def has_dues_line(lines: list[tuple[Product, str | None, int]]) -> bool:
+    """Whether a validated cart carries the chapter-dues product."""
+    return any(product.name == DUES_PRODUCT_NAME for product, _, _ in lines)
 
-    Args:
-        session: Database session used to look up payment records.
-        user_id: Website member to check.
-    Returns:
-        True when either source covers the current membership period.
-    """
-    period_start = current_dues_period_start()
-    dues_order = session.exec(
-        select(OrderItem)
-        .join(Order)
-        .where(
-            Order.user_id == user_id,
-            Order.status != OrderStatus.cancelled,
-            OrderItem.product_name == DUES_PRODUCT_NAME,
-            Order.created_at >= period_start,
-        )
-    ).first()
-    if dues_order is not None:
-        return True
+
+def order_has_dues(session: Session, order: Order) -> bool:
+    """Whether a persisted order carries the chapter-dues product."""
     return session.exec(
-        select(ImportedDues.id)
-        .join(User, User.psid == ImportedDues.psid)
-        .where(
-            User.id == user_id,
-            ImportedDues.verified == True,
-            ImportedDues.period_start == period_start,
+        select(OrderItem.id).where(
+            OrderItem.order_id == order.id,
+            OrderItem.product_name == DUES_PRODUCT_NAME,
         )
     ).first() is not None
 
 
-def dues_paid_user_ids(session: Session) -> set[int]:
-    """Combine paid member IDs from orders and verified sheet claims.
-
-    Args:
-        session: Database session used to query both payment sources.
-    Returns:
-        Unique member IDs with dues paid for the current membership period.
-    """
-    period_start = current_dues_period_start()
-    order_user_ids = session.exec(
-        select(Order.user_id)
-        .join(OrderItem, OrderItem.order_id == Order.id)
-        .where(
-            Order.user_id != None,  # noqa: E711
-            Order.status != OrderStatus.cancelled,
-            OrderItem.product_name == DUES_PRODUCT_NAME,
-            Order.created_at >= period_start,
-        )
-    ).all()
-    imported_user_ids = session.exec(
-        select(User.id)
-        .join(ImportedDues, ImportedDues.psid == User.psid)
-        .where(
-            ImportedDues.verified == True,
-            ImportedDues.period_start == period_start,
-        )
-    ).all()
-    return set(order_user_ids) | set(imported_user_ids)
-
-
 def enforce_dues_rules(
-    session: Session,
     lines: list[tuple[Product, str | None, int]],
-    user_id: int | None,
+    user: User | None,
 ) -> None:
     """Dues are one per member per membership year (reset every May 30):
     quantity capped at 1, buyers must be signed in (the purchase has to attach
     to an account to count), and a repeat purchase within the current period is
-    rejected. A cancelled dues order doesn't count as paid."""
+    rejected."""
     dues_qty = sum(qty for product, _, qty in lines if product.name == DUES_PRODUCT_NAME)
     if dues_qty == 0:
         return
@@ -148,12 +101,12 @@ def enforce_dues_rules(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="T-Shirt Dues are a one-time purchase — remove the extra from your cart.",
         )
-    if user_id is None:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Sign in to purchase your T-Shirt Dues so they count toward your membership.",
         )
-    if has_paid_dues(session, user_id):
+    if user.has_paid_dues:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You've already paid your T-Shirt Dues — thank you!",
@@ -241,6 +194,12 @@ def create_order(
                 size=size,
             )
         )
+
+    if user_id is not None and has_dues_line(lines):
+        buyer = session.get(User, user_id)
+        if buyer is not None:
+            buyer.has_paid_dues = True
+            session.add(buyer)
     session.commit()
 
     return order
@@ -255,11 +214,17 @@ def order_to_out(session: Session, order: Order) -> OrderOut:
 
 def apply_status_transition(session: Session, order: Order, new_status: OrderStatus) -> None:
     """Advance the order state machine; illegal jumps → 400. Entering `ready`
-    emails the buyer that their order can be picked up."""
+    emails the buyer that their order can be picked up. An order carrying dues
+    can never be cancelled."""
     if new_status not in ALLOWED_TRANSITIONS[order.status]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot move an order from {order.status.value} to {new_status.value}.",
+        )
+    if new_status == OrderStatus.cancelled and order_has_dues(session, order):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dues orders can't be cancelled — chapter dues are final once paid.",
         )
 
     order.status = new_status
@@ -280,11 +245,46 @@ def _order_summary_lines(session: Session, order: Order) -> list[str]:
     return lines
 
 
+def _slack_invite_lines() -> list[str]:
+    """The Slack invite block, or nothing when no invite link is configured."""
+    invite = config.slack_url()
+    if not invite:
+        return []
+    return [
+        "",
+        "You're a dues-paying member now — here's your invite to our Slack:",
+        "",
+        invite,
+        "",
+        f"Having trouble getting in? Email {CHAIR_EMAILS[Role.web_dev_chair]} "
+        "and we'll get you sorted.",
+    ]
+
+
+def _slack_invitee(session: Session, order: Order) -> User | None:
+    """The buyer to send a Slack invite to, if this order earns them one.
+
+    Args:
+        session: Database session used to load the buyer.
+        order: The order just paid for.
+    Returns:
+        The signed-in buyer when the order carries dues and they aren't in
+        Slack yet, otherwise None.
+    """
+    if order.user_id is None or not order_has_dues(session, order):
+        return None
+    buyer = session.get(User, order.user_id)
+    return buyer if buyer is not None and not buyer.in_slack else None
+
+
 def send_buyer_receipt(session: Session, order: Order, receipt_url: str | None = None) -> None:
     """Email the buyer their receipt right after checkout. Goes to the contact
     email given at checkout (the profile prefills personal_email for signed-in
     members). Includes Square's hosted receipt link when the charge was real;
-    dev-mode/simulated orders still get the itemized confirmation."""
+    dev-mode/simulated orders still get the itemized confirmation. A dues order
+    also carries the Slack invite, and `in_slack` only flips once that send
+    succeeds — a dead relay must not record a member as invited."""
+    invitee = _slack_invitee(session, order)
     body_lines = [
         f"Hi {order.buyer_name},",
         "",
@@ -296,12 +296,18 @@ def send_buyer_receipt(session: Session, order: Order, receipt_url: str | None =
     ]
     if receipt_url:
         body_lines += ["", f"Square receipt: {receipt_url}"]
+    invite_lines = _slack_invite_lines() if invitee else []
+    body_lines += invite_lines
     body_lines += ["", "— SHPE UH Shop"]
-    send_email(
+    sent = send_email(
         order.buyer_email,
         f"Your SHPE UH order {order.order_code}",
         "\n".join(body_lines),
     )
+    if sent and invite_lines:
+        invitee.in_slack = True
+        session.add(invitee)
+        session.commit()
 
 
 def notify_managers_new_order(session: Session, order: Order) -> None:

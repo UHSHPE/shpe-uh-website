@@ -98,6 +98,13 @@ def disable_dues_import_sync(monkeypatch):
     monkeypatch.delenv("DUES_TRACKER_CREDENTIALS", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def disable_slack_invite(monkeypatch):
+    """Hide a developer's real SLACK_URL so only tests that set it see the
+    invite block on a dues receipt."""
+    monkeypatch.delenv("SLACK_URL", raising=False)
+
+
 # send_email branches on SMTP_HOST at call time, so a developer with real SMTP
 # credentials in backend/.env would have tests mailing live addresses through
 # the chapter's relay — and, now that signup 502s on a failed send, a relay

@@ -7,15 +7,11 @@ Two columns carry the whole import. PSID says WHO paid; the "Payment Verified?"
 checkbox says whether the treasurer has confirmed the money actually arrived.
 A row is imported either way — an unchecked box records the claim without
 granting anything, so the treasurer can see who is waiting on review — but only
-a checked box counts toward has_paid_dues.
+a checked box sets the member's has_paid_dues flag.
 
 Nothing here reaches the network: the autouse disable_dues_import_sync fixture
 in tests/conftest.py clears DUES_SHEET_ID, so an unstubbed get_sheet() returns
 None on its own.
-
-THE IMPLEMENTATION DOES NOT EXIST YET. This file is the specification for it;
-the names below are the contract. See the "Membership-sheet dues import"
-section of CLAUDE.md.
 """
 
 from datetime import timedelta
@@ -29,8 +25,11 @@ from main import app
 from models.dues_import import ImportedDues
 from models.shop.order import Order
 from services.dependencies import get_optional_user
+from models.user.user_schemas import UserCreate
+from reset_dues import reset_dues
 from services.dues_import_services import sync_dues
 from services.shop_services import current_dues_period_start
+from services.user_services import create_user
 from tests.admin_tests.conftest import president, president_client  # noqa: F401
 from tests.conftest import make_user
 from tests.shop_tests.conftest import make_product, order_payload, sent_emails  # noqa: F401
@@ -83,6 +82,32 @@ def stub_sheet(monkeypatch, title, rows, header="Student PSID", verified_header=
     )
 
 
+def signup(session, **overrides):
+    """Create an account the way POST /signup does, so the claim-matching hook
+    in create_user actually runs — make_user builds the row directly."""
+    fields = dict(
+        first_name="Late", last_name="Member",
+        cougarnet_email="late@cougarnet.uh.edu", personal_email="late@gmail.com",
+        password="password123", phone_num="713-555-0000", psid="5550001",
+        birthday="2000-01-01", gender="Male", first_gen=True,
+        college="College of Natural Science & Mathematics", major="Computer Science",
+        classification="Senior", gpa="4.00 - 3.50", exp_grad_date="Spring 2027",
+        in_slack=True, is_returning="New Member", is_national_member=True, shirt_size="M",
+        race_and_ethnicity=["American Indian or Alaska Native"],
+        prof_dev=["Internships/Co-ops"],
+        interested_industries=["Electronics/Technology/Software"],
+        country_origin=["Mexico"],
+    )
+    fields.update(overrides)
+    return create_user(session, UserCreate(**fields))
+
+
+def paid(session, member):
+    """The member's stored dues flag, re-read after an import wrote to it."""
+    session.refresh(member)
+    return member.has_paid_dues
+
+
 def records(session, psid=None):
     query = select(ImportedDues)
     if psid is not None:
@@ -116,7 +141,7 @@ def test_valid_verified_psid_for_the_current_year_marks_the_member_paid(session,
     sync_dues(session)
 
     assert records(session, user.psid)[0].verified is True
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 def test_unverified_row_is_recorded_but_grants_no_dues(session, monkeypatch, user):
@@ -132,7 +157,7 @@ def test_unverified_row_is_recorded_but_grants_no_dues(session, monkeypatch, use
     record = records(session, user.psid)[0]
     assert record.verified is False
     assert record.period_start == PERIOD          # still pinned to the sheet's year
-    assert shop_services.has_paid_dues(session, user.id) is False
+    assert paid(session, user) is False
 
 
 def test_checking_the_box_later_upgrades_the_existing_record(session, monkeypatch, user):
@@ -144,7 +169,7 @@ def test_checking_the_box_later_upgrades_the_existing_record(session, monkeypatc
 
     assert len(records(session, user.psid)) == 1   # upgraded, not re-inserted
     assert records(session, user.psid)[0].verified is True
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 def test_unchecking_the_box_does_not_revoke_dues(session, monkeypatch, user):
@@ -159,15 +184,15 @@ def test_unchecking_the_box_does_not_revoke_dues(session, monkeypatch, user):
     sync_dues(session)
 
     assert records(session, user.psid)[0].verified is True
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 @pytest.mark.parametrize(
-    "cell, paid",
+    "cell, expected",
     [("TRUE", True), ("true", True), ("FALSE", False), ("", False), ("yes", False)],
     ids=["TRUE", "lowercase-true", "FALSE", "blank", "yes"],
 )
-def test_only_a_true_checkbox_counts_as_verified(session, monkeypatch, user, cell, paid):
+def test_only_a_true_checkbox_counts_as_verified(session, monkeypatch, user, cell, expected):
     """Cell parsing fails closed.
 
     Sheets writes "TRUE"/"FALSE" for a real checkbox, so those two are the only
@@ -177,8 +202,8 @@ def test_only_a_true_checkbox_counts_as_verified(session, monkeypatch, user, cel
     stub_sheet(monkeypatch, CURRENT_TITLE, [(user.psid, cell)])
     sync_dues(session)
 
-    assert records(session, user.psid)[0].verified is paid
-    assert shop_services.has_paid_dues(session, user.id) is paid
+    assert records(session, user.psid)[0].verified is expected
+    assert paid(session, user) is expected
 
 
 def test_leading_zeros_are_preserved_through_import_and_matching(session, monkeypatch):
@@ -197,7 +222,7 @@ def test_leading_zeros_are_preserved_through_import_and_matching(session, monkey
     sync_dues(session)
 
     assert records(session)[0].psid == "0123456"
-    assert shop_services.has_paid_dues(session, member.id) is True
+    assert paid(session, member) is True
 
 
 def test_blank_and_malformed_psids_are_skipped_and_reported(session, monkeypatch, caplog):
@@ -249,25 +274,24 @@ def test_repeated_import_keeps_payment_status_consistent(session, monkeypatch, u
         sync_dues(session)
 
     assert len(records(session, user.psid)) == 1
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 def test_psid_imported_before_the_account_exists_is_honored_after_signup(session, monkeypatch):
-    """A PSID imported before account creation is recognized once the member
-    registers and verifies — which is why ImportedDues carries no user id."""
+    """A PSID imported before account creation is recognized the moment the
+    member registers — which is why ImportedDues carries no user id."""
     stub_sheet(monkeypatch, CURRENT_TITLE, ["5550001"])
     sync_dues(session)
-    assert shop_services.dues_paid_user_ids(session) == set()
+    assert records(session, "5550001")[0].verified is True
 
-    member = make_user(
+    member = signup(
         session,
         cougarnet_email="late@cougarnet.uh.edu",
         personal_email="late@gmail.com",
         psid="5550001",
-        email_verified=True,
     )
 
-    assert shop_services.has_paid_dues(session, member.id) is True
+    assert paid(session, member) is True
 
 
 def test_an_unverified_row_waiting_on_an_account_still_grants_nothing(session, monkeypatch):
@@ -279,16 +303,14 @@ def test_an_unverified_row_waiting_on_an_account_still_grants_nothing(session, m
     stub_sheet(monkeypatch, CURRENT_TITLE, [("5550002", False)])
     sync_dues(session)
 
-    member = make_user(
+    member = signup(
         session,
         cougarnet_email="pending@cougarnet.uh.edu",
         personal_email="pending@gmail.com",
         psid="5550002",
-        email_verified=True,
     )
 
-    assert shop_services.has_paid_dues(session, member.id) is False
-    assert shop_services.dues_paid_user_ids(session) == set()
+    assert paid(session, member) is False
 
 
 def test_previous_academic_years_psid_does_not_grant_current_dues(session, monkeypatch, user):
@@ -298,7 +320,7 @@ def test_previous_academic_years_psid_does_not_grant_current_dues(session, monke
     sync_dues(session)
 
     assert records(session, user.psid)[0].period_start.year == PERIOD.year - 1
-    assert shop_services.has_paid_dues(session, user.id) is False
+    assert paid(session, user) is False
 
 
 def test_the_same_psid_can_be_verified_in_two_periods_independently(session, monkeypatch, user):
@@ -310,26 +332,41 @@ def test_the_same_psid_can_be_verified_in_two_periods_independently(session, mon
     sync_dues(session)
 
     assert len(records(session, user.psid)) == 2
-    assert shop_services.has_paid_dues(session, user.id) is False
+    assert paid(session, user) is False
 
     stub_sheet(monkeypatch, CURRENT_TITLE, [(user.psid, True)])
     sync_dues(session)
 
     assert len(records(session, user.psid)) == 2
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
-def test_imported_dues_expire_at_the_may_30_boundary(session, monkeypatch, user):
-    """Imported dues expire correctly across the membership-period boundary."""
+def test_imported_dues_are_retired_by_the_may_30_reset(session, monkeypatch, user):
+    """Imported dues survive until the May 30 reset runs, then stop counting.
+
+    The flag carries no period of its own, so reset_dues.py is the only thing
+    that retires last year's claims.
+    """
     stub_sheet(monkeypatch, CURRENT_TITLE, [user.psid])
     sync_dues(session)
-    next_reset = PERIOD.replace(year=PERIOD.year + 1)
+    assert paid(session, user) is True
 
-    monkeypatch.setattr(shop_services, "utcnow", lambda: next_reset - timedelta(days=1))
-    assert shop_services.has_paid_dues(session, user.id) is True
+    reset_dues(session)
+    assert paid(session, user) is False
 
-    monkeypatch.setattr(shop_services, "utcnow", lambda: next_reset)
-    assert shop_services.has_paid_dues(session, user.id) is False
+
+def test_a_future_years_sheet_grants_nothing_today(session, monkeypatch, user):
+    """Importing next year's sheet early records the claims and pays no one.
+
+    Without the period check the whole chapter would read as paid the moment
+    the treasurer started next year's tab.
+    """
+    next_title = f"{PERIOD.year + 1}-{PERIOD.year + 2} SHPE UH Membership"
+    stub_sheet(monkeypatch, next_title, [user.psid])
+    sync_dues(session)
+
+    assert records(session, user.psid)[0].verified is True
+    assert paid(session, user) is False
 
 
 def test_a_failed_import_leaves_existing_records_intact(session, monkeypatch, user):
@@ -359,7 +396,7 @@ def test_a_failed_import_leaves_existing_records_intact(session, monkeypatch, us
         sync_dues(session)
 
     assert [r.psid for r in records(session)] == [user.psid]
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 def test_a_psid_removed_from_the_sheet_is_not_revoked(session, monkeypatch, user):
@@ -371,7 +408,7 @@ def test_a_psid_removed_from_the_sheet_is_not_revoked(session, monkeypatch, user
     sync_dues(session)
 
     assert len(records(session, user.psid)) == 1
-    assert shop_services.has_paid_dues(session, user.id) is True
+    assert paid(session, user) is True
 
 
 def test_me_directory_stats_and_checkout_all_recognize_imported_dues(

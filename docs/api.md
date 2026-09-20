@@ -64,7 +64,7 @@ only — under `ENVIRONMENT=production` the app serves no schema at all and `/do
 | POST | `/shop/products/{id}/image` | Shop admin | Upload a product image (PNG/JPEG/WebP, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`) |
 | GET | `/shop/admin/products` | Shop admin | All products, including hidden and retired |
 | GET | `/shop/orders?status=` | Shop admin | All orders, filterable by status |
-| PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note |
+| PATCH | `/shop/orders/{id}` | Shop admin | Advance order status (`ready`/`picked_up`/`cancelled`) or save a note. An order containing the dues product can never be cancelled — chapter dues are final once paid |
 | GET | `/admin/members?search=&paid=&role=` | President / VP | Member directory with dues status; filter by name/email/PSID search, paid, or role |
 | GET | `/admin/stats` | President / VP | Chapter stats: accounts, dues paid/unpaid, national members, classification/role/shirt-size breakdowns |
 | POST | `/admin/dues/sync` | President / VP | Import membership-sheet dues and return aggregate counts; overlapping sync requests return 409 |

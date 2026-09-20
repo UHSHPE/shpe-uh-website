@@ -4,11 +4,13 @@ from models.user.multi_selections.user_country_origin import UserCountryOrigin
 from models.user.multi_selections.user_interested_industries import UserInterestedIndustries
 from models.user.multi_selections.user_prof_dev import UserProfDev
 from models.user.multi_selections.user_race_ethnicity import UserRaceEthnicity
+from models.dues_import import ImportedDues
 from models.user.user import User
 from models.user.user_schemas import UserCreate
 from models.user.user_enums import Role, TOP_TIER_ROLES
 from security.hashing import get_password_hash
 from services.email_services import send_email
+from services.shop_services import current_dues_period_start
 
 
 from sqlmodel import Session, select
@@ -39,9 +41,26 @@ def create_user(session: Session, user_data: UserCreate, role: Role = Role.membe
     for value in user_data.country_origin:
         session.add(UserCountryOrigin(user_id=user_db.id, country_origin=value))
 
+    # A sheet claim can land before the account does; match it now rather than
+    # leaving the member with a dues banner until the next import.
+    if claimed_dues(session, user_db.psid):
+        user_db.has_paid_dues = True
+        session.add(user_db)
+
     session.commit()
 
     return user_db
+
+
+def claimed_dues(session: Session, psid: str) -> bool:
+    """Whether the membership sheet has a verified claim for this PSID this period."""
+    return session.exec(
+        select(ImportedDues.id).where(
+            ImportedDues.psid == psid,
+            ImportedDues.verified == True,  # noqa: E712
+            ImportedDues.period_start == current_dues_period_start(),
+        )
+    ).first() is not None
 
 
 def get_user_by_email(session: Session, email: str) -> User | None:
