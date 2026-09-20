@@ -35,10 +35,8 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 RESUME_DIR = config.RESUME_DIR
 
 
-def _member_out(user: User, paid: bool) -> AdminMemberOut:
-    out = AdminMemberOut.model_validate(user)
-    out.has_paid_dues = paid
-    return out
+def _member_out(user: User) -> AdminMemberOut:
+    return AdminMemberOut.model_validate(user)
 
 
 @router.get("/members", response_model=list[AdminMemberOut])
@@ -54,6 +52,8 @@ def list_members(
     query = select(User).order_by(User.last_name, User.first_name)
     if role is not None:
         query = query.where(User.role == role)
+    if paid is not None:
+        query = query.where(User.has_paid_dues == paid)
     users = session.exec(query).all()
 
     if search and search.strip():
@@ -66,11 +66,7 @@ def list_members(
             or needle in u.psid
         ]
 
-    paid_ids = shop_services.dues_paid_user_ids(session)
-    rows = [_member_out(u, u.id in paid_ids) for u in users]
-    if paid is not None:
-        rows = [r for r in rows if r.has_paid_dues == paid]
-    return rows
+    return [_member_out(u) for u in users]
 
 
 @router.get("/members/{user_id}", response_model=AdminMemberDetailOut)
@@ -115,7 +111,6 @@ def get_member(
     ).all()
 
     detail = AdminMemberDetailOut.model_validate(member)
-    detail.has_paid_dues = shop_services.has_paid_dues(session, member.id)
     detail.country_origin = [c.country_origin for c in countries]
     detail.interested_industries = [i.interested_industry for i in industries]
     detail.prof_dev = [p.prof_dev for p in prof_devs]
@@ -166,8 +161,7 @@ def member_stats(
 ):
     """Chapter-wide account numbers for the members page tiles."""
     users = session.exec(select(User)).all()
-    paid_ids = shop_services.dues_paid_user_ids(session)
-    paid_count = sum(1 for u in users if u.id in paid_ids)
+    paid_count = sum(1 for u in users if u.has_paid_dues)
 
     return AdminStatsOut(
         total_accounts=len(users),
@@ -282,7 +276,7 @@ def assign_role(
             f"{actor.first_name} {actor.last_name}",
         )
 
-    return _member_out(target, shop_services.has_paid_dues(session, target.id))
+    return _member_out(target)
 
 
 # --- reporting structure (organizational only — grants no permissions) ---

@@ -11,6 +11,7 @@ class User(UserBase, table=True):
     role: Role = Field(default=Role.member)
     points: int = Field(default=0, ge=0)
     email_verified: bool = Field(default=False)
+    has_paid_dues: bool = Field(default=False)
     # Canonical resume name (First_Last_PSID.pdf, set on upload); None means
     # no resume on file. The PDF lives on disk keyed by user id (resume_routes.py).
     resume_filename: str | None = Field(default=None)

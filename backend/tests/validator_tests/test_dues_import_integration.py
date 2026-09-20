@@ -10,7 +10,7 @@ from sqlmodel import select
 
 from models.dues_import import DuesSyncResult, ImportedDues
 from models.user.user_enums import Role
-from services import background_jobs, dues_import_services, shop_services
+from services import background_jobs, dues_import_services
 from tests.admin_tests.conftest import president, president_client  # noqa: F401
 from tests.admin_tests.conftest import make_dues_order
 from tests.validator_tests.test_membershpe_verification import CURRENT_TITLE, FakeSheet, stub_sheet
@@ -144,8 +144,8 @@ def test_native_payment_survives_an_unchecked_sheet_claim(session, user, monkeyp
     stub_sheet(monkeypatch, CURRENT_TITLE, [(user.psid, False)])
     dues_import_services.sync_dues(session)
 
-    assert shop_services.has_paid_dues(session, user.id)
-    assert user.id in shop_services.dues_paid_user_ids(session)
+    session.refresh(user)
+    assert user.has_paid_dues is True
 
 
 def test_overlapping_sync_is_skipped_and_lock_is_released(monkeypatch):

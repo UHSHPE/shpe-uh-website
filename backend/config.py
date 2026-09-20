@@ -48,6 +48,11 @@ def docs_urls() -> dict[str, str | None]:
     return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
 
 
+def slack_url() -> str:
+    """Read the chapter Slack invite link, empty when unconfigured."""
+    return os.getenv("SLACK_URL", "").strip()
+
+
 def max_body_bytes() -> int:
     """Read the request body cap, which must exceed the per-route upload limits."""
     try:

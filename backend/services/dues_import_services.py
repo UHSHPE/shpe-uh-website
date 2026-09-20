@@ -1,6 +1,7 @@
 """Read membership-sheet checkboxes and import dues claims for their academic year.
 
-Only TRUE grants dues. Verified claims survive later unchecks and missing rows.
+Only TRUE grants dues. Verified claims survive later unchecks and missing rows,
+and a claim whose PSID has no account yet waits in the table until it does.
 """
 
 import json
@@ -13,10 +14,11 @@ from threading import Lock
 import gspread
 from google.oauth2.service_account import Credentials
 from sqlalchemy.dialects.postgresql import insert
-from sqlmodel import Session
+from sqlmodel import Session, select, update
 
 from models.dues_import import DuesSyncResult, ImportedDues
-from services.shop_services import DUES_RESET_DAY, DUES_RESET_MONTH
+from models.user.user import User
+from services.shop_services import DUES_RESET_DAY, DUES_RESET_MONTH, current_dues_period_start
 from services.time_services import utcnow
 
 logger = logging.getLogger(__name__)
@@ -137,10 +139,36 @@ def save_claims(
     )
     try:
         session.execute(statement)
+        mark_matching_members_paid(session, period_start)
         session.commit()
     except Exception:
         session.rollback()
         raise
+
+
+def mark_matching_members_paid(session: Session, period_start: datetime) -> None:
+    """Flag every account whose PSID has a verified claim for this period.
+
+    A snapshot for any period other than the current one is ignored, so
+    starting next year's sheet early cannot mark the chapter paid today.
+
+    Args:
+        session: Database session; the caller owns the commit.
+        period_start: Membership period the imported claims belong to.
+    Returns:
+        None. The update only ever sets the flag — the May 30 reset clears it.
+    """
+    if period_start != current_dues_period_start():
+        return
+    verified_psids = select(ImportedDues.psid).where(
+        ImportedDues.verified == True,  # noqa: E712
+        ImportedDues.period_start == period_start,
+    )
+    session.execute(
+        update(User)
+        .where(User.psid.in_(verified_psids), User.has_paid_dues == False)  # noqa: E712
+        .values(has_paid_dues=True)
+    )
 
 
 def sync_dues(session: Session) -> DuesSyncResult:

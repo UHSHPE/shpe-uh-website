@@ -36,8 +36,7 @@ def make_vp(session, **overrides):
 
 
 def make_dues_order(session, user):
-    """A paid dues order for `user` — the minimal rows has_paid_dues matches
-    (non-cancelled order + OrderItem whose name snapshot is the dues product)."""
+    """A paid dues order for `user`, plus the flag checkout would have set."""
     from services.shop_services import DUES_PRODUCT_NAME
 
     dues = Product(
@@ -69,6 +68,8 @@ def make_dues_order(session, user):
         unit_price_cents=dues.price_cents,
         size="M",
     ))
+    user.has_paid_dues = True
+    session.add(user)
     session.commit()
     return order
 

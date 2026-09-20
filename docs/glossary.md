@@ -55,7 +55,8 @@ event. **Each semester has its own sheet** — `SHEET_ID` must be switched to th
 January 1.
 
 **Membership sheet** — a different Google Sheet, tracking who has paid dues. A checked
-"Payment Verified?" box there counts as paid dues on the site.
+"Payment Verified?" box there marks the member paid on the site, the same as a website
+purchase. A row whose PSID has no account yet waits in the table until one exists.
 
 ## Codebase terms
 
