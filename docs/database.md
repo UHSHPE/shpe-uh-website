@@ -61,6 +61,11 @@ cd backend && alembic upgrade head && python seed.py
 
 Never run this against production — it destroys all data.
 
+This resets PostgreSQL only. Uploaded resumes, product images, and gallery photos live under
+`DATA_DIR/uploads/` and are not removed with the Docker volume; delete those separately only when
+you intentionally want to clear uploaded files as well. After a database-only reset, unreferenced
+files may remain on disk.
+
 > If you wipe and reseed while the backend is running, **restart it**. It holds pooled
 > connections from before the wipe and will otherwise serve stale or broken data.
 
@@ -86,6 +91,11 @@ committees there, not in either script.**
 
 Production setup using `bootstrap.py` is covered in
 [deployment.md](deployment.md#filling-the-production-database).
+
+Gallery images are also intentionally outside PostgreSQL. `galleryphoto` stores the generated
+filename, submitter, Spring/Fall section, review state, reviewer, timestamps, and soft-delete flag;
+the image bytes live in `DATA_DIR/uploads/gallery/`. `galleryphotopoints` records the one-time point
+award separately so changing or deleting a reviewed photo cannot award twice or revoke points.
 
 ## Seeded accounts
 

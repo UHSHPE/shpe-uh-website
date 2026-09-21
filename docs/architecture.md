@@ -65,7 +65,7 @@ shpe-uh-website/
 │   ├── public/             # Served at the site root: favicons, og-image.png, site.webmanifest, robots.txt
 │   └── src/
 │       ├── api/            # Shared Axios client, feature API modules, and compatibility barrel
-│       ├── components/     # Header, Footer, Avatar, GalleryApproved, PrivateRoute, cart drawer, shop-manager panel, ...
+│       ├── components/     # Header, Footer, Avatar, gallery display/upload/moderation, PrivateRoute, cart drawer, shop-manager panel, ...
 │       ├── constants/      # Dropdown option lists (userEnums.js mirrors the backend enums; countries.js feeds the signup country picker)
 │       ├── context/        # AuthContext (session), CartContext (shop cart, persisted locally)
 │       ├── hooks/          # useDocumentTitle (browser tab title per page), usePagination (10-per-page list paging)
@@ -85,8 +85,8 @@ shpe-uh-website/
     ├── Dockerfile          # Container image used for deployment
     ├── requirements.txt    # Runtime dependencies
     ├── requirements-dev.txt # Test tooling (includes requirements.txt)
-    ├── routes/             # APIRouters: admin (president + VPs), auth, committees, events (+ reminders), notifications, password reset, resume, shop
-    ├── uploads/            # Uploaded resume PDFs and product images (gitignored, created on first upload)
+    ├── routes/             # APIRouters: admin, auth, committees, events, gallery, notifications, password reset, resume, shop
+    ├── uploads/            # Uploaded resumes, product images, and gallery photos (gitignored, created on first upload)
     ├── models/             # SQLModel table definitions (user/, shop/, committee, event, notification, ...)
     ├── security/           # JWT creation and password hashing
     ├── services/           # DB session deps, user/committee/reminder/email/Drive-sync/password-reset/shop/Square-payment/event-sheet-sync/reporting-structure/QR-attendance/event-statistics/event-visibility services, rate limiter, request body size limit, forwarded-proto (https) scheme fix, HIBP breached-password check
@@ -134,7 +134,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | `/about` | About SHPE UH — history, pillars, and the E-Board & Chairs roster (with contact emails) | No |
 | `/membershpe` | Membership info | No |
 | `/sponsors` | Sponsors | No |
-| `/gallery` | Photo gallery | No |
+| `/gallery` | Public approved photos grouped by semester/year, plus member photo submission (sign-in required only to submit) | No |
 | `/calendar` | Events calendar (with "Remind me by email") | No |
 | `/shop` | Merch shop — browse products, filter by category | No |
 | `/shop/:productId` | Product detail — pick a size (apparel) and quantity, add to cart | No |
@@ -150,6 +150,7 @@ Each page sets its own browser tab title (`Calendar | SHPE UH`, `Shop | SHPE UH`
 | `/profile` | Profile info, PDF resume, and order history | Yes |
 | `/members` | Member directory and org chart: chapter stats, member lookup, role assignment, and the reporting structure, across All/E-Board/Chairs/Structure tabs. Click any member for their full profile — contact details, academics, background answers, committees, and resume — president and VPs only | Yes |
 | `/shop-manager` | Shop-management tools (products, orders, notifications, settings) — shop admins only (comms director / marketing chair / president) | Yes |
+| `/gallery-manager` | Paginated photo moderation with Pending/Approved/Rejected/All filters — president, both VPs, communication director, and marketing chair only | Yes |
 | `/my-events` | Chair/E-Board Events page: My Events / All Events tabs, a QR modal (Sign in/Sign out, fullscreen "present" view, live scan counter), a read-only attendance roster, and a per-event statistics panel. Both tabs open on the next upcoming event and page backwards into the past | Yes |
 | `/attend/:code` | Mobile QR check-in flow — reached only by scanning a code, not linked from navigation. No site header/footer/cart; renders its own "sign in to continue" screen if you're signed out | No |
 

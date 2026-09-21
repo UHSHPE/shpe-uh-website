@@ -1,4 +1,4 @@
-import GalleryApproved from "../components/GalleryApproved";
+import GalleryApproved from "../components/gallery/GalleryApproved";
 import useDocumentTitle from "../hooks/useDocumentTitle";
 
 export default function Gallery() {
