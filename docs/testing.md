@@ -18,6 +18,7 @@ Run a single area or a single test while you work:
 
 ```bash
 python -m pytest tests/shop_tests/           # one area
+python -m pytest tests/gallery_tests/        # gallery upload, review, image, points, and deletion
 python -m pytest tests/shop_tests/test_orders.py::test_declined_card -v
 ```
 
@@ -92,4 +93,3 @@ The QR encodes `window.location.origin`, so scanning it on a phone only works if
 7. Scan the same code again to see the "Already checked in" screen, then scan the sign-out code to see the duration + points summary. Check `/dashboard` for the updated points total.
 
 Revert `VITE_API_URL` (and the CORS origin above) afterward for normal local development.
-

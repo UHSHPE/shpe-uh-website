@@ -6,7 +6,7 @@ and anything else names the role required.
 
 Routers live in `backend/routes/` — `auth_routes.py`, `event_routes.py`, `shop_routes.py`,
 `committee_routes.py`, `admin_routes.py`, `dues_routes.py`, `leaderboard_routes.py`,
-`notification_routes.py`, `pw_reset_routes.py`, `resume_routes.py`. See
+`notification_routes.py`, `pw_reset_routes.py`, `resume_routes.py`, `gallery_routes.py`. See
 [architecture.md](architecture.md) for how a request reaches them.
 
 While the backend is running locally you can also browse and *call* these from the
@@ -28,6 +28,13 @@ only — under `ENVIRONMENT=production` the app serves no schema at all and `/do
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
 | DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive; if Drive is unreachable the local copy is still removed and the backend keeps its reference to the Drive file, so a later upload replaces it instead of leaving a stray copy) |
+| POST | `/gallery/photos` | Yes | Submit a PNG/JPEG photo (≤2 MB; rate limited via `RATE_LIMIT_UPLOAD`). It starts pending and is assigned Spring/Fall plus year from the current date |
+| GET | `/gallery/photos` | No | Metadata (`id`, semester, year) for approved, non-deleted gallery photos |
+| GET | `/gallery/photos/{photo_id}/image` | No | Retrieve an approved gallery image. Pending, rejected, deleted, or missing photos return 404 |
+| GET | `/gallery/admin/photos?status=` | Gallery admin | List non-deleted submissions with submitter, review status, reviewer, timestamps, semester, and year; optionally filter by `pending`, `approved`, or `rejected` |
+| GET | `/gallery/admin/photos/{photo_id}/image` | Gallery admin | Retrieve a private thumbnail/image for moderation, regardless of review status |
+| PATCH | `/gallery/admin/photos/{photo_id}/update` | Gallery admin | Approve or reject a photo and optionally correct its semester/year. First approval awards one point exactly once |
+| DELETE | `/gallery/admin/photos/{photo_id}` | Gallery admin | Remove the stored image and soft-delete its record; previously awarded points remain |
 | GET | `/events` | No | All events (powers the public calendar). Events removed from the tracker sheet are hidden |
 | GET | `/events/upcoming?days=7` | Yes | Upcoming events within N days. Events removed from the tracker sheet are hidden |
 | POST | `/events/{id}/remind` | Yes | Set an email reminder for an event |
@@ -75,3 +82,5 @@ only — under `ENVIRONMENT=production` the app serves no schema at all and `/do
 
 "Shop admin" = a user whose role is **Communication Director**, **Marketing Chair**, or **President**.
 
+"Gallery admin" = a user whose role is **President**, **Vice President External**, **Vice
+President Internal**, **Communication Director**, or **Marketing Chair**.

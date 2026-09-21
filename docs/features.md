@@ -21,7 +21,7 @@ What the site actually does, feature by feature. This is the reference version �
 - **Reporting Structure** — An editable org chart of who oversees whom: officers report to a vice president, chairs report to a vice president or an officer. It links *roles*, not people, so it survives elections and chair handovers without re-entry. Purely organizational — being someone's supervisor grants no extra permissions
 - **Email Verification** — signing up creates an account that stays inactive until the member clicks a verification link emailed to their CougarNet address; only then can they log in. This also prevents someone from registering an email they don't control.
 - **Chapter Dues at Signup** — right after verifying their email, new members are routed straight into paying their $20 "T-Shirt Dues" (t-shirt included) through the Square checkout, pre-sized with the shirt size from their signup form. Dues are **one per member per membership year** (server-enforced, sign-in required) and **final once paid** — a dues order can't be cancelled. They **reset every May 30**, when `reset_dues.py` runs, so members re-pay each year; signed-in members who haven't paid the current year see a site-wide red banner listing the benefits that ride on dues (Slack access, National convention sponsorship, $10,000+ in scholarships, MentorSHPE, the Resume Book, and the chapter shirt). The dues receipt carries the Slack invite link when the member said at signup that they aren't in Slack yet
-- **Gallery** — Photo gallery with an approval workflow
+- **Gallery** — Public photos are grouped by Spring/Fall semester and year. Any signed-in member can submit a PNG or JPEG up to 2 MB; it stays private until the president, either VP, communication director, or marketing chair approves it. Reviewers can correct the semester/year, reject or later approve a submission, and delete it. The first approval awards the submitter one point, which is never awarded twice or revoked by a later status change
 - **Instagram Feed** — Home-page grid of the chapter's latest Instagram posts, pulled live from a public Behold feed
 - **Points** — Member points tracking
 - **QR Event Attendance** — Every event gets a sign-in and a sign-out QR code. Members scan with their phone's normal camera — there's no app to install and no in-app scanner — and points are awarded on the spot based on the event's pillar, matching the chapter point-system chart: 4 for signing in to a Community Outreach event, 3 for any other pillar, and 2 when no pillar is set on the event; sign-out is 2 throughout, general meetings award at least 3, and bringing a new member adds 2. An event tagged with several pillars awards the highest of them, not the sum. Scanning the same code twice never awards twice, a code doesn't work until roughly an hour before the event starts, and it stops working once the event is over. Chairs and E-Board present the QR (in a modal or fullscreen at the door) from their **Events** page, watch a live scan counter, and review a read-only attendance roster for each event they host. E-Board members can present the QR for **any** chapter event from the All Events tab, since officers often cover the door at an event another committee organized
@@ -79,6 +79,28 @@ The shop sells chapter apparel (with sizes) and items like stickers. Anyone can 
 - **Carts are re-priced against the live catalog** when the cart drawer opens and again at checkout, so a cart left sitting for days can't show one price while a different one is charged. If a price moved, the buyer sees an "A price changed since you added it" notice with the old and new figures, and the Pay button stays disabled until they acknowledge it. If a product was retired or one of its sizes withdrawn while in someone's cart, that line is marked **No longer available** with a Remove button and is left out of the total.
 - **Products are never deleted.** Retiring one takes it off the storefront and files it under **Retired** in the Shop Manager, where it can be restored at any time (a restored product comes back Hidden, so an admin republishes it deliberately). Past orders keep showing exactly what was bought, and the product image is kept too. The **T-Shirt Dues** product can't be retired — newly verified members are sent straight to it.
 - Shop administration belongs to the **Communication Director**, **Marketing Chair**, and **President** roles: they manage products (create/edit, images, show/hide, retire/restore), the order queue, and shop settings (storefront tagline + the per-item order cap) from the **Shop Manager** page at `/shop-manager`.
+
+## Gallery submissions
+
+The public gallery at `/gallery` combines the existing frontend assets with approved member
+submissions. Each Spring/Fall section initially shows eight photos and can be expanded with
+**Show all**. Signed-out visitors can browse approved photos; a signed-in member can upload a PNG
+or JPEG no larger than 2 MB from the same page.
+
+New submissions are private and start as **pending**. The semester and year are assigned from the
+submission date (August through December is Fall; January through July is Spring), so members do
+not have to categorize their photos. A reviewer can correct either value before approving or
+rejecting the submission.
+
+The **Gallery Manager** at `/gallery-manager` is available to the President, both Vice Presidents,
+Communication Director, and Marketing Chair. It has Pending, Approved, Rejected, and All filters,
+shows authenticated thumbnails plus submitter/reviewer names and timestamps, and paginates eight
+photos at a time. Reviewers may move a photo between approved and rejected at any time or delete
+it. Deletion removes the image file and soft-deletes its database record.
+
+The first time a photo is approved, its submitter receives one point. A separate points record
+makes that award idempotent: rejecting, re-approving, or deleting the photo does not revoke or
+award the point again.
 
 ## QR event attendance
 

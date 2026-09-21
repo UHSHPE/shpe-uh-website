@@ -6,6 +6,7 @@ import shpeHoriztonalLogo from "../assets/logos/shpeHorizontalLogo.png";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { canAssignRoles, isChair, isEboard, isShopManager } from "../utils/shop";
+import { isGalleryAdmin } from "../utils/gallery";
 import Avatar from "./Avatar";
 import { CartIcon } from "./shopIcons";
 
@@ -35,6 +36,7 @@ function memberLinksFor(user) {
   const extras = [];
   if (canAssignRoles(user)) extras.push({ label: "Members", to: "/members" });
   if (isShopManager(user)) extras.push({ label: "Shop Manager", to: "/shop-manager" });
+  if (isGalleryAdmin(user)) extras.push({ label: "Gallery Manager", to: "/gallery-manager" });
   if (isChair(user) || isEboard(user)) extras.push({ label: "Events", to: "/my-events" });
   return [...memberLinks.slice(0, 2), ...extras, ...memberLinks.slice(2)];
 }

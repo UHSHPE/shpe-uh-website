@@ -26,7 +26,7 @@ for each integration live in [integrations.md](integrations.md).
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes | Token lifetime in minutes. Defaults to `720` (12 h): there is no refresh-token flow, so a short lifetime makes members re-authenticate constantly, and every re-auth is an expensive password hash | `720` |
 | `DATABASE_URL` | No | Postgres connection string. Defaults to the `docker-compose.yml` credentials/port, so local dev needs nothing here unless those change | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe` |
 | `TEST_DATABASE_URL` | No | Separate Postgres database used only by the test suite. Defaults to the same host/port/credentials as `DATABASE_URL`, database `shpe_test` (create it once with `docker compose exec db createdb -U shpe shpe_test`) | `postgresql+psycopg://shpe:shpe_dev_password@localhost:5433/shpe_test` |
-| `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`). The database lives in Postgres, but uploads are still on disk, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
+| `DATA_DIR` | No | Directory for uploaded files (`uploads/resumes`, `uploads/products`, `uploads/gallery`). The database stores gallery metadata, not image bytes, so this must point at a mounted volume when deploying. Unset = the `backend/` directory | `/data` |
 | `FRONTEND_URL` | **Yes in production** | Base URL of the frontend, used to build the verification and password-reset links in emails. Defaults to `http://localhost:5173`, so leaving it unset ships emails whose links point at localhost and strands every new member. Nothing catches this: the startup localhost check reads `CORS_ORIGINS` when that is set, so it passes while `FRONTEND_URL` is still the default | `https://www.shpeuh.com` |
 | `ENVIRONMENT` | No | Set to `production` on the live server **only**. Makes the app fail closed instead of falling back to dev-mode no-ops: startup refuses to boot unless Square + SMTP + Google Drive are fully configured (with `SQUARE_ENVIRONMENT=production`), a charge attempt without Square config raises instead of simulating a free order, and `seed.py` refuses to run (use `bootstrap.py` to populate a production database — see [deployment.md](deployment.md)). Surrounding whitespace and letter case are ignored, so a pasted `"production "` still counts. Leave unset for local dev | `production` |
 | `SMTP_HOST` | No | SMTP server for verification, reset and reminder emails. **Unset = dev mode:** emails print to the console instead. This is the only switch — `ENVIRONMENT` does not turn email on | `smtp.gmail.com` |
@@ -72,7 +72,7 @@ Leave these unset for local development.
 | `TRUSTED_PROXY_HOPS` | How many proxies sit in front of the app. Only change it if you add a CDN in front of the platform edge | `1` |
 | `RATE_LIMIT_LOGIN` / `_SIGNUP` / `_ORDER` / `_PASSWORD_RESET` | Per-IP limits. Defaults are deliberately generous because a campus event puts hundreds of members behind one shared IP | `60/minute` |
 | `RATE_LIMIT_ATTEND` / `_CODE_PREVIEW` | Per-IP limits for QR check-in. Higher still: a whole room scans from one network within a couple of minutes, and check-in is already protected per-account (sign-in required, and a repeat scan awards no extra points) | `600/minute` |
-| `RATE_LIMIT_UPLOAD` | Per-IP limit on the two upload routes (resume, product image) | `60/minute` |
+| `RATE_LIMIT_UPLOAD` | Per-IP limit on the upload routes (resume, product image, gallery photo) | `60/minute` |
 | `RATE_LIMIT_FAILED_CHARGE` | Per-IP limit on **declined** card charges at checkout. Much tighter than the others because a successful purchase never counts against it — only a decline does, so a real buyer retrying a card never comes close | `10/10 minutes` |
 | `RATE_LIMIT_COMMITTEE_JOIN` | Per-**account** limit on committee joins (the only per-account limit here — everything above is per-IP). Counts only joins that actually create a membership, so re-clicking Join on a committee you are already in never counts against it | `30/hour` |
 | `MAX_REQUEST_BODY_BYTES` | Hard ceiling on request body size, rejected with a 413 as the bytes arrive. Must stay **above** the 2 MB per-file upload limits, or valid uploads fail with the wrong error | `4194304` (4 MB) |
@@ -89,4 +89,3 @@ Leave these unset for local development.
 | `VITE_SQUARE_LOCATION_ID` | No | Square location id — same one as the backend's `SQUARE_LOCATION_ID` | `L4X...` |
 
 > **Never commit `.env` or `.env.local` to version control.**
-
