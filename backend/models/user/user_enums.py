@@ -21,7 +21,7 @@ class Role(str, Enum):
     social_chair = "Social Chair"
     shpe_jr_chair = "SHPE Jr Chair"
     outreach_chair = "Outreach Chair"
-    eec_chair = "Engineering Events Coordinator Chair"   
+    eec_chair = "Engineering Events Coordinator Chair"
     shpetina_chair = "SHPEtina Chair"
     athletic_chair = "Athletic Chair"
     projects_chair = "Projects Chair"
@@ -230,4 +230,4 @@ class COTMajors(str, Enum):
     foresight = "Foresight"
     global_retailing = "Global Retailing"
     cybersecurity = "Cybersecurity"
-    
+

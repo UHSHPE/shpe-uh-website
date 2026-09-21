@@ -1,7 +1,7 @@
 from sqlmodel import select
 
 from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus
-from routes import gallery_routes
+from services import gallery_services
 from services.gallery_services import MAX_IMAGE_BYTES
 
 
@@ -9,7 +9,7 @@ PNG_BYTES = b"\x89PNG\r\n\x1a\nimage data"
 
 
 def test_member_upload_creates_pending_photo(client, session, user, tmp_path, monkeypatch):
-    monkeypatch.setattr(gallery_routes, "GALLERY_IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(gallery_services, "GALLERY_IMAGE_DIR", tmp_path)
 
     response = client.post(
         "/gallery/photos",
@@ -26,7 +26,7 @@ def test_member_upload_creates_pending_photo(client, session, user, tmp_path, mo
 
 
 def test_upload_requires_authentication(unauth_client, tmp_path, monkeypatch):
-    monkeypatch.setattr(gallery_routes, "GALLERY_IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(gallery_services, "GALLERY_IMAGE_DIR", tmp_path)
 
     response = unauth_client.post(
         "/gallery/photos",
@@ -38,7 +38,7 @@ def test_upload_requires_authentication(unauth_client, tmp_path, monkeypatch):
 
 
 def test_oversized_upload_is_rejected(client, session, tmp_path, monkeypatch):
-    monkeypatch.setattr(gallery_routes, "GALLERY_IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(gallery_services, "GALLERY_IMAGE_DIR", tmp_path)
 
     response = client.post(
         "/gallery/photos",
@@ -51,7 +51,7 @@ def test_oversized_upload_is_rejected(client, session, tmp_path, monkeypatch):
 
 
 def test_mismatched_image_signature_is_rejected(client, session, tmp_path, monkeypatch):
-    monkeypatch.setattr(gallery_routes, "GALLERY_IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(gallery_services, "GALLERY_IMAGE_DIR", tmp_path)
 
     response = client.post(
         "/gallery/photos",

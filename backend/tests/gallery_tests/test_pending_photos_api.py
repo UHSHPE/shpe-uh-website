@@ -7,30 +7,30 @@ from tests.conftest import make_user
 
 @pytest.mark.parametrize(
     "role",
-    [Role.president, Role.vpe, Role.vpi, Role.comm_director],
+    [Role.president, Role.vpe, Role.vpi, Role.comm_director, Role.marketing_chair],
 )
 def test_gallery_reviewers_can_list_pending_photos(client, session, user, role):
     user.role = role
     session.add(user)
     session.commit()
 
-    response = client.get("/gallery/photos/pending")
+    response = client.get("/gallery/admin/photos?status=pending")
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-@pytest.mark.parametrize("role", [Role.member, Role.marketing_chair])
+@pytest.mark.parametrize("role", [Role.member, Role.nonmember])
 def test_non_reviewers_cannot_list_pending_photos(client, session, user, role):
     user.role = role
     session.add(user)
     session.commit()
 
-    assert client.get("/gallery/photos/pending").status_code == 403
+    assert client.get("/gallery/admin/photos?status=pending").status_code == 403
 
 
 def test_pending_list_requires_authentication(unauth_client):
-    assert unauth_client.get("/gallery/photos/pending").status_code == 401
+    assert unauth_client.get("/gallery/admin/photos?status=pending").status_code == 401
 
 
 def test_pending_list_includes_submitter_name_but_not_approved_photos(client, session, user):
@@ -61,7 +61,7 @@ def test_pending_list_includes_submitter_name_but_not_approved_photos(client, se
     session.commit()
     session.refresh(pending)
 
-    response = client.get("/gallery/photos/pending")
+    response = client.get("/gallery/admin/photos?status=pending")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -72,6 +72,8 @@ def test_pending_list_includes_submitter_name_but_not_approved_photos(client, se
             "semester": "spring",
             "year": 2026,
             "status": "pending",
+            "reviewer_name": None,
+            "reviewed_at": None,
         }
     ]
     assert "image_filename" not in response.json()[0]
