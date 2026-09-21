@@ -94,8 +94,8 @@ function YearSection({ title, images }) {
     : images.slice(0, imageLayoutClasses.length);
 
   return (
-    <section className="mx-auto mt-14 w-full max-w-[1440px] px-4">
-      <h2 className="mb-8 text-center text-[clamp(42px,7vw,75px)] font-bold tracking-[-1.5px] text-[#d33a02]">
+    <section className="mx-auto w-full max-w-[1440px] px-4">
+      <h2 className="mb-4 text-center text-[clamp(42px,7vw,75px)] font-bold tracking-[-1.5px] text-[#d33a02] sm:mb-8">
         {title}
       </h2>
 
@@ -168,24 +168,26 @@ export default function GalleryApproved() {
 
   return (
     <section
-      className="mx-auto w-full max-w-[1440px] bg-white pb-16"
+      className="mx-auto w-full max-w-[1440px] bg-white pb-16 space-y-20"
       data-name="Gallery - Approved"
     >
-      <GalleryUpload />
-
       {loadError && (
         <p className="mx-auto mt-5 max-w-[720px] px-4 text-center text-sm text-[var(--shpe-red)]">
           {loadError} The existing gallery is still available below.
         </p>
       )}
 
-      {gallerySections.map((section) => (
-        <YearSection
-          key={section.title}
-          title={section.title}
-          images={section.images}
-        />
-      ))}
+      <div className="space-y-10 sm:space-y-24">
+        {gallerySections.map((section) => (
+          <YearSection
+            key={section.title}
+            title={section.title}
+            images={section.images}
+          />
+        ))}
+      </div>
+
+      <GalleryUpload />
     </section>
   );
 }

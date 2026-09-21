@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteGalleryPhoto,
@@ -12,7 +12,7 @@ import Pagination from "../Pagination";
 
 const FILTERS = ["pending", "approved", "rejected", "all"];
 
-function AdminThumbnail({ photoId, alt }) {
+function AdminThumbnail({ photoId, alt, onOpen }) {
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -39,10 +39,91 @@ function AdminThumbnail({ photoId, alt }) {
   if (!url) {
     return <div className="h-full animate-pulse bg-[var(--surface-soft)]" />;
   }
-  return <img src={url} alt={alt} className="h-full w-full object-cover" />;
+  return (
+    <button
+      type="button"
+      className="group relative h-full w-full cursor-zoom-in"
+      onClick={onOpen}
+      aria-label={`View full-screen photo: ${alt}`}
+    >
+      <img src={url} alt={alt} className="h-full w-full object-cover" />
+      <span className="absolute inset-x-0 bottom-0 bg-black/65 px-3 py-2 text-center text-sm font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+        View full screen
+      </span>
+    </button>
+  );
 }
 
-function PhotoCard({ photo, busy, onUpdate, onDelete }) {
+function FullScreenPreview({ photo, onClose }) {
+  const [url, setUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    getAdminGalleryPhotoImage(photo.id)
+      .then((response) => {
+        objectUrl = URL.createObjectURL(response.data);
+        if (active) setUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose, photo.id]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Full-screen photo submitted by ${photo.submitter_name}`}
+      onClick={onClose}
+    >
+      <button
+        ref={closeButtonRef}
+        type="button"
+        className="absolute right-4 top-4 rounded-full bg-white/15 px-4 py-2 text-2xl font-bold text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+        onClick={onClose}
+        aria-label="Close full-screen photo"
+      >
+        ×
+      </button>
+
+      <div className="flex h-full w-full items-center justify-center" onClick={(event) => event.stopPropagation()}>
+        {failed ? (
+          <p className="text-center font-semibold text-white">The full-size preview could not be loaded.</p>
+        ) : url ? (
+          <img
+            src={url}
+            alt={`Submitted by ${photo.submitter_name}`}
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          <p className="text-center font-semibold text-white">Loading photo…</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PhotoCard({ photo, busy, onUpdate, onDelete, onPreview }) {
   const [semester, setSemester] = useState(photo.semester);
   const [year, setYear] = useState(String(photo.year));
 
@@ -57,7 +138,11 @@ function PhotoCard({ photo, busy, onUpdate, onDelete }) {
   return (
     <article className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-[var(--shadow-card)]">
       <div className="h-52 bg-[var(--surface-muted)]">
-        <AdminThumbnail photoId={photo.id} alt={`Submitted by ${photo.submitter_name}`} />
+        <AdminThumbnail
+          photoId={photo.id}
+          alt={`Submitted by ${photo.submitter_name}`}
+          onOpen={() => onPreview(photo)}
+        />
       </div>
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -129,6 +214,7 @@ export default function GalleryManager() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
+  const [previewPhoto, setPreviewPhoto] = useState(null);
 
   async function loadPhotos() {
     setError("");
@@ -219,11 +305,19 @@ export default function GalleryManager() {
                 busy={busyId === photo.id}
                 onUpdate={updatePhoto}
                 onDelete={removePhoto}
+                onPreview={setPreviewPhoto}
               />
             ))}
           </div>
           <Pagination {...pager} label="photos" />
         </>
+      )}
+
+      {previewPhoto && (
+        <FullScreenPreview
+          photo={previewPhoto}
+          onClose={() => setPreviewPhoto(null)}
+        />
       )}
     </section>
   );
