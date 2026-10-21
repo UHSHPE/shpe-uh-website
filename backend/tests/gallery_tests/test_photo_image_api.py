@@ -1,25 +1,16 @@
 import pytest
 
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, Semester
+from models.gallery_photo import GalleryPhotoStatus
 from models.user.user_enums import Role
 from services import gallery_services
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nimage data"
 
 
 def make_photo(session, user, *, status=GalleryPhotoStatus.pending, filename="photo.png"):
-    photo = GalleryPhoto(
-        submitted_by_user_id=user.id,
-        image_filename=filename,
-        semester=Semester.spring,
-        year=2026,
-        status=status,
-    )
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
+    return make_gallery_photo(session, user, status=status, filename=filename)
 
 
 def test_reviewer_can_fetch_pending_image(client, session, user, tmp_path, monkeypatch):

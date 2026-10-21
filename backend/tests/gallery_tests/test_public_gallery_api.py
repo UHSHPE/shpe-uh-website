@@ -1,7 +1,8 @@
 import pytest
 
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, Semester
+from models.gallery_photo import GalleryPhotoStatus, Semester
 from services import gallery_services
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nimage data"
@@ -17,18 +18,15 @@ def make_photo(
     year=2026,
     is_deleted=False,
 ):
-    photo = GalleryPhoto(
-        submitted_by_user_id=user.id,
-        image_filename=filename,
+    return make_gallery_photo(
+        session,
+        user,
+        filename=filename,
         semester=semester,
         year=year,
         status=status,
         is_deleted=is_deleted,
     )
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
 
 
 def test_public_list_returns_only_approved_active_photo_metadata(unauth_client, session, user):

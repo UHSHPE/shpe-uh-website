@@ -1,8 +1,9 @@
 import pytest
 
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, Semester
+from models.gallery_photo import GalleryPhotoStatus, GallerySubmission
 from models.user.user_enums import Role
 from tests.conftest import make_user
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 @pytest.mark.parametrize(
@@ -44,22 +45,14 @@ def test_pending_list_includes_submitter_name_but_not_approved_photos(client, se
         personal_email="photo@example.com",
         psid="7654321",
     )
-    pending = GalleryPhoto(
-        submitted_by_user_id=submitter.id,
-        image_filename="pending.png",
-        semester=Semester.spring,
-        year=2026,
-    )
-    approved = GalleryPhoto(
-        submitted_by_user_id=submitter.id,
-        image_filename="approved.png",
-        semester=Semester.spring,
-        year=2026,
+    pending = make_gallery_photo(session, submitter, filename="pending.png")
+    approved = make_gallery_photo(
+        session,
+        submitter,
+        filename="approved.png",
         status=GalleryPhotoStatus.approved,
     )
-    session.add_all([pending, approved])
-    session.commit()
-    session.refresh(pending)
+    submission = session.get(GallerySubmission, pending.submission_id)
 
     response = client.get("/gallery/admin/photos?status=pending")
 
@@ -68,7 +61,7 @@ def test_pending_list_includes_submitter_name_but_not_approved_photos(client, se
         {
             "id": pending.id,
             "submitter_name": "Photo Member",
-            "submitted_at": pending.submitted_at.isoformat(),
+            "submitted_at": submission.submitted_at.isoformat(),
             "semester": "spring",
             "year": 2026,
             "status": "pending",

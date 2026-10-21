@@ -8,9 +8,9 @@ export function galleryPhotoImageUrl(photoId) {
   return `${api.defaults.baseURL}/gallery/photos/${photoId}/image`;
 }
 
-export function submitGalleryPhoto(file) {
+export function submitGalleryPhotos(files) {
   const formData = new FormData();
-  formData.append("file", file);
+  files.forEach((file) => formData.append("files", file));
   return api.post("/gallery/photos", formData, { headers: authHeaders() });
 }
 

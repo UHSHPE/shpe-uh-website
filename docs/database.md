@@ -92,10 +92,12 @@ committees there, not in either script.**
 Production setup using `bootstrap.py` is covered in
 [deployment.md](deployment.md#filling-the-production-database).
 
-Gallery images are also intentionally outside PostgreSQL. `galleryphoto` stores the generated
-filename, submitter, Spring/Fall section, review state, reviewer, timestamps, and soft-delete flag;
-the image bytes live in `DATA_DIR/uploads/gallery/`. `galleryphotopoints` records the one-time point
-award separately so changing or deleting a reviewed photo cannot award twice or revoke points.
+Gallery images are also intentionally outside PostgreSQL. `gallerysubmission` stores the member and
+submission time; one row owns one to three `galleryphoto` rows, which store generated filenames,
+Spring/Fall sections, review state, reviewer timestamps, and soft-delete flags. This parent row is
+what the five-submissions-per-week limit counts. Image bytes live in `DATA_DIR/uploads/gallery/`.
+`galleryphotopoints` records each one-time photo approval award separately so changing or deleting
+a reviewed photo cannot award twice or revoke points.
 
 ## Seeded accounts
 

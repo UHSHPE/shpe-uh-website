@@ -28,7 +28,7 @@ only — under `ENVIRONMENT=production` the app serves no schema at all and `/do
 | POST | `/me/resume` | Yes | Upload a PDF resume (PDF only, ≤2 MB; rate limited, configurable via `RATE_LIMIT_UPLOAD`); renamed to `First_Last_PSID.pdf` and synced to Google Drive when configured |
 | GET | `/me/resume` | Yes | Download the current user's resume |
 | DELETE | `/me/resume` | Yes | Remove the current user's resume (also removed from Google Drive; if Drive is unreachable the local copy is still removed and the backend keeps its reference to the Drive file, so a later upload replaces it instead of leaving a stray copy) |
-| POST | `/gallery/photos` | Yes | Submit a PNG/JPEG photo (≤2 MB; rate limited via `RATE_LIMIT_UPLOAD`). It starts pending and is assigned Spring/Fall plus year from the current date |
+| POST | `/gallery/photos` | Yes | Submit 1–3 PNG/JPEG photos in one batch (≤2 MB each; rate limited via `RATE_LIMIT_UPLOAD`). A member may create five batches per Monday–Sunday UTC week. Every photo starts pending and is assigned Spring/Fall plus year from the current date |
 | GET | `/gallery/photos` | No | Metadata (`id`, semester, year) for approved, non-deleted gallery photos |
 | GET | `/gallery/photos/{photo_id}/image` | No | Retrieve an approved gallery image. Pending, rejected, deleted, or missing photos return 404 |
 | GET | `/gallery/admin/photos?status=` | Gallery admin | List non-deleted submissions with submitter, review status, reviewer, timestamps, semester, and year; optionally filter by `pending`, `approved`, or `rejected` |

@@ -18,7 +18,7 @@ Run a single area or a single test while you work:
 
 ```bash
 python -m pytest tests/shop_tests/           # one area
-python -m pytest tests/gallery_tests/        # gallery upload, review, image, points, and deletion
+python -m pytest tests/gallery_tests/        # gallery batches, weekly limits, review, points, and deletion
 python -m pytest tests/shop_tests/test_orders.py::test_declined_card -v
 ```
 

@@ -1,25 +1,16 @@
 import pytest
 
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, Semester
+from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus
 from models.user.user_enums import Role
 from services import gallery_services
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nimage data"
 
 
 def make_photo(session, user, status):
-    photo = GalleryPhoto(
-        submitted_by_user_id=user.id,
-        image_filename="photo.png",
-        semester=Semester.spring,
-        year=2026,
-        status=status,
-    )
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
+    return make_gallery_photo(session, user, status=status)
 
 
 @pytest.mark.parametrize(

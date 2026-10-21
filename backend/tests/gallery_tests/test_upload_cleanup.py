@@ -14,8 +14,21 @@ from services import gallery_services
 def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
     class FailingSession:
         rolled_back = False
+        next_id = 1
 
-        def add(self, photo):
+        class Result:
+            def one(self):
+                return SimpleNamespace(id=1)
+
+        def exec(self, statement):
+            return self.Result()
+
+        def add(self, record):
+            if getattr(record, "id", None) is None:
+                record.id = self.next_id
+                self.next_id += 1
+
+        def flush(self):
             pass
 
         def commit(self):
@@ -25,6 +38,7 @@ def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
             self.rolled_back = True
 
     monkeypatch.setattr(gallery_services, "GALLERY_IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(gallery_routes, "count_user_submissions_per_week", lambda *_: 0)
     session = FailingSession()
     file = UploadFile(
         file=BytesIO(b"\x89PNG\r\n\x1a\nimage data"),
@@ -34,7 +48,11 @@ def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
     request = Request({"type": "http", "method": "POST", "path": "/gallery/photos", "headers": []})
 
     with pytest.raises(RuntimeError, match="database unavailable"):
-        asyncio.run(gallery_routes.submit_photo.__wrapped__(request, SimpleNamespace(id=1), session, file))
+        asyncio.run(
+            gallery_routes.submit_photo.__wrapped__(
+                request, SimpleNamespace(id=1), session, [file]
+            )
+        )
 
     assert session.rolled_back
     assert list(tmp_path.iterdir()) == []

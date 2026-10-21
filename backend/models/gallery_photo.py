@@ -17,10 +17,15 @@ class GalleryPhotoStatus(str, Enum):
     approved = "approved"
     rejected = "rejected"
 
-class GalleryPhoto(SQLModel, table=True):
+class GallerySubmission(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     submitted_by_user_id: int = Field(foreign_key="user.id", index=True)
-    submitted_at: datetime = Field(default_factory=utcnow)
+    submitted_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class GalleryPhoto(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    submission_id: int = Field(foreign_key="gallerysubmission.id", index=True)
     image_filename: str
     semester: Semester
     year: int

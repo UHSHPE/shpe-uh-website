@@ -1,7 +1,8 @@
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, Semester
+from models.gallery_photo import GalleryPhotoStatus
 from models.user.user_enums import Role
 from services.time_services import utcnow
 from tests.conftest import make_user
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 def test_all_photos_includes_pending_without_reviewer_and_approved_with_reviewer(client, session, user):
@@ -15,25 +16,15 @@ def test_all_photos_includes_pending_without_reviewer_and_approved_with_reviewer
         personal_email="photo@example.com",
         psid="7654321",
     )
-    pending = GalleryPhoto(
-        submitted_by_user_id=submitter.id,
-        image_filename="pending.png",
-        semester=Semester.spring,
-        year=2026,
-    )
-    approved = GalleryPhoto(
-        submitted_by_user_id=submitter.id,
-        image_filename="approved.png",
-        semester=Semester.spring,
-        year=2026,
+    pending = make_gallery_photo(session, submitter, filename="pending.png")
+    approved = make_gallery_photo(
+        session,
+        submitter,
+        filename="approved.png",
         status=GalleryPhotoStatus.approved,
-        reviewed_by_user_id=user.id,
+        reviewer_id=user.id,
         reviewed_at=utcnow(),
     )
-    session.add_all([pending, approved])
-    session.commit()
-    session.refresh(pending)
-    session.refresh(approved)
 
     response = client.get("/gallery/admin/photos")
 

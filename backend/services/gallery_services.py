@@ -1,20 +1,18 @@
 import asyncio
 import secrets
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from sqlmodel import select
+from sqlmodel import select, func
 from sqlalchemy.orm import aliased
 
 import config
 
 from models.user.user import User
-from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, GalleryPhotoPoints, GalleryPhotoOut, PHOTO_APPROVAL_POINTS
-from models.gallery_photo import Semester
-
+from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, GalleryPhotoPoints, GalleryPhotoOut, PHOTO_APPROVAL_POINTS, Semester, GallerySubmission
 from services.dependencies import SessionDependencies
-from services.time_services import utcnow
+from services.time_services import utcnow, get_start_of_week
 
 GALLERY_IMAGE_DIR = config.GALLERY_IMAGE_DIR
 MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
@@ -25,9 +23,28 @@ IMAGE_TYPES = {
         ".jpg", b"\xff\xd8\xff"
     )
 }
+MAX_SUBMISSIONS_PER_WEEK = 5
+MAX_PHOTOS_PER_SUBMISSION = 3
 
 Submitter = aliased(User)
 Reviewer = aliased(User)
+
+async def validate_files_are_images(files: list[UploadFile]):
+    validated_files = []
+
+    for file in files:
+        if file.size is not None and file.size > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Images must be 2 MB or smaller.")
+
+        contents = await file.read()
+
+        if len(contents) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Images must be 2 MB or smaller.")
+
+        verify_file_is_an_image(file, contents)
+        validated_files.append((file, contents))
+
+    return validated_files
 
 def verify_file_is_an_image(file, contents):
     if file.content_type not in IMAGE_TYPES:
@@ -48,16 +65,15 @@ async def upload_photo_file(file, contents):
 
     return filename, image_path
 
-def upload_photo_to_db(user, session, semester, year, filename):
+def upload_photo_to_db(submission_id, session, semester, year, filename):
     uploaded_photo = GalleryPhoto(
-        submitted_by_user_id=user.id,
+        submission_id=submission_id,
         image_filename=filename,
         semester=semester,
         year=year
     )
 
     session.add(uploaded_photo)
-    session.commit()
     return uploaded_photo
 
 def get_semester_and_year():
@@ -97,8 +113,9 @@ def get_approved_gallery_photos(session: SessionDependencies) -> list[GalleryPho
 
 def get_photos_submitters_and_reviewers_on_status(status: GalleryPhotoStatus,session: SessionDependencies):
     stmt = (
-        select(GalleryPhoto, Submitter, Reviewer)
-            .join(Submitter, GalleryPhoto.submitted_by_user_id == Submitter.id)
+        select(GalleryPhoto, GallerySubmission, Submitter, Reviewer)
+            .join(GallerySubmission, GalleryPhoto.submission_id == GallerySubmission.id)
+            .join(Submitter, GallerySubmission.submitted_by_user_id == Submitter.id)
             .outerjoin(Reviewer, GalleryPhoto.reviewed_by_user_id == Reviewer.id)
             .where(GalleryPhoto.status == status, GalleryPhoto.is_deleted == False)
     )
@@ -108,8 +125,9 @@ def get_photos_submitters_and_reviewers_on_status(status: GalleryPhotoStatus,ses
 
 def all_photos_submitters_and_reviewers(session: SessionDependencies):
     stmt = (
-        select(GalleryPhoto, Submitter, Reviewer)
-            .join(Submitter, GalleryPhoto.submitted_by_user_id == Submitter.id)
+        select(GalleryPhoto, GallerySubmission, Submitter, Reviewer)
+            .join(GallerySubmission, GalleryPhoto.submission_id == GallerySubmission.id)
+            .join(Submitter, GallerySubmission.submitted_by_user_id == Submitter.id)
             .outerjoin(Reviewer, GalleryPhoto.reviewed_by_user_id == Reviewer.id)
             .where(GalleryPhoto.is_deleted == False)
     )
@@ -166,14 +184,33 @@ def add_gallery_points_to_user(photo: GalleryPhoto, session: SessionDependencies
     if previous_approved_points:
         return
 
-    approved_gallery_points = GalleryPhotoPoints(
-        submitted_by_user_id=photo.submitted_by_user_id,
+    submission = session.get(GallerySubmission, photo.submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="Photo submission not found.")
+
+    submitter = session.get(User, submission.submitted_by_user_id)
+    if submitter is None:
+        raise HTTPException(status_code=404, detail="Photo submitter not found.")
+
+    award = GalleryPhotoPoints(
+        submitted_by_user_id=submitter.id,
         points_awarded=PHOTO_APPROVAL_POINTS,
         gallery_photo_id=photo.id
     )
 
-    submitter = session.get(User, photo.submitted_by_user_id)
     submitter.points += PHOTO_APPROVAL_POINTS
-
-    session.add(approved_gallery_points)
+    session.add(award)
     session.add(submitter)
+
+
+def count_user_submissions_per_week(user_id: int, session: SessionDependencies):
+    stmt = (
+        select(func.count())
+            .select_from(GallerySubmission)
+            .where(
+                GallerySubmission.submitted_by_user_id == user_id,
+                GallerySubmission.submitted_at >= get_start_of_week()
+            )
+    )
+
+    return session.exec(stmt).one()

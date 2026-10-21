@@ -5,29 +5,23 @@ from sqlmodel import select
 
 from models.gallery_photo import (
     PHOTO_APPROVAL_POINTS,
-    GalleryPhoto,
     GalleryPhotoPoints,
     GalleryPhotoStatus,
-    Semester,
+    Semester
 )
 from models.user.user_enums import Role
 from services.time_services import utcnow
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 def make_photo(session, user, *, status=GalleryPhotoStatus.pending, reviewer_id=None, reviewed_at=None):
-    photo = GalleryPhoto(
-        submitted_by_user_id=user.id,
-        image_filename="photo.png",
-        semester=Semester.spring,
-        year=2026,
+    return make_gallery_photo(
+        session,
+        user,
         status=status,
-        reviewed_by_user_id=reviewer_id,
+        reviewer_id=reviewer_id,
         reviewed_at=reviewed_at,
     )
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
 
 
 def test_reviewer_approves_pending_photo_with_overrides(client, session, user):

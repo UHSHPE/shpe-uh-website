@@ -75,7 +75,7 @@ Leave these unset for local development.
 | `RATE_LIMIT_UPLOAD` | Per-IP limit on the upload routes (resume, product image, gallery photo) | `60/minute` |
 | `RATE_LIMIT_FAILED_CHARGE` | Per-IP limit on **declined** card charges at checkout. Much tighter than the others because a successful purchase never counts against it — only a decline does, so a real buyer retrying a card never comes close | `10/10 minutes` |
 | `RATE_LIMIT_COMMITTEE_JOIN` | Per-**account** limit on committee joins (the only per-account limit here — everything above is per-IP). Counts only joins that actually create a membership, so re-clicking Join on a committee you are already in never counts against it | `30/hour` |
-| `MAX_REQUEST_BODY_BYTES` | Hard ceiling on request body size, rejected with a 413 as the bytes arrive. Must stay **above** the 2 MB per-file upload limits, or valid uploads fail with the wrong error | `4194304` (4 MB) |
+| `MAX_REQUEST_BODY_BYTES` | Hard ceiling on request body size, rejected with a 413 as the bytes arrive. Must stay above a valid three-photo gallery batch (6 MB plus multipart overhead) | `8388608` (8 MB) |
 | `SMTP_TIMEOUT` | Seconds to wait on the mail server before giving up | `10` |
 | `SQL_ECHO` | `1` logs every SQL statement. Leave unset in production — the log would include member emails and PSIDs | — |
 
