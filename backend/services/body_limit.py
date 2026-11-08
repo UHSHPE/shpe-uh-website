@@ -21,12 +21,10 @@ is the exact thing being prevented.
 from starlette.datastructures import Headers
 
 
-DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024  # 4 MB
+DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8 MB
 
-# Both upload routes cap at 2 MB and they are the only UploadFile routes in the
-# app; everything else takes small JSON. The default above is that 2 MB plus
-# room for multipart overhead — deliberately not much more, since the whole
-# point is that nothing legitimate is anywhere near it.
+# Individual files cap at 2 MB, while one gallery submission may contain three
+# photos. The default leaves room above that 6 MB payload for multipart overhead.
 TOO_LARGE_DETAIL = "Request body is too large."
 
 

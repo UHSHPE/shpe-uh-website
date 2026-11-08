@@ -338,17 +338,23 @@ def test_a_same_day_time_change_moves_unsent_reminders(session, monkeypatch):
     # leave the reminder firing on the old schedule -- and the email body
     # reads start_time live, so it would show the corrected time and land as
     # an unexplained early nudge.
-    _stub_fetch(monkeypatch, [fake_sheet_event(start_time=FUTURE)])
+    # Anchor the event at noon Central. FUTURE inherits the current wall-clock
+    # time, so adding two hours to it can cross local midnight and turn this
+    # same-day test into a date-change test depending on when pytest runs.
+    local_noon = datetime.combine(local_date(FUTURE), datetime.min.time()).replace(hour=12)
+    future = event_tracker_services.to_utc(local_noon)
+
+    _stub_fetch(monkeypatch, [fake_sheet_event(start_time=future)])
     sync_events(session)
     event = only_event(session, sheet_row=3)
     user = make_user(session)
     reminder = EventReminder(user_id=user.id, event_id=event.id,
-                             remind_at=FUTURE - timedelta(hours=24))
+                             remind_at=future - timedelta(hours=24))
     session.add(reminder)
     session.commit()
 
-    moved = FUTURE + timedelta(hours=2)
-    assert local_date(moved) == local_date(FUTURE)      # same row, same day
+    moved = future + timedelta(hours=2)
+    assert local_date(moved) == local_date(future)      # same row, same day
     _stub_fetch(monkeypatch, [fake_sheet_event(start_time=moved)])
     sync_events(session)
 

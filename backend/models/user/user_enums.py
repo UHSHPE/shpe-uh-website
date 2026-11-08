@@ -21,7 +21,7 @@ class Role(str, Enum):
     social_chair = "Social Chair"
     shpe_jr_chair = "SHPE Jr Chair"
     outreach_chair = "Outreach Chair"
-    eec_chair = "Engineering Events Coordinator Chair"   
+    eec_chair = "Engineering Events Coordinator Chair"
     shpetina_chair = "SHPEtina Chair"
     athletic_chair = "Athletic Chair"
     projects_chair = "Projects Chair"
@@ -36,6 +36,9 @@ SHOP_ADMIN_ROLES = {Role.comm_director, Role.marketing_chair, Role.president}
 # VPs are restricted further in admin_routes: only the president may grant or
 # modify a TOP_TIER role, so VPs can't reshape the presidency or each other.
 ROLE_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi}
+
+# Roles allowed to approve or reject gallery photos (the /gallery-admin/* endpoints).
+GALLERY_ADMIN_ROLES = {Role.president, Role.vpe, Role.vpi, Role.comm_director, Role.marketing_chair}
 
 # --- Org tiers ---------------------------------------------------------
 # Used for the members-page tabs and the reporting tree. Listed explicitly
@@ -227,4 +230,4 @@ class COTMajors(str, Enum):
     foresight = "Foresight"
     global_retailing = "Global Retailing"
     cybersecurity = "Cybersecurity"
-    
+

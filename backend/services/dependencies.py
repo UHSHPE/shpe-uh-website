@@ -118,3 +118,19 @@ def require_role_admin(user=Depends(get_current_user)):
             detail="Only the president or a vice president can do that",
         )
     return user
+
+def require_gallery_admin(user=Depends(get_current_user)):
+    """Gate for gallery-admin endpoints (photo approval, 
+    photo rejection) — mirrors require_shop_admin. Held 
+    by the president, both VPs, and Communications Director; the VP-specific limits 
+    (no granting President, no touching the sitting president)
+    are enforced per-request in admin_routes."""
+    
+    from models.user.user_enums import GALLERY_ADMIN_ROLES
+
+    if user.role not in GALLERY_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the president, a vice president, and the communications director can do that",
+        )
+    return user

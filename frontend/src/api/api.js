@@ -7,3 +7,4 @@ export * from "./leaderboardApi";
 export * from "./notificationApi";
 export * from "./resumeApi";
 export * from "./shopApi";
+export * from "./galleryApi";

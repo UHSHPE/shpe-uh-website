@@ -25,6 +25,8 @@ aren't guessable.
 - **Committees** — browse, join, and leave; chairs get rosters and broadcast messages
 - **Merch shop** — public storefront with real card, Apple Pay, and Google Pay checkout through
   Square, and in-person pickup at chapter events
+- **Gallery** — members submit event photos for review; approved photos join the public gallery
+  and earn the submitter one point
 - **Chapter admin** — the president and both VPs get a members directory, chapter statistics, role
   assignment, and an editable org chart
 

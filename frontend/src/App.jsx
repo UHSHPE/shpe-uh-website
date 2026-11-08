@@ -20,6 +20,7 @@ import Calendar from './pages/calendar';
 import Profile from './pages/profile';
 import Members from './pages/members';
 import ShopManagerPage from './pages/shop-manager';
+import GalleryManagerPage from './pages/gallery-manager';
 import Shop from './pages/shop';
 import ShopProduct from './pages/shop-product';
 import ShopCheckout from './pages/shop-checkout';
@@ -97,6 +98,14 @@ export default function App() {
 						element={
 							<PrivateRoute>
 								<ShopManagerPage />
+							</PrivateRoute>
+						}
+					/>
+					<Route
+						path="/gallery-manager"
+						element={
+							<PrivateRoute>
+								<GalleryManagerPage />
 							</PrivateRoute>
 						}
 					/>

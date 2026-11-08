@@ -16,7 +16,7 @@ The frontend deploys to **Vercel** (paid tier — the free Hobby plan does not p
 
 Set the **pre-deploy command** to `alembic upgrade head` (no `cd` — the image has the backend at its working directory, not under `backend/`). The app does not create tables at startup, so without this a fresh deploy comes up healthy — `/health` deliberately doesn't touch the database — and then fails on the first real query. Migrations need only `DATABASE_URL`, so they don't contend for the volume below.
 
-Uploads still live on disk, so attach a volume mounted at `/data` and set `DATA_DIR=/data`. Without it, every resume and product image is written to the container filesystem and destroyed on the next deploy. The database is unaffected by this — it's in Postgres.
+Uploads still live on disk, so attach a volume mounted at `/data` and set `DATA_DIR=/data`. Without it, every resume, product image, and gallery photo is written to the container filesystem and destroyed on the next deploy. The database stores gallery metadata and review state, but not the image bytes.
 
 Run exactly **one worker**. Rate-limit counters live in slowapi's process memory, so a second worker makes every limit twice as loose, non-deterministically. (The database no longer constrains this — moving off SQLite removed that half of the reason. Multiple workers become viable once the limiter is backed by Redis, and the uploads volume is shared or moved to object storage.)
 
@@ -57,7 +57,7 @@ From there the president assigns every other role from `/members`, and adds real
 7. Confirm `alembic upgrade head` ran (`alembic current` should report a revision), then run `python bootstrap.py` to create the chapter structure (see above), and install the three top-tier seats once those accounts exist and are verified.
 8. Register your domain for Apple Pay in the Square dashboard (see the Square section above).
 9. Send a real verification email to a `@cougarnet.uh.edu` address and confirm it lands in the inbox, not junk. University mail filters are strict, and every signup depends on that message arriving.
-10. Upload a resume and a product image, place a test order, then redeploy and confirm all three survived.
+10. Upload a resume, product image, and gallery photo; approve the gallery submission; place a test order; then redeploy and confirm every file and record survived.
 11. Confirm the managed Postgres backups are on, set up a backup of the uploads volume, and **perform one full restore** of each before relying on them.
 12. Schedule the yearly dues reset (see below).
 
@@ -74,4 +74,3 @@ May 30** or last year's members keep their benefits into the new year.
 
 Unlike `seed.py` it has no local-database guard — it is meant to run against production. Check the
 cron log afterwards: it prints how many members it cleared.
-
