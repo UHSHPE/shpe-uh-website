@@ -5,7 +5,7 @@ from models.user.user import User
 from models.gallery_photo import GalleryPhotoAdminOut, GalleryPhotoStatus, GalleryPhotoUpdate, GalleryPhotoOut, GallerySubmission
 
 from services.dependencies import SessionDependencies, get_current_user, require_gallery_admin
-from services.gallery_services import MAX_PHOTOS_PER_SUBMISSION, MAX_SUBMISSIONS_PER_WEEK, get_semester_and_year, get_active_photo_by_id, retrieve_photo_file, get_photos_submitters_and_reviewers_on_status, all_photos_submitters_and_reviewers, upload_photo_file, upload_photo_to_db, delete_photo_from_db, add_gallery_points_to_user, delete_photo_file, get_approved_gallery_photos, count_user_submissions_per_week, validate_files_are_images
+from services.gallery_services import MAX_PHOTOS_PER_SUBMISSION, MAX_SUBMISSIONS_PER_WEEK, get_semester_and_year, get_active_photo_by_id, retrieve_photo_file, get_photos_submitters_and_reviewers_on_status, all_photos_submitters_and_reviewers, upload_photo_to_db, delete_photo_from_db, add_gallery_points_to_user, delete_photo_file, get_approved_gallery_photos, count_user_submissions_per_week, validate_and_sanitize_images, upload_photos, remove_photos
 from services.rate_limit import limiter, UPLOAD_LIMIT
 from services.time_services import utcnow
 
@@ -58,8 +58,13 @@ def update_photo_data(photo_id: int, photo_review: GalleryPhotoUpdate, user: Ann
 
     if photo_review.semester:
         photo.semester = photo_review.semester
+        
+    maxYear = utcnow().year + 1
     if photo_review.year:
-        photo.year = photo_review.year
+        if 2026 <= photo_review.year <= maxYear:
+            photo.year = photo_review.year
+        else: 
+            raise HTTPException(status_code=400, detail=f"Year should fall between 2026 and {maxYear}")
 
 
     if photo_review.decision == GalleryPhotoStatus.approved:
@@ -95,23 +100,19 @@ async def submit_photo(request: Request, user: Annotated[User, Depends(get_curre
     if not 1 <= len(files) <= MAX_PHOTOS_PER_SUBMISSION:
         raise HTTPException(status_code=400, detail="A submission must contain between 1 and 3 photos.")
 
-    session.exec(
-        select(User)
-        .where(User.id == user.id)
-        .with_for_update()
-    ).one()
+    validated_files = await validate_and_sanitize_images(files)
+    saved_files = await upload_photos(validated_files)
 
-    submission_count = count_user_submissions_per_week(user.id, session)
-    if submission_count >= MAX_SUBMISSIONS_PER_WEEK:
-        raise HTTPException(status_code=429, detail="You may submit photos up to 5 times per week.")
-
-    validated_files = await validate_files_are_images(files)
-
-    saved_files = []
     try:
-        for file, contents in validated_files:
-            filename, image_path = await upload_photo_file(file, contents)
-            saved_files.append((filename, image_path))
+        session.exec(
+            select(User)
+            .where(User.id == user.id)
+            .with_for_update()
+        ).one()
+
+        submission_count = count_user_submissions_per_week(user.id, session)
+        if submission_count >= MAX_SUBMISSIONS_PER_WEEK:
+            raise HTTPException(status_code=429, detail="You may submit photos up to 5 times per week.")
 
         submission = GallerySubmission(submitted_by_user_id=user.id)
         session.add(submission)
@@ -131,8 +132,7 @@ async def submit_photo(request: Request, user: Annotated[User, Depends(get_curre
 
     except Exception:
         session.rollback()
-        for _, image_path in saved_files:
-            await asyncio.to_thread(image_path.unlink, missing_ok=True)
+        await remove_photos(saved_files)
         raise
 
     return {

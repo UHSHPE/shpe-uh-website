@@ -1,8 +1,10 @@
 import asyncio
 import secrets
+from io import BytesIO
 
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from sqlmodel import select, func
 from sqlalchemy.orm import aliased
@@ -14,49 +16,101 @@ from models.gallery_photo import GalleryPhoto, GalleryPhotoStatus, GalleryPhotoP
 from services.dependencies import SessionDependencies
 from services.time_services import utcnow, get_start_of_week
 
-GALLERY_IMAGE_DIR = config.GALLERY_IMAGE_DIR
-MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
 IMAGE_TYPES = {
-    "image/png": (".png", b"\x89PNG\r\n\x1a\n"
-    ),
-    "image/jpeg": (
-        ".jpg", b"\xff\xd8\xff"
-    )
+    "image/png": (".png", b"\x89PNG\r\n\x1a\n"),
+    "image/jpeg": (".jpg", b"\xff\xd8\xff"),
 }
+IMAGE_FORMATS = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+}
+
+GALLERY_IMAGE_DIR = config.GALLERY_IMAGE_DIR
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_SUBMISSIONS_PER_WEEK = 5
 MAX_PHOTOS_PER_SUBMISSION = 3
 
 Submitter = aliased(User)
 Reviewer = aliased(User)
 
-async def validate_files_are_images(files: list[UploadFile]):
-    validated_files = []
-
+async def validate_and_sanitize_images(files: list[UploadFile]):
+    sanitized_files = []
+    
     for file in files:
+        image_type = IMAGE_TYPES.get(file.content_type)
+        if image_type is None:
+            raise HTTPException(status_code=400, detail="Unsupported image type.")
+
         if file.size is not None and file.size > MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Images must be 2 MB or smaller.")
-
+            raise HTTPException(status_code=413, detail="Images must be 10 MB or smaller.")
+        
         contents = await file.read()
-
+        
         if len(contents) > MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Images must be 2 MB or smaller.")
+            raise HTTPException(status_code=413, detail="Images must be 10 MB or smaller.")
 
-        verify_file_is_an_image(file, contents)
-        validated_files.append((file, contents))
+        extension, _ = image_type
+        sanitized_contents = await asyncio.to_thread(
+            sanitize_image,
+            contents,
+            file.content_type,
+        )
+        sanitized_files.append((extension, sanitized_contents))
+        
+    return sanitized_files
 
-    return validated_files
+def sanitize_image(contents: bytes, content_type: str | None):
+    output_format = IMAGE_FORMATS.get(content_type)
+    
+    if output_format is None:
+        raise HTTPException(status_code=400, detail="Unsupported image type.")
+    
+    try:
+        with Image.open(BytesIO(contents)) as image:
+            image.verify()
+        
+        with Image.open(BytesIO(contents)) as image:
+            image.load()
+            
+            image = ImageOps.exif_transpose(image)
+            
+            if output_format == IMAGE_FORMATS["image/jpeg"]:
+                image = image.convert("RGB")
+                save_options = {"quality": 90, "optimize": True}
+            else:
+                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                save_options = {"optimize": True}
 
-def verify_file_is_an_image(file, contents):
-    if file.content_type not in IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid image type. Only PNG and JPEG are allowed.")
-
-    _, signature = IMAGE_TYPES[file.content_type]
-
-    if not contents.startswith(signature):
+            clean_image = Image.new(image.mode, image.size)
+            clean_image.paste(image)
+            
+            output = BytesIO()
+            clean_image.save(output, format=output_format, **save_options)
+            
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError):
         raise HTTPException(status_code=400, detail="File is not a valid image.")
+    
+    return output.getvalue()
+            
+async def remove_photos(saved_files):
+    for _, image_path in saved_files:
+        await asyncio.to_thread(image_path.unlink, missing_ok=True)
 
-async def upload_photo_file(file, contents):
-    extension, _ = IMAGE_TYPES[file.content_type]
+async def upload_photos(validates_files):
+    saved_files = []
+    
+    try:
+        for extension, contents in validates_files:
+            saved_files.append(await upload_photo_file(extension, contents))
+    except Exception:
+        await remove_photos(saved_files)
+        raise
+    
+    return saved_files
+
+async def upload_photo_file(extension, contents):
     filename = f"{secrets.token_hex(16)}{extension}"
 
     await asyncio.to_thread(GALLERY_IMAGE_DIR.mkdir, parents=True, exist_ok=True)
