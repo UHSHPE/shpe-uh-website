@@ -9,6 +9,7 @@ from starlette.datastructures import Headers
 
 from routes import gallery_routes
 from services import gallery_services
+from tests.gallery_tests.helpers import make_png_bytes
 
 
 def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
@@ -41,7 +42,7 @@ def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
     monkeypatch.setattr(gallery_routes, "count_user_submissions_per_week", lambda *_: 0)
     session = FailingSession()
     file = UploadFile(
-        file=BytesIO(b"\x89PNG\r\n\x1a\nimage data"),
+        file=BytesIO(make_png_bytes()),
         filename="photo.png",
         headers=Headers({"content-type": "image/png"}),
     )
@@ -55,4 +56,32 @@ def test_failed_database_commit_removes_uploaded_file(tmp_path, monkeypatch):
         )
 
     assert session.rolled_back
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_partial_upload_failure_removes_files_and_propagates_error(tmp_path, monkeypatch):
+    first_path = tmp_path / "first.png"
+    upload_count = 0
+
+    async def failing_upload(file, contents):
+        nonlocal upload_count
+        upload_count += 1
+        if upload_count == 2:
+            raise OSError("disk unavailable")
+
+        first_path.write_bytes(contents)
+        return first_path.name, first_path
+
+    monkeypatch.setattr(gallery_services, "upload_photo_file", failing_upload)
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        asyncio.run(
+            gallery_services.upload_photos(
+                [
+                    (SimpleNamespace(), b"first"),
+                    (SimpleNamespace(), b"second"),
+                ]
+            )
+        )
+
     assert list(tmp_path.iterdir()) == []

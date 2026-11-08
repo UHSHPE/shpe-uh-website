@@ -1,3 +1,7 @@
+from io import BytesIO
+
+from PIL import Image
+
 from models.gallery_photo import (
     GalleryPhoto,
     GalleryPhotoStatus,
@@ -5,6 +9,12 @@ from models.gallery_photo import (
     Semester,
 )
 from services.time_services import utcnow
+
+
+def make_png_bytes(color=(0, 87, 184)):
+    output = BytesIO()
+    Image.new("RGB", (2, 2), color).save(output, format="PNG")
+    return output.getvalue()
 
 
 def make_submission(session, user, *, submitted_at=None):
