@@ -21,7 +21,7 @@ aren't guessable.
 - **Membership** — signup with email verification, $20 chapter dues that reset each May 30, member
   profiles, and a resume upload that syncs to the chapter's Resume Book on Google Drive
 - **Events** — a public calendar that populates itself from the chapter's event-tracker sheet,
-  email reminders, and QR sign-in/sign-out at the door that awards points by event pillar
+  email reminders, and QR sign-in/sign-out at the door that awards points by hosting committee
 - **Committees** — browse, join, and leave; chairs get rosters and broadcast messages
 - **Merch shop** — public storefront with real card, Apple Pay, and Google Pay checkout through
   Square, and in-person pickup at chapter events
