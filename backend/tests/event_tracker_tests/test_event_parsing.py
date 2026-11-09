@@ -52,7 +52,6 @@ def sheet_row(**overrides):
         owners="Marketing Chair - Valeria Zabala",
     )
     fields["collab(s)"] = ""
-    fields.setdefault("pillars", "")
     fields.update(overrides)
     return {COLUMNS[key]: value for key, value in fields.items()}
 
@@ -127,7 +126,7 @@ def test_parse_row_happy_path_maps_every_field():
 
     assert set(parsed.keys()) == {
         "sheet_row", "title", "description", "location", "start_time", "end_time",
-        "event_type", "host_roles", "pillars",
+        "event_type", "host_roles",
     }
     assert parsed["sheet_row"] == 7
     assert parsed["title"] == "GBM 1"
@@ -367,36 +366,6 @@ def test_parse_row_outside_org_collab_does_not_pollute_host_roles():
     row[COLUMNS["collab(s)"]] = "NSBE"
     parsed = parse(row)
     assert parsed["host_roles"] == [Role.social_chair]
-
-
-# --- PILLAR(S) -> Event.pillars ---
-
-def test_pillar_cell_is_parsed_to_canonical_keys():
-    assert parse(sheet_row(pillars="Professional Development"))["pillars"] == "professional"
-
-
-def test_multi_pillar_cell_keeps_every_recognized_key():
-    """18 live rows list two or more; one lists all five."""
-    parsed = parse(sheet_row(pillars="Community Outreach, Leadership Development"))
-    assert parsed["pillars"] == "community,leadership"
-
-
-def test_blank_pillar_cell_stores_null():
-    """40 of 108 named rows in the live sheet -- the common case, not an edge."""
-    assert parse(sheet_row(pillars=""))["pillars"] is None
-
-
-def test_unrecognized_pillar_is_dropped_not_guessed():
-    """A new dropdown option must degrade to 'no pillar', not raise mid-sync
-    and take the whole row down with it."""
-    assert parse(sheet_row(pillars="Vibes Development"))["pillars"] is None
-
-
-def test_sheet_wording_community_outreach_maps_to_the_community_pillar():
-    """The sheet says 'Community Outreach'; the About page brands the same
-    pillar 'Community Development'. Both must resolve to one key."""
-    assert parse(sheet_row(pillars="Community Outreach"))["pillars"] == "community"
-    assert parse(sheet_row(pillars="Community Development"))["pillars"] == "community"
 
 
 # --- OWNER(S) / COLLAB(S)? spelling divergences ---

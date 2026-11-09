@@ -1,34 +1,13 @@
-"""GET /leaderboard — public chapter points leaderboard.
+"""GET /leaderboard — public chapter points leaderboard, total only.
 
-The property that makes the breakdown trustworthy is that it reconciles:
-User.points is written only by attendance_services, which writes the same
-figure to EventAttendance.points_awarded, so the pillar columns plus
-uncategorized must always equal the member's total. Several tests below assert
-that directly rather than checking individual cells, because it is the
-invariant that breaks silently if a third writer of User.points is added.
+Every source of points (QR attendance, Google Forms, approved gallery photos)
+lands in User.points, so the leaderboard reads that one figure and needs no
+per-source or per-category breakdown to stay correct.
 """
 
-import pytest
-
-from models.event_attendance import EventAttendance
-from services.leaderboard_services import (
-    EVENT_TYPE_PILLAR,
-    PILLAR_KEYS,
-    pillar_for_event_type,
-)
-from tests.conftest import make_event, make_user
-
-
-def attend(session, user, event, points):
-    session.add(EventAttendance(
-        user_id=user.id,
-        event_id=event.id,
-        signed_in_at=event.start_time,
-        points_awarded=points,
-    ))
-    user.points += points
-    session.add(user)
-    session.commit()
+from services.gallery_services import add_gallery_points_to_user
+from tests.conftest import make_user
+from tests.gallery_tests.helpers import make_gallery_photo
 
 
 def member(session, local, points=0, **kw):
@@ -95,92 +74,26 @@ def test_unverified_accounts_are_excluded(unauth_client, session):
     assert names == ["Real Member"]
 
 
-def test_points_are_split_by_pillar(unauth_client, session):
-    user = member(session, "split")
-    attend(session, user, make_event(session, event_type="outreach"), 4)
-    attend(session, user, make_event(session, event_type="professional"), 3)
-    attend(session, user, make_event(session, event_type="academic"), 2)
-
-    entry = fetch(unauth_client)["entries"][0]
-    assert entry["total_points"] == 9
-    assert entry["points_by_pillar"]["community"] == 4
-    assert entry["points_by_pillar"]["professional"] == 3
-    assert entry["points_by_pillar"]["academic"] == 2
-    assert entry["points_by_pillar"]["chapter"] == 0
+def test_total_is_the_members_stored_points(unauth_client, session):
+    member(session, "stored", points=17)
+    assert fetch(unauth_client)["entries"][0]["total_points"] == 17
 
 
-def test_same_pillar_events_accumulate(unauth_client, session):
-    """outreach and shpe_jr are both Community — they must sum into one cell,
-    not overwrite each other."""
-    user = member(session, "community")
-    attend(session, user, make_event(session, event_type="outreach"), 4)
-    attend(session, user, make_event(session, event_type="shpe_jr"), 6)
-
-    entry = fetch(unauth_client)["entries"][0]
-    assert entry["points_by_pillar"]["community"] == 10
-
-
-def test_breakdown_always_sums_to_the_total(unauth_client, session):
-    """The invariant the whole feature rests on."""
-    user = member(session, "sums")
-    for slug, pts in (("social", 2), ("eboard", 3), ("mentorshpe", 5), ("eec", 1)):
-        attend(session, user, make_event(session, event_type=slug), pts)
-
-    entry = fetch(unauth_client)["entries"][0]
-    assert sum(entry["points_by_pillar"].values()) + entry["uncategorized_points"] == entry["total_points"]
-
-
-def test_unknown_event_type_counts_toward_the_total_not_a_pillar(unauth_client, session):
-    """A new tracker-sheet dropdown option must not silently vanish from the
-    total, or the columns stop adding up with nothing to explain the gap."""
-    user = member(session, "unknown")
-    attend(session, user, make_event(session, event_type="brand_new_thing"), 7)
-
-    entry = fetch(unauth_client)["entries"][0]
-    assert entry["total_points"] == 7
-    assert entry["uncategorized_points"] == 7
-    assert sum(entry["points_by_pillar"].values()) == 0
-
-
-def test_null_event_type_is_uncategorized(unauth_client, session):
-    user = member(session, "nulltype")
-    attend(session, user, make_event(session, event_type=None), 3)
-
-    assert fetch(unauth_client)["entries"][0]["uncategorized_points"] == 3
-
-
-def test_soft_deleted_events_still_count(unauth_client, session):
-    """Every other event read path hides soft-deleted events. This one must
-    not: the points were really earned, User.points still includes them, and
-    filtering here is exactly what would break the reconciliation."""
-    from services.time_services import utcnow
-
-    user = member(session, "deleted")
-    event = make_event(session, event_type="outreach")
-    attend(session, user, event, 4)
-    event.deleted_at = utcnow()
-    session.add(event)
+def test_approved_gallery_photo_points_count_toward_the_total(unauth_client, session):
+    """Gallery points never write an EventAttendance row — the total must
+    still include them."""
+    user = member(session, "photographer", points=5)
+    photo = make_gallery_photo(session, user)
+    add_gallery_points_to_user(photo, session)
     session.commit()
 
-    entry = fetch(unauth_client)["entries"][0]
-    assert entry["total_points"] == 4
-    assert entry["points_by_pillar"]["community"] == 4
+    assert fetch(unauth_client)["entries"][0]["total_points"] == 6
 
 
-def test_every_pillar_key_is_present_even_when_zero(unauth_client, session):
-    """The frontend renders a fixed column set and indexes without guards."""
-    member(session, "zeros", points=0)
-    entry = fetch(unauth_client)["entries"][0]
-    assert sorted(entry["points_by_pillar"]) == sorted(PILLAR_KEYS)
-
-
-def test_pillar_definitions_ride_along_with_the_rows(unauth_client, session):
-    """One source of truth for the column set — the frontend builds its
-    headers from this rather than mirroring the list."""
-    member(session, "cols")
-    payload = fetch(unauth_client)
-    assert [p["key"] for p in payload["pillars"]] == PILLAR_KEYS
-    assert all(p["label"] and p["short"] for p in payload["pillars"])
+def test_response_carries_entries_only(unauth_client, session):
+    """Total-only: no pillar definitions or other column metadata ride along."""
+    member(session, "shape")
+    assert set(fetch(unauth_client)) == {"entries"}
 
 
 def test_leaderboard_exposes_no_personal_details(unauth_client, session):
@@ -188,16 +101,7 @@ def test_leaderboard_exposes_no_personal_details(unauth_client, session):
     classification. If this fails, a public roster became a public directory."""
     member(session, "private", points=2)
     entry = fetch(unauth_client)["entries"][0]
-    assert set(entry) == {"rank", "name", "total_points", "points_by_pillar", "uncategorized_points"}
+    assert set(entry) == {"rank", "name", "total_points"}
     blob = str(entry).lower()
     for leaked in ("cougarnet", "gmail", "psid", "@"):
         assert leaked not in blob
-
-
-@pytest.mark.parametrize("slug", sorted(EVENT_TYPE_PILLAR))
-def test_every_known_slug_maps_to_a_real_pillar(slug):
-    assert pillar_for_event_type(slug) in PILLAR_KEYS
-
-
-def test_slug_matching_is_case_and_whitespace_insensitive(session):
-    assert pillar_for_event_type("  Outreach ") == "community"

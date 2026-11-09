@@ -92,6 +92,17 @@ def disable_event_tracker_sync(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def disable_forms_import(monkeypatch):
+    """Keep tests from reading the live points sheet as the chairs account."""
+    # Import main first: autouse fixtures run alphabetically, so the first
+    # `import main` (disable_square_payments) would otherwise re-leak .env after this.
+    import main  # noqa: F401
+
+    for var in ("POINTS_OAUTH_CLIENT_ID", "POINTS_OAUTH_CLIENT_SECRET", "POINTS_OAUTH_REFRESH_TOKEN", "POINTS_SHEET_ID"):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def disable_dues_import_sync(monkeypatch):
     """Keep tests from using the live membership spreadsheet."""
     monkeypatch.delenv("DUES_SHEET_ID", raising=False)

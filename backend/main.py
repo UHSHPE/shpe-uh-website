@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 
 from config import cors_origins, docs_urls, is_production, max_body_bytes, square_is_production
 from database import create_db
-from services.background_jobs import dues_sync_loop, event_sync_loop, reminder_loop
+from services.background_jobs import dues_sync_loop, event_sync_loop, forms_import_loop, reminder_loop
 from services.body_limit import BodyLimitMiddleware
 from services.forwarded_proto import ForwardedProtoMiddleware
 from services.rate_limit import limiter
@@ -27,7 +27,7 @@ async def lifespan(app):
     """Start background jobs and cancel them when the application stops."""
     assert_production_config()
     create_db()
-    tasks = [asyncio.create_task(job()) for job in (reminder_loop, event_sync_loop, dues_sync_loop)]
+    tasks = [asyncio.create_task(job()) for job in (reminder_loop, event_sync_loop, dues_sync_loop, forms_import_loop)]
     try:
         yield
     finally:

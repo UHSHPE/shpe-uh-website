@@ -1,5 +1,5 @@
-# Unit tests for services/attendance_services.py -- points rule, code
-# resolution, expiry, sign-in/out idempotency, and chair scoping.
+# Unit tests for services/attendance_services.py -- code resolution, expiry,
+# sign-in/out idempotency, and chair scoping.
 # API-level behavior (status codes, response shapes) lives in
 # test_attend_endpoint.py and test_chair_events_endpoints.py.
 
@@ -11,47 +11,15 @@ from models.event import Event
 from models.user.user_enums import Role
 from services import attendance_services
 from services.attendance_services import (
-    default_points,
     host_scoped_events,
     is_expired,
     record_sign_in,
     record_sign_out,
     resolve_code,
 )
-from services.pillars import NO_PILLAR_POINTS, PILLAR_KEYS
 from services.time_services import utcnow
 from tests.conftest import make_event, make_user
 from tests.event_tests.conftest import link_host, make_chair, make_committee
-
-
-# --- default_points / GBM detection ---
-
-def test_default_points_regular_event():
-    event = Event(title="Resume Workshop", start_time=datetime(2026, 8, 5), event_type="professional")
-    assert default_points(event) == (2, 2)
-
-
-def test_default_points_gbm_scores_3_2():
-    event = Event(title="1ST GM LYB", start_time=datetime(2026, 8, 5), event_type="eboard")
-    assert default_points(event) == (3, 2)
-
-
-def test_default_points_is_case_sensitive():
-    # "Segment" contains a lowercase "gm" -- must NOT trigger GBM scoring.
-    event = Event(title="Segment Kickoff", start_time=datetime(2026, 8, 5), event_type="eboard")
-    assert default_points(event) == (2, 2)
-
-
-def test_default_points_cats_back_is_eboard_but_not_a_gm():
-    event = Event(title="Cat's Back Day 1", start_time=datetime(2026, 8, 5), event_type="eboard")
-    assert default_points(event) == (2, 2)
-
-
-def test_default_points_shpe_jr_gm_is_not_eboard():
-    # Title contains "GM" but event_type is shpe_jr, not eboard -- both
-    # conditions are required.
-    event = Event(title="SHPE JR 1ST GM", start_time=datetime(2026, 8, 5), event_type="shpe_jr")
-    assert default_points(event) == (2, 2)
 
 
 # --- resolve_code ---
@@ -110,11 +78,11 @@ def test_record_sign_in_creates_row_and_awards_points(session, user):
     event = make_event(session, title="Resume Workshop", event_type="professional")
     attendance, points = record_sign_in(session, user, event)
 
-    assert points == 2
+    assert points == 3
     assert attendance.user_id == user.id
-    assert attendance.points_awarded == 2
+    assert attendance.points_awarded == 3
     session.refresh(user)
-    assert user.points == 2
+    assert user.points == 3
 
 
 def test_double_sign_in_awards_nothing_the_second_time(session, user):
@@ -125,7 +93,7 @@ def test_double_sign_in_awards_nothing_the_second_time(session, user):
 
     assert points == 0
     session.refresh(user)
-    assert user.points == 2   # unchanged by the second call
+    assert user.points == 3   # unchanged by the second call
 
 
 def test_new_member_bonus_applies_once(session, user):
@@ -134,7 +102,7 @@ def test_new_member_bonus_applies_once(session, user):
         session, user, event, brought_new_member=True, new_member_name="Jane Doe",
     )
 
-    assert points == 2 + attendance_services.NEW_MEMBER_BONUS
+    assert points == 3 + attendance_services.NEW_MEMBER_BONUS
     assert attendance.brought_new_member is True
     assert attendance.new_member_name == "Jane Doe"
 
@@ -144,13 +112,32 @@ def test_new_member_bonus_applies_once(session, user):
     )
     assert points_again == 0
     session.refresh(user)
-    assert user.points == 2 + attendance_services.NEW_MEMBER_BONUS
+    assert user.points == 3 + attendance_services.NEW_MEMBER_BONUS
 
 
 def test_sign_in_gbm_awards_three_points(session, user):
     event = make_event(session, title="1ST GM LYB", event_type="eboard")
     _, points = record_sign_in(session, user, event)
     assert points == 3
+
+
+# --- default_points (QR scoring from services/points.py) ---
+
+@pytest.mark.parametrize("title, event_type, sign_in", [
+    ("Park Cleanup", "outreach", 4),
+    ("Resume Workshop", "professional", 3),
+    ("Bowling Night", "social", 3),
+    ("Study Red", "academic", 3),
+    ("1ST GM LYB", "eboard", 3),
+    ("Cat's Back Day", "eboard", 2),     # E-Board, but not a GM
+    ("Segment Review", "eboard", 2),     # lowercase "gm" is not a GM
+    ("SHPE JR 1ST GM", "shpe_jr", 2),    # GM title, but not E-Board
+    ("Lonestar Practice", "projects", 2),
+    ("Hand-added", None, 2),
+])
+def test_default_points_by_category(title, event_type, sign_in):
+    event = Event(title=title, event_type=event_type, start_time=datetime(2026, 8, 5, 23, 0))
+    assert attendance_services.default_points(event) == (sign_in, 2)
 
 
 def test_sign_in_race_falls_back_to_already_signed_in(session, user, monkeypatch):
@@ -197,7 +184,7 @@ def test_record_sign_out_awards_separately(session, user):
     assert points == 2
     assert attendance.signed_out_at is not None
     session.refresh(user)
-    assert user.points == 4   # 2 sign-in + 2 sign-out
+    assert user.points == 5   # 3 sign-in + 2 sign-out
 
 
 def test_double_sign_out_awards_nothing_the_second_time(session, user):
@@ -209,7 +196,7 @@ def test_double_sign_out_awards_nothing_the_second_time(session, user):
 
     assert points == 0
     session.refresh(user)
-    assert user.points == 4
+    assert user.points == 5
 
 
 def test_sign_out_without_sign_in_returns_none(session, user):
@@ -329,65 +316,3 @@ def test_host_scoped_events_hides_a_soft_deleted_event_from_the_president(sessio
     events = host_scoped_events(session, president)
 
     assert [e.id for e in events] == [live.id]
-
-
-# --- pillar-driven points (the membershpe chart) ---
-
-class TestPillarPoints:
-    """default_points reads Event.pillars, sourced from the tracker sheet's
-    PILLAR(S) column. Table lives in services/pillars.py."""
-
-    def test_community_outreach_awards_four_on_sign_in(self):
-        """The chart's only 4 ('+4 Assist Outreach events')."""
-        ev = Event(title="Noche de Ciencias", event_type="outreach", pillars="community")
-        assert default_points(ev) == (4, 2)
-
-    @pytest.mark.parametrize("key", ["chapter", "academic", "professional", "leadership"])
-    def test_other_named_pillars_award_three_on_sign_in(self, key):
-        assert default_points(Event(title="Event", event_type="social", pillars=key)) == (3, 2)
-
-    def test_no_pillar_falls_to_the_least_points(self):
-        """40 of 108 named rows in the live sheet have a blank PILLAR(S)."""
-        assert default_points(Event(title="Study Night", event_type="academic", pillars=None)) == (2, 2)
-
-    def test_unrecognized_pillar_falls_to_the_least_points(self):
-        """A hand-edited or newly-added value must not raise inside a scan."""
-        assert default_points(Event(title="Thing", event_type="social", pillars="bogus")) == (2, 2)
-
-    def test_multi_pillar_takes_the_highest_not_the_sum(self):
-        """Summing would make one live row (all five pillars) worth 14 on a
-        single sign-in, and would tie points to how thoroughly a chair filled
-        in a dropdown."""
-        ev = Event(title="Serve Day", event_type="outreach", pillars="community,leadership")
-        assert default_points(ev) == (4, 2)
-
-    def test_all_five_pillars_still_only_awards_the_best_one(self):
-        ev = Event(
-            title="Everything Event",
-            event_type="eboard",
-            pillars="chapter,academic,community,professional,leadership",
-        )
-        assert default_points(ev) == (4, 2)
-
-    def test_gbm_is_a_floor_so_a_blank_pillar_still_awards_three(self):
-        """Preserves the pre-pillar GBM behaviour instead of dropping GBMs to 2."""
-        assert default_points(Event(title="GM #3", event_type="eboard", pillars=None)) == (3, 2)
-
-    def test_gbm_does_not_cap_a_higher_pillar(self):
-        """Floor, not override -- a GBM also tagged Community Outreach keeps 4."""
-        assert default_points(Event(title="GM #4", event_type="eboard", pillars="community")) == (4, 2)
-
-    def test_gbm_detection_is_still_case_sensitive(self):
-        """'GM' not '.lower()' -- a case-insensitive check also matches
-        ordinary words containing 'gm', e.g. 'Segment'."""
-        assert default_points(Event(title="Segment Workshop", event_type="eboard", pillars=None)) == (2, 2)
-
-    def test_non_eboard_gm_title_is_not_a_gbm(self):
-        """SHPE JR 1ST GM is a real live row: a GM title on a shpe_jr event."""
-        assert default_points(Event(title="SHPE JR 1ST GM", event_type="shpe_jr", pillars=None)) == (2, 2)
-
-    def test_every_pillar_awards_at_least_the_no_pillar_minimum(self):
-        """Tagging a pillar must never make an event worth less than leaving
-        the cell blank, or chairs are rewarded for not filling it in."""
-        for key in PILLAR_KEYS:
-            assert default_points(Event(title="E", event_type="x", pillars=key)) >= NO_PILLAR_POINTS

@@ -3,8 +3,7 @@ import { getLeaderboard } from "../api/api";
 
 // Rows visible before the body scrolls. The header is sticky inside the
 // scroller, so the column labels stay put while the reader moves down the
-// list — a plain max-height would scroll them out of view and leave five
-// unlabelled number columns.
+// list — a plain max-height would scroll them out of view.
 const VISIBLE_ROWS = 10;
 const ROW_HEIGHT = 52;
 
@@ -53,7 +52,7 @@ export default function PointsLeaderboard() {
         // catch-all rewrite), so shape-check before rendering rather than
         // letting .map throw and blank the page.
         const payload = res.data;
-        if (!payload || !Array.isArray(payload.entries) || !Array.isArray(payload.pillars)) {
+        if (!payload || !Array.isArray(payload.entries)) {
           setError(true);
           return;
         }
@@ -64,12 +63,6 @@ export default function PointsLeaderboard() {
       });
     return () => { active = false; };
   }, []);
-
-  // Points from an event type with no pillar (a new tracker-sheet dropdown
-  // option, a hand-added event). Normally zero everywhere, so the column is
-  // hidden — but when it isn't, showing it is what keeps every row visibly
-  // adding up to its own total instead of looking like an arithmetic bug.
-  const showOther = !!data && data.entries.some((e) => e.uncategorized_points > 0);
 
   const cellBase = {
     padding: "0 12px",
@@ -113,7 +106,7 @@ export default function PointsLeaderboard() {
           lineHeight: 1.5,
         }}
       >
-        Points earned by checking in at chapter events, broken down by pillar.
+        Points earned at chapter events.
       </p>
 
       {error && (
@@ -136,10 +129,10 @@ export default function PointsLeaderboard() {
 
       {!error && data && data.entries.length > 0 && (
         <>
-          {/* Horizontal scroll lives on this wrapper, not the page — seven
-              columns cannot fit a phone, and the page body must never scroll
-              sideways. The vertical cap is on the same element so the sticky
-              header has a scroll container to stick to. */}
+          {/* Horizontal scroll lives on this wrapper, not the page — names
+              don't wrap, and the page body must never scroll sideways. The
+              vertical cap is on the same element so the sticky header has a
+              scroll container to stick to. */}
           <div
             style={{
               overflowX: "auto",
@@ -151,22 +144,12 @@ export default function PointsLeaderboard() {
               boxShadow: "var(--shadow-card, 0 1px 3px rgba(0,0,0,.08))",
             }}
           >
-            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "640px" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead>
                 <tr>
                   <th style={{ ...headBase, textAlign: "center", width: "64px" }}>#</th>
                   <th style={{ ...headBase, textAlign: "left" }}>Member</th>
                   <th style={{ ...headBase }}>Total</th>
-                  {data.pillars.map((pillar) => (
-                    <th key={pillar.key} style={headBase} title={pillar.label}>
-                      {pillar.short}
-                    </th>
-                  ))}
-                  {showOther && (
-                    <th style={headBase} title="Events with no pillar assigned">
-                      Other
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -192,32 +175,6 @@ export default function PointsLeaderboard() {
                     >
                       {entry.total_points}
                     </td>
-                    {data.pillars.map((pillar) => {
-                      const value = entry.points_by_pillar[pillar.key] ?? 0;
-                      return (
-                        <td
-                          key={pillar.key}
-                          style={{
-                            ...cellBase,
-                            textAlign: "center",
-                            color: value === 0 ? "#c2c8d0" : "var(--navText, #001F5B)",
-                          }}
-                        >
-                          {value}
-                        </td>
-                      );
-                    })}
-                    {showOther && (
-                      <td
-                        style={{
-                          ...cellBase,
-                          textAlign: "center",
-                          color: entry.uncategorized_points === 0 ? "#c2c8d0" : "var(--navText, #001F5B)",
-                        }}
-                      >
-                        {entry.uncategorized_points}
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
