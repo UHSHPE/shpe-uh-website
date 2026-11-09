@@ -53,6 +53,7 @@ COMMITTEE_ROLES = {
     "academic":             Role.academic_chair,
     "wellness & athletics": Role.athletic_chair,
     "wellness & athletic":  Role.athletic_chair,   # singular: the OWNER(S) spelling
+    "athletics":            Role.athletic_chair,   # points sheet Committee spelling
     "cfc":                  Role.career_fair_chair,
     "eec":                  Role.eec_chair,
     "marketing":            Role.marketing_chair,

@@ -1,4 +1,4 @@
-"""Run recurring reminder, event-sheet, and dues-sync jobs."""
+"""Run recurring reminder, event-sheet, dues-sync, and forms-import jobs."""
 
 import asyncio
 import logging
@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlmodel import Session
 
 from database import engine
-from services import dues_import_services
+from services import dues_import_services, forms_import_services
 from services.event_tracker_services import sync_events
 from services.reminder_services import send_due_reminders
 
@@ -17,6 +17,7 @@ DUES_SYNC_SECONDS = 600
 
 SYNC_TZ = ZoneInfo("America/Chicago")   # the sheet's timezone
 SYNC_HOUR = 6                           # 6 AM Central — daily event-sheet sync time
+FORMS_IMPORT_HOUR = 0                   # midnight Central — daily Google Forms points import
 
 
 def dispatch_due_reminders():
@@ -75,3 +76,20 @@ async def dues_sync_loop():
         except Exception:
             logging.exception("Membership dues sync failed")
         await asyncio.sleep(DUES_SYNC_SECONDS)
+
+
+def dispatch_forms_import():
+    """Reconcile Google Form points in its own database session."""
+    if forms_import_services.is_configured():
+        with Session(engine) as session:
+            forms_import_services.run_forms_import(session)
+
+
+async def forms_import_loop():
+    """Import form points daily at midnight Central -- not at startup, so a deploy doesn't trigger a run."""
+    while True:
+        await asyncio.sleep(seconds_until(FORMS_IMPORT_HOUR))
+        try:
+            await asyncio.to_thread(dispatch_forms_import)
+        except Exception:
+            logging.exception("Google Forms points import failed")

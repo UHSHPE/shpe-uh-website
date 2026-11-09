@@ -1,17 +1,10 @@
-# Unit tests for services/points.py -- the chapter point system, shared by QR
-# attendance and the Google Forms import. Pure functions only: no DB, no
-# endpoints. QR-specific behaviour lives in event_tests/.
-
-from datetime import datetime
+# Unit tests for services/points.py -- scoring for the Google Forms import.
+# Category comes from the points sheet's Committee + Special Event Type
+# columns, never the event title. Pure functions only: no DB, no endpoints.
 
 import pytest
 
-from models.event import Event
 from services.points import POINT_VALUES, event_point_type, sign_in_points
-
-
-def event(title="Event", event_type=None):
-    return Event(title=title, start_time=datetime(2026, 8, 5), event_type=event_type)
 
 
 # --- the table ---
@@ -32,131 +25,146 @@ def test_point_values_match_the_membershpe_chart():
     }
 
 
-# --- committee categories (owner committee = event_type) ---
+# --- regular events (blank special type -> host committee decides) ---
 
 def test_outreach_awards_four():
-    ev = event("Noche de Ciencias", "outreach")
-    assert event_point_type(ev) == "outreach"
-    assert sign_in_points(ev) == 4
+    assert event_point_type("outreach", None) == "outreach"
+    assert sign_in_points("outreach", None) == 4
 
 
 def test_professional_awards_three():
-    ev = event("Resume Workshop", "professional")
-    assert event_point_type(ev) == "professional"
-    assert sign_in_points(ev) == 3
+    assert event_point_type("professional", None) == "professional"
+    assert sign_in_points("professional", None) == 3
 
 
 @pytest.mark.parametrize("slug", ["career_fair", "eec"])
 def test_professional_adjacent_committees_are_not_professional(slug):
     """Only the Professional committee scores 3 -- not CFC or EEC."""
-    ev = event("Industry Night", slug)
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
+    assert event_point_type(slug, None) == "committee_event"
+    assert sign_in_points(slug, None) == 2
 
 
 def test_social_awards_three():
-    ev = event("Game Night", "social")
-    assert event_point_type(ev) == "srt_social"
-    assert sign_in_points(ev) == 3
+    assert event_point_type("social", None) == "srt_social"
+    assert sign_in_points("social", None) == 3
 
 
-@pytest.mark.parametrize("slug", ["shpetina", "athletic", "shpe_jr", "mentorshpe", "academic", "marketing"])
+@pytest.mark.parametrize("slug", ["shpetina", "athletic", "shpe_jr", "mentorshpe", "academic", "marketing", "eboard"])
 def test_other_committees_award_committee_event_points(slug):
-    ev = event("Committee Event", slug)
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
+    assert event_point_type(slug, None) == "committee_event"
+    assert sign_in_points(slug, None) == 2
 
 
 @pytest.mark.parametrize("slug", [None, "", "brand_new_thing"])
-def test_missing_or_unknown_type_falls_back_to_committee_event(slug):
-    """A new tracker-sheet dropdown option must score, not raise mid-scan."""
-    ev = event("Mystery Event", slug)
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
+def test_missing_or_unknown_committee_falls_back_to_committee_event(slug):
+    """A new Committee option must score, not raise mid-import."""
+    assert event_point_type(slug, None) == "committee_event"
+    assert sign_in_points(slug, None) == 2
 
 
-# --- Study Red (SRT) ---
-
-@pytest.mark.parametrize("title", ["Study Red Tuesday", "Study Red Monday", "STUDY RED", "study red thursday"])
-def test_study_red_titles_score_as_srt_social(title):
-    """Matched on 'study red' alone -- it runs on more than one weekday."""
-    ev = event(title, "academic")
-    assert event_point_type(ev) == "srt_social"
-    assert sign_in_points(ev) == 3
+@pytest.mark.parametrize("special", [None, "", "   "])
+def test_blank_special_type_is_a_regular_event(special):
+    assert event_point_type("outreach", special) == "outreach"
+    assert sign_in_points("outreach", special) == 4
 
 
-def test_study_red_matches_on_title_regardless_of_host():
-    ev = event("Study Red Tuesday", "mentorshpe")
-    assert sign_in_points(ev) == 3
+def test_unknown_special_type_is_treated_as_a_regular_event():
+    """A dropdown option added later must score, not raise mid-import."""
+    assert event_point_type("outreach", "brand new type") == "outreach"
+    assert sign_in_points("outreach", "brand new type") == 4
 
 
-def test_plain_academic_event_is_not_srt():
-    ev = event("Study Night", "academic")
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
+# --- special types ---
+
+@pytest.mark.parametrize("special", ["study red", "Study Red", "STUDY RED", "  study red "])
+def test_special_type_matches_ignoring_case_and_spacing(special):
+    """Dropdown options are hand-typed; editing their casing must not change the score."""
+    assert event_point_type("academic", special) == "srt_social"
 
 
-# --- GBM detection ---
-
-def test_eboard_gm_awards_three():
-    ev = event("1ST GM LYB", "eboard")
-    assert event_point_type(ev) == "gm"
-    assert sign_in_points(ev) == 3
-
-
-def test_gm_detection_is_case_sensitive():
-    """'Segment' contains a lowercase 'gm' -- must NOT score as a GBM."""
-    ev = event("Segment Kickoff", "eboard")
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
-
-
-def test_eboard_event_without_gm_is_not_a_gbm():
-    ev = event("Cat's Back Day 1", "eboard")
-    assert sign_in_points(ev) == 2
+@pytest.mark.parametrize(
+    ("special", "slug", "point_type"),
+    [
+        ("Committee Meeting", "outreach", "committee_meeting"),
+        ("GM", "eboard", "gm"),
+        ("Off-campus ", "outreach", "outreach"),
+        ("Off-campus ", "shpetina", "committee_event"),
+        ("Study Red", "academic", "srt_social"),
+    ],
+)
+def test_every_points_sheet_dropdown_option_is_recognized(special, slug, point_type):
+    """Exact strings from the live dropdown -- hyphen and trailing space included."""
+    assert event_point_type(slug, special) == point_type
 
 
-def test_gm_title_outside_eboard_is_not_a_gbm():
-    """SHPE JR 1ST GM is a real live row: a GM title on a shpe_jr event."""
-    ev = event("SHPE JR 1ST GM", "shpe_jr")
-    assert event_point_type(ev) == "committee_event"
-    assert sign_in_points(ev) == 2
+@pytest.mark.parametrize("slug", ["academic", "mentorshpe", "outreach", None])
+def test_study_red_awards_three_regardless_of_host(slug):
+    assert event_point_type(slug, "study red") == "srt_social"
+    assert sign_in_points(slug, "study red") == 3
+
+
+@pytest.mark.parametrize("slug", ["eboard", "shpe_jr", "outreach", None])
+def test_gm_awards_three_regardless_of_host(slug):
+    assert event_point_type(slug, "gm") == "gm"
+    assert sign_in_points(slug, "gm") == 3
+
+
+@pytest.mark.parametrize("slug", ["outreach", "professional", "shpetina", None])
+def test_committee_meeting_awards_two_regardless_of_host(slug):
+    """A committee meeting is not an event, so host categories don't apply."""
+    assert event_point_type(slug, "committee meeting") == "committee_meeting"
+    assert sign_in_points(slug, "committee meeting") == 2
+
+
+@pytest.mark.parametrize(
+    ("slug", "point_type", "points"),
+    [
+        ("outreach", "outreach", 4),
+        ("professional", "professional", 3),
+        ("social", "srt_social", 3),
+        ("shpetina", "committee_event", 2),
+        (None, "committee_event", 2),
+    ],
+)
+def test_off_campus_is_two_unless_the_host_is_worth_more(slug, point_type, points):
+    assert event_point_type(slug, "off campus") == point_type
+    assert sign_in_points(slug, "off campus") == points
 
 
 # --- bonuses ---
 
+def test_no_bonuses_by_default():
+    assert sign_in_points("eboard", "gm") == 3
+
+
 def test_new_member_bonus_adds_two():
-    assert sign_in_points(event("Committee Event", "shpetina"), brought_new_member=True) == 4
+    assert sign_in_points("shpetina", None, brought_new_member=True) == 4
 
 
 def test_new_member_bonus_applies_on_a_gm_too():
-    assert sign_in_points(event("1ST GM LYB", "eboard"), brought_new_member=True) == 5
+    assert sign_in_points("eboard", "gm", brought_new_member=True) == 5
 
 
 def test_shirt_bonus_adds_two_on_a_gm():
-    assert sign_in_points(event("1ST GM LYB", "eboard"), wore_shirt=True) == 5
+    assert sign_in_points("eboard", "gm", wore_shirt=True) == 5
 
 
 def test_both_bonuses_stack_on_a_gm():
-    ev = event("1ST GM LYB", "eboard")
-    assert sign_in_points(ev, brought_new_member=True, wore_shirt=True) == 7
+    assert sign_in_points("eboard", "gm", brought_new_member=True, wore_shirt=True) == 7
 
 
 @pytest.mark.parametrize(
-    ("title", "slug", "base"),
+    ("slug", "special", "base"),
     [
-        ("Noche de Ciencias", "outreach", 4),
-        ("Resume Workshop", "professional", 3),
-        ("Game Night", "social", 3),
-        ("Study Red Tuesday", "academic", 3),
-        ("Committee Event", "shpetina", 2),
-        ("Cat's Back Day 1", "eboard", 2),
+        ("outreach", None, 4),
+        ("professional", None, 3),
+        ("social", None, 3),
+        ("academic", "study red", 3),
+        ("shpetina", None, 2),
+        ("outreach", "committee meeting", 2),
+        ("outreach", "off campus", 4),
     ],
 )
-def test_shirt_bonus_is_gm_only(title, slug, base):
-    """Ignored, not rejected -- a stray checkbox must not fail the sign-in."""
-    assert sign_in_points(event(title, slug), wore_shirt=True) == base
-
-
-def test_no_bonuses_by_default():
-    assert sign_in_points(event("1ST GM LYB", "eboard")) == 3
+def test_shirt_bonus_is_gm_only(slug, special, base):
+    """Ignored, not rejected -- a stray checkbox must not fail the import."""
+    assert sign_in_points(slug, special, wore_shirt=True) == base

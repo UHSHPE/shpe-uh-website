@@ -1,17 +1,15 @@
 """Chapter points leaderboard: every member's total, broken down by pillar.
 
-The breakdown reconciles with the totals because User.points is mutated in
-exactly two places, both in attendance_services (record_sign_in and
-record_sign_out), and both write the same figure to
-EventAttendance.points_awarded. So summing points_awarded per member equals
-their User.points, and grouping that sum by the event's pillar splits the
-total without inventing anything. If a third writer of User.points is ever
-added it MUST also write an EventAttendance row, or the columns silently stop
-adding up to the total and there is no error to notice.
+User.points has three writers: attendance_services (record_sign_in and
+record_sign_out), which also write EventAttendance.points_awarded, and
+forms_import_services, which writes FormPointAward instead. The pillar
+breakdown sums EventAttendance only, so Google Form points (including the GM
+shirt bonus) count toward total_points but appear in no pillar column. The
+breakdown is being removed (leaderboard goes total-only); until then the
+columns do not add up to the total for members with form points.
 
-Note the membershpe page advertises point sources this app does not implement
-(wearing a shirt to a GBM, submitting pictures, elections). Those are awarded
-off-system and never reach User.points, so they appear nowhere here.
+Submitting pictures and elections are still awarded off-system and never
+reach User.points.
 """
 
 from sqlmodel import Session, func, select
