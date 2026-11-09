@@ -22,9 +22,8 @@ permissions come from two things together: the user's `Role` matching the commit
 puts hundreds of members behind one campus IP at the same time, which is why rate limits are sized
 the way they are.
 
-**Pillar** — one of SHPE's 5 Core Pillars, which categorize events (Community Outreach, and four
-others). An event's pillar decides how many points signing in awards. An event tagged with several
-pillars awards the **highest**, not the sum.
+**Pillar** — one of SHPE's 5 Core Pillars, shown on the About page. Pillars don't affect points;
+the hosting committee does.
 
 **PSID** — the 7-digit student ID the University of Houston assigns. Unique to one account, used to
 match members against the membership spreadsheet.

@@ -47,7 +47,7 @@ only — under `ENVIRONMENT=production` the app serves no schema at all and `/do
 | GET | `/events/{id}/attendance` | Chair only | Attendance roster for one of their events |
 | GET | `/events/{id}/stats` | Chair/E-Board | Aggregate statistics for any event — turnout, sign-outs, average time at the event, first-time attendees, guests brought, and classification / college / major / membership breakdowns. Counts only; no attendee is named |
 | GET | `/events/{id}/scan-count` | Chair/E-Board | Live sign-in/sign-out counts for one event, for the QR modal to poll |
-| GET | `/leaderboard` | No | Public chapter points leaderboard: every verified member, ranked by total points, with a breakdown of where those points came from across the 5 Core Pillars |
+| GET | `/leaderboard` | No | Public chapter points leaderboard: every verified member, ranked by total points |
 | GET | `/committees` | Yes | All committees with membership status and chair contacts |
 | POST | `/committees/{id}/join` | Yes | Join a committee (notifies every chair). Joining again when you are already a member is a no-op that returns 200 and notifies nobody; joins are rate limited per account (`RATE_LIMIT_COMMITTEE_JOIN`). The internal E-Board rows are not joinable and return 404 |
 | DELETE | `/committees/{id}/leave` | Yes | Leave a committee |

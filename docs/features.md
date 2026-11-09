@@ -107,19 +107,18 @@ award the point again.
 
 Chairs and E-Board members generate QR codes from the **Events** page (`/my-events`) and present them at the door — in a modal, or fullscreen for projecting. Members scan with their phone's regular camera, which opens `/attend/<code>` on the site; there's no in-app scanner and nothing to install.
 
-Points are awarded on the spot based on the event's pillar, matching the chapter point-system
-chart:
+Points are awarded on the spot based on the committee hosting the event, matching the chapter
+point-system chart:
 
 | Action | Points |
 |---|---|
-| Sign in to a Community Outreach event | 4 |
-| Sign in to any other pillar | 3 |
-| Sign in to an event with no pillar set | 2 |
+| Sign in to an Outreach event | 4 |
+| Sign in to a Professional event | 3 |
+| Sign in to a Social or Study Red event | 3 |
+| Sign in to a general meeting | 3 |
+| Sign in to any other committee's event | 2 |
 | Sign out (any event) | 2 |
-| General meeting | at least 3 |
 | Bringing a new member | +2 |
-
-An event tagged with several pillars awards the **highest** of them, not the sum.
 
 Three rules keep the codes from being abused: scanning the same code twice never awards twice, a
 code doesn't work until roughly an hour before the event starts, and it stops working once the
