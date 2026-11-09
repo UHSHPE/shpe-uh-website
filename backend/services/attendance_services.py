@@ -12,57 +12,37 @@ from models.event_host import EventHost
 from models.user.user import User
 from models.user.user_enums import EBOARD_ROLES, Role
 from services.event_services import live_events
-from services.pillars import (
-    GBM_POINTS,
-    NO_PILLAR_POINTS,
-    PILLAR_POINTS,
-    deserialize_pillars,
-)
 from services.event_tracker_services import SHEET_TZ, to_utc
+from services.points import POINT_VALUES, sign_in_points
 from services.time_services import utcnow
 
 # "Did you bring a new member?" bonus — capped at once per event by the
 # EventAttendance composite PK (user_id, event_id).
-NEW_MEMBER_BONUS = 2
+NEW_MEMBER_BONUS = POINT_VALUES["new_member"]
+
+
+def _qr_special_type(event: Event) -> str | None:
+    """Stand-in for the points sheet's Special Event Type dropdown, which QR
+    events don't have. GM stays case-sensitive: .lower() would also match
+    ordinary words like "Segment"."""
+    if event.event_type == "eboard" and "GM" in event.title:
+        return "gm"
+    if "study red" in event.title.lower():
+        return "study red"
+    return None
 
 
 def default_points(event: Event) -> tuple[int, int]:
-    """(sign_in, sign_out) points for an event, from its PILLAR(S) column.
+    """(sign_in, sign_out) points for an event, from services/points.py.
 
-    Mirrors the point-system chart on pages/membershpe.jsx: Community
-    Outreach awards 4 on sign-in, every other named pillar 3, and 2 on
-    sign-out throughout. The table itself lives in services/pillars.py.
-
-    HIGHEST WINS on a multi-pillar event. 18 live rows list two or more
-    pillars and one lists all five, so the alternative (summing) would make a
-    single sign-in worth 14 and would tie a member's points to how
-    thoroughly a chair filled in a dropdown. max() on the (in, out) tuple
-    picks the best sign-in, tie-broken by sign-out.
-
-    A general meeting contributes GBM_POINTS as a FLOOR rather than an
-    override, which is what lets it compose with the rule above: a GBM whose
-    pillar cell is blank still gets 3 instead of falling to 2, and a GBM also
-    tagged Community Outreach still gets that pillar's 4. GBM detection stays
-    case-sensitive ("GM" in event.title, not .lower()) -- a case-insensitive
-    check would also match ordinary words containing "gm" (e.g. "Segment").
-    Verified against the live DB: eboard + "GM" selects exactly the 5 real
-    GBMs, excluding both Cat's Back Day (eboard, not a GM) and SHPE JR 1ST GM
-    (a GM title, but event_type is shpe_jr).
-
-    An event with no recognized pillar -- 40 of 108 named rows in the live
-    sheet, so the common case -- scores NO_PILLAR_POINTS, the least an event
-    can award.
-
-    Note this is computed on READ for display (_event_out's badge), but what
-    a member actually banked is frozen in EventAttendance.points_awarded at
-    scan time. Changing this table therefore reprices FUTURE scans only and
-    never rewrites history -- which is the intended behaviour, and the reason
-    the pillars migration deliberately does not backfill past events.
+    Computed on read for the badge, but what a member banked is frozen in
+    EventAttendance.points_awarded at scan time -- changing the rule only
+    reprices future scans.
     """
-    candidates = [PILLAR_POINTS[k] for k in deserialize_pillars(event.pillars)]
-    if event.event_type == "eboard" and "GM" in event.title:
-        candidates.append(GBM_POINTS)
-    return max(candidates) if candidates else NO_PILLAR_POINTS
+    return (
+        sign_in_points(event.event_type, _qr_special_type(event)),
+        POINT_VALUES["sign_out"],
+    )
 
 
 def resolve_code(session, code: str) -> tuple[Event, str] | None:

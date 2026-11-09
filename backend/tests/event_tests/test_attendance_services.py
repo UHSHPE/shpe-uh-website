@@ -5,6 +5,8 @@
 
 from datetime import datetime
 
+import pytest
+
 from models.event import Event
 from models.user.user_enums import Role
 from services import attendance_services
@@ -76,11 +78,11 @@ def test_record_sign_in_creates_row_and_awards_points(session, user):
     event = make_event(session, title="Resume Workshop", event_type="professional")
     attendance, points = record_sign_in(session, user, event)
 
-    assert points == 2
+    assert points == 3
     assert attendance.user_id == user.id
-    assert attendance.points_awarded == 2
+    assert attendance.points_awarded == 3
     session.refresh(user)
-    assert user.points == 2
+    assert user.points == 3
 
 
 def test_double_sign_in_awards_nothing_the_second_time(session, user):
@@ -91,7 +93,7 @@ def test_double_sign_in_awards_nothing_the_second_time(session, user):
 
     assert points == 0
     session.refresh(user)
-    assert user.points == 2   # unchanged by the second call
+    assert user.points == 3   # unchanged by the second call
 
 
 def test_new_member_bonus_applies_once(session, user):
@@ -100,7 +102,7 @@ def test_new_member_bonus_applies_once(session, user):
         session, user, event, brought_new_member=True, new_member_name="Jane Doe",
     )
 
-    assert points == 2 + attendance_services.NEW_MEMBER_BONUS
+    assert points == 3 + attendance_services.NEW_MEMBER_BONUS
     assert attendance.brought_new_member is True
     assert attendance.new_member_name == "Jane Doe"
 
@@ -110,13 +112,32 @@ def test_new_member_bonus_applies_once(session, user):
     )
     assert points_again == 0
     session.refresh(user)
-    assert user.points == 2 + attendance_services.NEW_MEMBER_BONUS
+    assert user.points == 3 + attendance_services.NEW_MEMBER_BONUS
 
 
 def test_sign_in_gbm_awards_three_points(session, user):
     event = make_event(session, title="1ST GM LYB", event_type="eboard")
     _, points = record_sign_in(session, user, event)
     assert points == 3
+
+
+# --- default_points (QR scoring from services/points.py) ---
+
+@pytest.mark.parametrize("title, event_type, sign_in", [
+    ("Park Cleanup", "outreach", 4),
+    ("Resume Workshop", "professional", 3),
+    ("Bowling Night", "social", 3),
+    ("Study Red", "academic", 3),
+    ("1ST GM LYB", "eboard", 3),
+    ("Cat's Back Day", "eboard", 2),     # E-Board, but not a GM
+    ("Segment Review", "eboard", 2),     # lowercase "gm" is not a GM
+    ("SHPE JR 1ST GM", "shpe_jr", 2),    # GM title, but not E-Board
+    ("Lonestar Practice", "projects", 2),
+    ("Hand-added", None, 2),
+])
+def test_default_points_by_category(title, event_type, sign_in):
+    event = Event(title=title, event_type=event_type, start_time=datetime(2026, 8, 5, 23, 0))
+    assert attendance_services.default_points(event) == (sign_in, 2)
 
 
 def test_sign_in_race_falls_back_to_already_signed_in(session, user, monkeypatch):
@@ -163,7 +184,7 @@ def test_record_sign_out_awards_separately(session, user):
     assert points == 2
     assert attendance.signed_out_at is not None
     session.refresh(user)
-    assert user.points == 4   # 2 sign-in + 2 sign-out
+    assert user.points == 5   # 3 sign-in + 2 sign-out
 
 
 def test_double_sign_out_awards_nothing_the_second_time(session, user):
@@ -175,7 +196,7 @@ def test_double_sign_out_awards_nothing_the_second_time(session, user):
 
     assert points == 0
     session.refresh(user)
-    assert user.points == 4
+    assert user.points == 5
 
 
 def test_sign_out_without_sign_in_returns_none(session, user):

@@ -53,8 +53,7 @@ def _first_time_attendee_count(session, event: Event, attendee_ids: list[int]) -
     """How many of this event's attendees had never checked in anywhere before.
 
     Compares each attendee's earliest sign-in across ALL events against this
-    event's id. Deliberately NOT filtered on Event.deleted_at, for the same
-    reason leaderboard_services._points_by_user_and_type isn't: an event
+    event's id. Deliberately NOT filtered on Event.deleted_at: an event
     later cleared out of the tracker sheet was still someone's first event,
     and hiding it would promote their second event to "first" retroactively.
     """
