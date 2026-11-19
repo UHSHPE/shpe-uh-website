@@ -49,6 +49,48 @@ def test_unknown_code_returns_generic_404(unauth_client):
     assert resp.status_code == 404
 
 
+@pytest.mark.parametrize("code, asks_shirt", [
+    ("prev-in-gm", True),
+    ("prev-out-gm", False),
+])
+def test_gm_preview_asks_shirt_only_on_sign_in(unauth_client, session, code, asks_shirt):
+    make_event(
+        session,
+        start_in=STARTED,
+        end_time=utcnow() + timedelta(hours=1),
+        title="1ST GM LYB",
+        event_type="eboard",
+        sign_in_code="prev-in-gm",
+        sign_out_code="prev-out-gm",
+    )
+
+    resp = unauth_client.get(f"/events/code/{code}")
+
+    assert resp.status_code == 200
+    assert resp.json()["asks_shirt"] is asks_shirt
+
+
+@pytest.mark.parametrize("title, event_type", [
+    ("1st gm lyb", "eboard"),        # lowercase "gm" is not a GM
+    ("Cat's Back Day", "eboard"),    # E-Board, but not a GM
+    ("SHPE JR 1ST GM", "shpe_jr"),   # GM title, but not E-Board
+])
+def test_non_gm_sign_in_preview_does_not_ask_shirt(unauth_client, session, title, event_type):
+    make_event(
+        session,
+        start_in=STARTED,
+        end_time=utcnow() + timedelta(hours=1),
+        title=title,
+        event_type=event_type,
+        sign_in_code="prev-in-non-gm",
+    )
+
+    resp = unauth_client.get("/events/code/prev-in-non-gm")
+
+    assert resp.status_code == 200
+    assert resp.json()["asks_shirt"] is False
+
+
 def test_expired_event_reports_ended_state(unauth_client, session):
     make_event(
         session,
@@ -91,8 +133,8 @@ def test_authed_preview_fills_signed_in_at_after_sign_in(client, session, signed
 
 
 def test_sign_out_preview_with_no_check_in_leaves_timestamps_null(client, session, signed_in):
-    """Signal the frontend uses for the 'no check-in on record' screen: an
-    authed sign-out preview with no attendance row at all."""
+    """An authed sign-out preview with no attendance row yet. Signing out
+    without a sign-in is allowed, so this only means nothing is recorded."""
     make_event(session, start_in=STARTED, sign_in_code="prev-in-5", sign_out_code="prev-out-5")
 
     resp = client.get("/events/code/prev-out-5")

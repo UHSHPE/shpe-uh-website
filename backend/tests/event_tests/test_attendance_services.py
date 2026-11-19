@@ -62,14 +62,16 @@ def test_is_expired_no_end_time_expires_after_end_of_central_day():
     assert is_expired(event, now=past_central_midnight) is True
 
 
-def test_is_expired_uses_end_time_when_present():
+def test_is_expired_stays_open_past_end_time_until_central_midnight():
+    # Ends 7:00 PM Central, but codes stay open until midnight Central (05:00 UTC).
     event = Event(
         title="GBM 1",
         start_time=datetime(2026, 8, 5, 23, 0),
         end_time=datetime(2026, 8, 6, 0, 0),
     )
-    assert is_expired(event, now=datetime(2026, 8, 5, 23, 30)) is False
-    assert is_expired(event, now=datetime(2026, 8, 6, 0, 30)) is True
+    assert is_expired(event, now=datetime(2026, 8, 6, 0, 30)) is False   # 7:30 PM Central
+    assert is_expired(event, now=datetime(2026, 8, 6, 4, 30)) is False   # 11:30 PM Central
+    assert is_expired(event, now=datetime(2026, 8, 6, 5, 30)) is True
 
 
 # --- record_sign_in / record_sign_out ---
@@ -119,6 +121,80 @@ def test_sign_in_gbm_awards_three_points(session, user):
     event = make_event(session, title="1ST GM LYB", event_type="eboard")
     _, points = record_sign_in(session, user, event)
     assert points == 3
+
+
+def test_gm_sign_in_with_shirt_awards_bonus(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    attendance, points = record_sign_in(session, user, event, wore_shirt=True)
+
+    assert points == 5
+    assert attendance.wore_shirt is True
+    session.refresh(user)
+    assert user.points == 5
+
+
+def test_gm_sign_in_without_shirt_records_false(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    attendance, points = record_sign_in(session, user, event, wore_shirt=False)
+
+    assert points == 3
+    assert attendance.wore_shirt is False
+
+
+def test_gm_sign_in_awards_new_member_bonus_without_shirt(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    attendance, points = record_sign_in(
+        session, user, event, wore_shirt=False, brought_new_member=True, new_member_name="Jane Doe",
+    )
+
+    assert points == 5
+    assert attendance.wore_shirt is False
+    assert attendance.brought_new_member is True
+
+
+def test_gm_sign_in_awards_both_bonuses(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    attendance, points = record_sign_in(
+        session, user, event, wore_shirt=True, brought_new_member=True, new_member_name="Jane Doe",
+    )
+
+    assert points == 7
+    assert attendance.wore_shirt is True
+    assert attendance.points_awarded == 7
+    session.refresh(user)
+    assert user.points == 7
+
+
+def test_gm_rescan_with_a_different_shirt_answer_changes_nothing(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    record_sign_in(session, user, event, wore_shirt=False)
+
+    attendance, points = record_sign_in(session, user, event, wore_shirt=True)
+
+    assert points == 0
+    assert attendance.wore_shirt is False
+    assert attendance.points_awarded == 3
+    session.refresh(user)
+    assert user.points == 3
+
+
+def test_non_gm_sign_in_leaves_wore_shirt_null(session, user):
+    event = make_event(session, title="Resume Workshop", event_type="professional")
+    attendance, points = record_sign_in(session, user, event)
+
+    assert points == 3
+    assert attendance.wore_shirt is None
+
+
+def test_gm_sign_out_preserves_shirt_response_and_bonus(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    record_sign_in(session, user, event, wore_shirt=True)
+
+    attendance, points = record_sign_out(session, user, event)
+
+    assert points == 2
+    assert attendance.wore_shirt is True
+    assert attendance.points_awarded == 7
 
 
 # --- default_points (QR scoring from services/points.py) ---
@@ -199,11 +275,49 @@ def test_double_sign_out_awards_nothing_the_second_time(session, user):
     assert user.points == 5
 
 
-def test_sign_out_without_sign_in_returns_none(session, user):
+def test_sign_out_without_sign_in_awards_sign_out_points(session, user):
     event = make_event(session, title="Resume Workshop", event_type="professional")
+
     attendance, points = record_sign_out(session, user, event)
-    assert attendance is None
+
+    assert points == 2
+    assert attendance.signed_in_at is None
+    assert attendance.signed_out_at is not None
+    assert attendance.points_awarded == 2
+    assert attendance.wore_shirt is None
+    session.refresh(user)
+    assert user.points == 2
+
+
+def test_repeat_sign_out_without_sign_in_awards_nothing(session, user):
+    event = make_event(session, title="Resume Workshop", event_type="professional")
+    record_sign_out(session, user, event)
+
+    _, points = record_sign_out(session, user, event)
+
     assert points == 0
+    session.refresh(user)
+    assert user.points == 2
+
+
+def test_late_gm_sign_in_after_sign_out_awards_sign_in_points(session, user):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    record_sign_out(session, user, event)
+
+    attendance, points = record_sign_in(session, user, event, wore_shirt=True)
+
+    assert points == 5   # 3 GM sign-in + 2 shirt
+    assert attendance.signed_in_at is not None
+    assert attendance.signed_out_at is not None
+    assert attendance.wore_shirt is True
+    assert attendance.points_awarded == 7   # 2 sign-out + 5 sign-in
+    session.refresh(user)
+    assert user.points == 7
+
+    _, points_again = record_sign_in(session, user, event, wore_shirt=True)
+    assert points_again == 0
+    session.refresh(user)
+    assert user.points == 7
 
 
 # --- host_scoped_events ---

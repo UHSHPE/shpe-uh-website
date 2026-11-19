@@ -5,7 +5,8 @@ from sqlmodel import SQLModel, Field
 class EventAttendance(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", primary_key=True)
     event_id: int = Field(foreign_key="event.id", primary_key=True)
-    signed_in_at: datetime
+    # NULL when the member scanned only the sign-out code.
+    signed_in_at: datetime | None = None
     signed_out_at: datetime | None = None
     # New-member claims are honor-system; names make them auditable.
     brought_new_member: bool = Field(default=False)
@@ -57,7 +58,7 @@ class AttendanceOut(SQLModel):
     first_name: str
     last_name: str
     personal_email: str
-    signed_in_at: datetime
+    signed_in_at: datetime | None
     signed_out_at: datetime | None
     brought_new_member: bool
     new_member_name: str | None

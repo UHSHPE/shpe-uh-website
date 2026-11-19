@@ -9,6 +9,9 @@
 
 from datetime import timedelta
 
+import pytest
+
+from models.event_attendance import EventAttendance
 from services.time_services import utcnow
 from tests.conftest import make_event
 
@@ -64,12 +67,42 @@ def test_sign_out_awards_points_independently(client, session):
     assert body["signed_out_at"] is not None
 
 
-def test_sign_out_before_sign_in_is_rejected(client, session):
+def test_sign_out_without_sign_in_is_recorded(client, session):
     make_event(session, start_in=STARTED, sign_in_code="in-4", sign_out_code="out-4")
 
     resp = client.post("/events/attend", json={"code": "out-4"})
 
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "sign_out"
+    assert body["status"] == "recorded"
+    assert body["points_awarded"] == 2
+    assert body["total_points"] == 2
+    assert body["signed_in_at"] is None
+    assert body["signed_out_at"] is not None
+
+
+def test_late_gm_sign_in_after_sign_out_is_recorded(client, session):
+    make_event(
+        session,
+        start_in=STARTED,
+        title="1ST GM LYB",
+        event_type="eboard",
+        sign_in_code="in-late",
+        sign_out_code="out-late",
+    )
+    client.post("/events/attend", json={"code": "out-late"})
+
+    resp = client.post("/events/attend", json={"code": "in-late", "wore_shirt": True})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "sign_in"
+    assert body["status"] == "recorded"
+    assert body["points_awarded"] == 5   # 3 GM sign-in + 2 shirt
+    assert body["total_points"] == 7     # + 2 from the earlier sign-out
+    assert body["signed_in_at"] is not None
+    assert body["signed_out_at"] is not None
 
 
 def test_double_sign_out_returns_200_already_recorded(client, session):
@@ -119,6 +152,21 @@ def test_new_member_bonus_is_captured_and_awarded(client, session):
     assert body["total_points"] == 4
 
 
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_new_member_without_a_name_is_rejected(client, session, user, name):
+    event = make_event(session, start_in=STARTED, sign_in_code="in-noname")
+    payload = {"code": "in-noname", "brought_new_member": True}
+    if name is not None:
+        payload["new_member_name"] = name
+
+    resp = client.post("/events/attend", json=payload)
+
+    assert resp.status_code == 422
+    assert session.get(EventAttendance, (user.id, event.id)) is None
+    session.refresh(user)
+    assert user.points == 0
+
+
 def test_gbm_sign_in_awards_three_points(client, session):
     make_event(
         session,
@@ -133,6 +181,50 @@ def test_gbm_sign_in_awards_three_points(client, session):
 
     assert resp.status_code == 200
     assert resp.json()["points_awarded"] == 3
+
+
+def test_gm_sign_in_awards_shirt_and_new_member_bonuses(client, session, user):
+    event = make_event(
+        session,
+        start_in=STARTED,
+        end_time=utcnow() + timedelta(hours=1),
+        title="1ST GM LYB",
+        event_type="eboard",
+        sign_in_code="in-gm-shirt",
+    )
+
+    resp = client.post("/events/attend", json={
+        "code": "in-gm-shirt",
+        "wore_shirt": True,
+        "brought_new_member": True,
+        "new_member_name": "Jane Doe",
+    })
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["points_awarded"] == 7
+    assert body["total_points"] == 7
+    attendance = session.get(EventAttendance, (user.id, event.id))
+    assert attendance.wore_shirt is True
+    assert attendance.brought_new_member is True
+    assert attendance.new_member_name == "Jane Doe"
+
+
+def test_non_gm_sign_in_leaves_wore_shirt_null(client, session, user):
+    event = make_event(
+        session,
+        start_in=STARTED,
+        end_time=utcnow() + timedelta(hours=1),
+        title="Resume Workshop",
+        event_type="professional",
+        sign_in_code="in-workshop",
+    )
+
+    resp = client.post("/events/attend", json={"code": "in-workshop"})
+
+    assert resp.status_code == 200
+    attendance = session.get(EventAttendance, (user.id, event.id))
+    assert attendance.wore_shirt is None
 
 
 def test_check_in_before_grace_window_returns_425(client, session):

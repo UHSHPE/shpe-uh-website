@@ -193,6 +193,46 @@ def test_attendance_roster_for_a_hosted_event(chair_client, session, committee):
     assert row["user_id"] == attendee.id
     assert row["brought_new_member"] is True
     assert row["new_member_name"] == "Jane Doe"
+    assert row["wore_shirt"] is None
+
+
+def test_attendance_roster_shows_wore_shirt_for_a_hosted_gm(chair_client, session, committee):
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
+    link_host(session, event, committee)
+    attendee = make_user(
+        session,
+        cougarnet_email="attendee@cougarnet.uh.edu",
+        personal_email="attendee@gmail.com",
+        psid="4444444",
+    )
+    record_sign_in(session, attendee, event, wore_shirt=True)
+
+    resp = chair_client.get(f"/events/{event.id}/attendance")
+
+    assert resp.status_code == 200
+    [row] = resp.json()
+    assert row["user_id"] == attendee.id
+    assert row["wore_shirt"] is True
+
+
+def test_attendance_roster_includes_a_sign_out_only_attendee(chair_client, session, committee):
+    event = make_event(session)
+    link_host(session, event, committee)
+    attendee = make_user(
+        session,
+        cougarnet_email="attendee@cougarnet.uh.edu",
+        personal_email="attendee@gmail.com",
+        psid="4444444",
+    )
+    record_sign_out(session, attendee, event)
+
+    resp = chair_client.get(f"/events/{event.id}/attendance")
+
+    assert resp.status_code == 200
+    [row] = resp.json()
+    assert row["user_id"] == attendee.id
+    assert row["signed_in_at"] is None
+    assert row["signed_out_at"] is not None
 
 
 def test_attendance_roster_403s_for_another_committees_event(chair_client, session):
