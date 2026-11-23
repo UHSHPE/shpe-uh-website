@@ -7,7 +7,7 @@ from models.event_host import EventHost
 from models.user.user_enums import Role
 from services.dependencies import get_current_user
 from tests.admin_tests.conftest import make_president
-from tests.conftest import make_user
+from tests.conftest import make_event, make_user
 
 
 def make_committee(session, **overrides):
@@ -50,6 +50,21 @@ def make_chair(session, committee, **overrides):
 def link_host(session, event, committee):
     session.add(EventHost(event_id=event.id, committee_id=committee.id))
     session.commit()
+
+
+def make_meeting(session, committee, **overrides):
+    """A chair-created committee meeting as the create route will store it."""
+    fields = dict(
+        title=f"{committee.name} Meeting",
+        event_type=committee.name.lower(),
+        sheet_row=None,
+        sign_out_code=None,
+        is_committee_meeting=True,
+    )
+    fields.update(overrides)
+    meeting = make_event(session, **fields)
+    link_host(session, meeting, committee)
+    return meeting
 
 
 @pytest.fixture

@@ -15,6 +15,8 @@ class Event(SQLModel, table=True):
     event_type: str | None = None
     sign_in_code: str | None = Field(default=None, index=True, unique=True)
     sign_out_code: str | None = Field(default=None, index=True, unique=True)
+    # Chair-created: flat 2 points whatever the host, sign-in only (sign_out_code stays NULL).
+    is_committee_meeting: bool = Field(default=False)
     # Soft delete preserves FK-linked records; hard deletes would abort the sheet sync batch.
     deleted_at: datetime | None = Field(default=None, index=True)
 
@@ -41,7 +43,7 @@ class EventChairOut(SQLModel):
     points_value: int
     event_type: str | None
     sign_in_code: str
-    sign_out_code: str
+    sign_out_code: str | None  # NULL for committee meetings
     attendee_count: int
 
 

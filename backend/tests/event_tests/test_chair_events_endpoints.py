@@ -9,7 +9,7 @@ from models.user.user_enums import Role
 from services.attendance_services import record_sign_in, record_sign_out
 from services.time_services import utcnow
 from tests.conftest import make_event, make_user
-from tests.event_tests.conftest import link_host, make_committee
+from tests.event_tests.conftest import link_host, make_committee, make_meeting
 
 
 def test_my_events_returns_only_hosted_events_with_codes(chair_client, session, committee):
@@ -176,7 +176,8 @@ def test_regular_member_cannot_reach_mine_or_all(client):
 
 
 def test_attendance_roster_for_a_hosted_event(chair_client, session, committee):
-    event = make_event(session)
+    # A GM, since the new-member question is GM-only.
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
     link_host(session, event, committee)
     attendee = make_user(
         session,
@@ -193,7 +194,7 @@ def test_attendance_roster_for_a_hosted_event(chair_client, session, committee):
     assert row["user_id"] == attendee.id
     assert row["brought_new_member"] is True
     assert row["new_member_name"] == "Jane Doe"
-    assert row["wore_shirt"] is None
+    assert row["wore_shirt"] is False   # GM sign-in that omits the answer
 
 
 def test_attendance_roster_shows_wore_shirt_for_a_hosted_gm(chair_client, session, committee):
@@ -299,3 +300,64 @@ def test_scan_count_403s_for_another_committees_event(chair_client, session):
 def test_scan_count_404s_for_unknown_event(chair_client):
     resp = chair_client.get("/events/999999/scan-count")
     assert resp.status_code == 404
+
+
+# --- committee meetings ---
+
+def test_my_events_returns_a_meeting_without_a_sign_out_code(chair_client, session, committee):
+    meeting = make_meeting(session, committee)
+
+    resp = chair_client.get("/events/mine")
+
+    assert resp.status_code == 200
+    [row] = resp.json()
+    assert row["id"] == meeting.id
+    assert row["sign_in_code"]
+    assert row["sign_out_code"] is None
+    assert row["points_value"] == 2
+    session.refresh(meeting)
+    assert meeting.sign_out_code is None   # the read path must not mint one
+
+
+def test_scan_count_for_a_meeting_has_no_sign_outs(chair_client, session, committee):
+    meeting = make_meeting(session, committee)
+    attendee = make_user(
+        session,
+        cougarnet_email="attendee@cougarnet.uh.edu",
+        personal_email="attendee@gmail.com",
+        psid="4444444",
+    )
+    record_sign_in(session, attendee, meeting)
+
+    resp = chair_client.get(f"/events/{meeting.id}/scan-count")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"signed_in": 1, "signed_out": 0}
+
+
+def test_attendance_roster_for_own_meeting(chair_client, session, committee):
+    meeting = make_meeting(session, committee)
+    attendee = make_user(
+        session,
+        cougarnet_email="attendee@cougarnet.uh.edu",
+        personal_email="attendee@gmail.com",
+        psid="4444444",
+    )
+    record_sign_in(session, attendee, meeting)
+
+    resp = chair_client.get(f"/events/{meeting.id}/attendance")
+
+    assert resp.status_code == 200
+    [row] = resp.json()
+    assert row["user_id"] == attendee.id
+    assert row["points_awarded"] == 2
+    assert row["signed_out_at"] is None
+
+
+def test_attendance_roster_403s_for_another_committees_meeting(chair_client, session):
+    other = make_committee(session, name="Outreach", chair_role=Role.outreach_chair)
+    meeting = make_meeting(session, other)
+
+    resp = chair_client.get(f"/events/{meeting.id}/attendance")
+
+    assert resp.status_code == 403

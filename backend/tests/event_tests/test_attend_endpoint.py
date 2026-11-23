@@ -138,7 +138,10 @@ def test_expired_code_returns_410(client, session):
 
 
 def test_new_member_bonus_is_captured_and_awarded(client, session):
-    make_event(session, start_in=STARTED, sign_in_code="in-6", sign_out_code="out-6")
+    make_event(
+        session, start_in=STARTED, title="1ST GM LYB", event_type="eboard",
+        sign_in_code="in-6", sign_out_code="out-6",
+    )
 
     resp = client.post("/events/attend", json={
         "code": "in-6",
@@ -148,13 +151,28 @@ def test_new_member_bonus_is_captured_and_awarded(client, session):
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["points_awarded"] == 4   # 2 base + 2 bonus
-    assert body["total_points"] == 4
+    assert body["points_awarded"] == 5   # 3 GM + 2 bonus
+    assert body["total_points"] == 5
+
+
+def test_non_gm_new_member_claim_without_a_name_is_ignored(client, session, user):
+    # GM-only question: outside a GM it's ignored, so a missing name can't 422.
+    event = make_event(session, start_in=STARTED, sign_in_code="in-ignored")
+
+    resp = client.post("/events/attend", json={"code": "in-ignored", "brought_new_member": True})
+
+    assert resp.status_code == 200
+    assert resp.json()["points_awarded"] == 2
+    attendance = session.get(EventAttendance, (user.id, event.id))
+    assert attendance.brought_new_member is False
+    assert attendance.new_member_name is None
 
 
 @pytest.mark.parametrize("name", [None, "", "   "])
 def test_new_member_without_a_name_is_rejected(client, session, user, name):
-    event = make_event(session, start_in=STARTED, sign_in_code="in-noname")
+    event = make_event(
+        session, start_in=STARTED, title="1ST GM LYB", event_type="eboard", sign_in_code="in-noname",
+    )
     payload = {"code": "in-noname", "brought_new_member": True}
     if name is not None:
         payload["new_member_name"] = name
@@ -277,3 +295,43 @@ def test_public_events_points_value_reflects_the_rule(unauth_client, session):
     assert resp.status_code == 200
     [event] = [e for e in resp.json() if e["title"] == "1ST GM LYB"]
     assert event["points_value"] == 3   # sign-in value for a GBM, not the raw 0 column
+
+
+# --- committee meetings ---
+
+def test_committee_meeting_sign_in_awards_two_points(client, session, user):
+    # Social normally scores 3; a meeting is a flat 2 whatever the host.
+    meeting = make_event(
+        session, start_in=STARTED, title="Social Meeting", event_type="social",
+        sign_in_code="in-meeting", sign_out_code=None, is_committee_meeting=True,
+    )
+
+    resp = client.post("/events/attend", json={"code": "in-meeting"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "sign_in"
+    assert body["points_awarded"] == 2
+    assert body["total_points"] == 2
+    assert session.get(EventAttendance, (user.id, meeting.id)).points_awarded == 2
+
+
+def test_committee_meeting_ignores_gm_only_answers(client, session, user):
+    meeting = make_event(
+        session, start_in=STARTED, title="Social Meeting", event_type="social",
+        sign_in_code="in-meeting-nm", sign_out_code=None, is_committee_meeting=True,
+    )
+
+    resp = client.post("/events/attend", json={
+        "code": "in-meeting-nm",
+        "brought_new_member": True,
+        "new_member_name": "Jane Doe",
+        "wore_shirt": True,
+    })
+
+    assert resp.status_code == 200
+    assert resp.json()["points_awarded"] == 2
+    attendance = session.get(EventAttendance, (user.id, meeting.id))
+    assert attendance.brought_new_member is False
+    assert attendance.new_member_name is None
+    assert attendance.wore_shirt is None

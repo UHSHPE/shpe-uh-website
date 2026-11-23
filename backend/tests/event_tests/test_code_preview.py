@@ -158,3 +158,18 @@ def test_unauthenticated_preview_does_not_leak_another_users_timestamps(
 
     assert resp.status_code == 200
     assert resp.json()["signed_in_at"] is None
+
+
+def test_committee_meeting_preview_shows_two_points_and_no_gm_questions(unauth_client, session):
+    make_event(
+        session, start_in=STARTED, title="Social Meeting", event_type="social",
+        sign_in_code="prev-in-meeting", sign_out_code=None, is_committee_meeting=True,
+    )
+
+    resp = unauth_client.get("/events/code/prev-in-meeting")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "sign_in"
+    assert body["points_value"] == 2
+    assert body["asks_shirt"] is False

@@ -474,6 +474,22 @@ def test_sync_never_sweeps_a_hand_added_event(session, monkeypatch):
     assert manual_event.sheet_row is None
     assert manual_event.deleted_at is None
 
+def test_sync_never_touches_a_committee_meeting(session, monkeypatch):
+    meeting = make_event(
+        session, sheet_row=None, title="Social Meeting", event_type="social",
+        start_time=FUTURE, sign_out_code=None, is_committee_meeting=True,
+    )
+
+    _stub_fetch(monkeypatch, [fake_sheet_event()])
+    sync_events(session)
+
+    session.refresh(meeting)
+    assert meeting.deleted_at is None
+    assert meeting.title == "Social Meeting"
+    assert meeting.start_time == FUTURE
+    assert meeting.sign_out_code is None
+    assert meeting.is_committee_meeting is True
+
 
 # --- rule 3: past events are frozen ---
 

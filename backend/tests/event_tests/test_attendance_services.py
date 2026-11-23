@@ -99,7 +99,7 @@ def test_double_sign_in_awards_nothing_the_second_time(session, user):
 
 
 def test_new_member_bonus_applies_once(session, user):
-    event = make_event(session, title="Resume Workshop", event_type="professional")
+    event = make_event(session, title="1ST GM LYB", event_type="eboard")
     attendance, points = record_sign_in(
         session, user, event, brought_new_member=True, new_member_name="Jane Doe",
     )
@@ -115,6 +115,18 @@ def test_new_member_bonus_applies_once(session, user):
     assert points_again == 0
     session.refresh(user)
     assert user.points == 3 + attendance_services.NEW_MEMBER_BONUS
+
+
+def test_non_gm_sign_in_ignores_a_new_member_claim(session, user):
+    # The new-member question is GM-only; a claim anywhere else is dropped, not stored.
+    event = make_event(session, title="Resume Workshop", event_type="professional")
+    attendance, points = record_sign_in(
+        session, user, event, brought_new_member=True, new_member_name="Jane Doe",
+    )
+
+    assert points == 3
+    assert attendance.brought_new_member is False
+    assert attendance.new_member_name is None
 
 
 def test_sign_in_gbm_awards_three_points(session, user):
@@ -430,3 +442,98 @@ def test_host_scoped_events_hides_a_soft_deleted_event_from_the_president(sessio
     events = host_scoped_events(session, president)
 
     assert [e.id for e in events] == [live.id]
+
+
+# --- committee meetings ---
+
+def test_events_default_to_not_a_committee_meeting(session):
+    event = make_event(session)
+    session.refresh(event)
+    assert event.is_committee_meeting is False
+
+
+@pytest.mark.parametrize("host", ["outreach", "professional", "social", "academic", "eboard", "projects", None])
+def test_committee_meeting_sign_in_is_two_points_for_every_host(session, user, host):
+    # The host's category (outreach 4, professional/social 3) must not leak into a meeting.
+    meeting = make_event(
+        session, title="1ST GM Study Red Meeting", event_type=host,
+        sign_out_code=None, is_committee_meeting=True,
+    )
+    attendance, points = record_sign_in(session, user, meeting)
+
+    assert points == 2
+    assert attendance.points_awarded == 2
+    session.refresh(user)
+    assert user.points == 2
+
+
+def test_committee_meeting_default_points_has_no_sign_out():
+    meeting = Event(
+        title="Social Meeting", event_type="social",
+        start_time=datetime(2026, 12, 4, 1, 0), is_committee_meeting=True,
+    )
+    assert attendance_services.default_points(meeting) == (2, 0)
+
+
+def test_committee_meeting_ignores_gm_only_answers(session, user):
+    meeting = make_event(
+        session, title="Social Meeting", event_type="social",
+        sign_out_code=None, is_committee_meeting=True,
+    )
+    attendance, points = record_sign_in(
+        session, user, meeting,
+        brought_new_member=True, new_member_name="Jane Doe", wore_shirt=True,
+    )
+
+    assert points == 2
+    assert attendance.brought_new_member is False
+    assert attendance.new_member_name is None
+    assert attendance.wore_shirt is None
+
+
+def test_committee_meeting_repeat_sign_in_awards_nothing(session, user):
+    meeting = make_event(
+        session, title="Social Meeting", event_type="social",
+        sign_out_code=None, is_committee_meeting=True,
+    )
+    record_sign_in(session, user, meeting)
+
+    _, points = record_sign_in(session, user, meeting)
+
+    assert points == 0
+    session.refresh(user)
+    assert user.points == 2
+
+
+def test_ensure_event_codes_never_mints_a_meeting_sign_out_code(session):
+    meeting = make_event(
+        session, title="Social Meeting", event_type="social",
+        sign_in_code=None, sign_out_code=None, is_committee_meeting=True,
+    )
+
+    attendance_services.ensure_event_codes(session, [meeting])
+
+    session.refresh(meeting)
+    assert meeting.sign_in_code
+    assert meeting.sign_out_code is None
+
+
+# Chair picks 7:00 PM Central on Dec 3 (CST, UTC-6) -> stored as Dec 4 01:00 UTC.
+# No end_time, so the window is 60 min before start until midnight Central.
+
+@pytest.mark.parametrize("now, not_started", [
+    (datetime(2026, 12, 4, 0, 30), False),   # 6:30 PM Central, inside the grace window
+    (datetime(2026, 12, 3, 23, 30), True),   # 5:30 PM Central, too early
+])
+def test_committee_meeting_opens_an_hour_before_its_start(now, not_started):
+    meeting = Event(title="Social Meeting", start_time=datetime(2026, 12, 4, 1, 0), is_committee_meeting=True)
+    assert attendance_services.is_not_started(meeting, now=now) is not_started
+
+
+@pytest.mark.parametrize("now, expired", [
+    (datetime(2026, 12, 4, 5, 30), False),   # 11:30 PM Central Dec 3
+    (datetime(2026, 12, 4, 6, 30), True),    # 12:30 AM Central Dec 4
+])
+def test_committee_meeting_closes_at_central_midnight(now, expired):
+    meeting = Event(title="Social Meeting", start_time=datetime(2026, 12, 4, 1, 0), is_committee_meeting=True)
+    assert is_expired(meeting, now=now) is expired
