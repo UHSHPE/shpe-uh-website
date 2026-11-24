@@ -177,12 +177,11 @@ def scan_counts(session, event_id: int) -> tuple[int, int]:
     instead of re-fetching /events/mine (which would re-mint codes and ship
     every event's secrets over the wire on each poll) or reusing
     EventChairOut.attendee_count (sign-ins only -- wrong number in sign-out
-    QR mode)."""
-    rows = session.exec(
-        select(EventAttendance).where(EventAttendance.event_id == event_id)
-    ).all()
-    signed_in = len(rows)
-    signed_out = sum(1 for row in rows if row.signed_out_at is not None)
+    QR mode). COUNT(column) skips NULLs, so a sign-out-only row isn't a sign-in."""
+    signed_in, signed_out = session.exec(
+        select(func.count(EventAttendance.signed_in_at), func.count(EventAttendance.signed_out_at))
+        .where(EventAttendance.event_id == event_id)
+    ).one()
     return signed_in, signed_out
 
 
@@ -251,7 +250,8 @@ def ensure_event_codes(session, events: list[Event]) -> None:
 
 
 def attendee_counts(session, event_ids: list[int]) -> dict[int, int]:
-    """{event_id: sign-in count} for a batch of events, in ONE query.
+    """{event_id: attendee count} for a batch of events, in ONE query. An
+    attendee is anyone with a row -- signed in, signed out, or both.
 
     The chair Events page lists every chapter event, so a per-event count
     (what /events/mine originally did) is an N+1 that grows with the

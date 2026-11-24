@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 
 from models.event import Event
+from models.event_attendance import EventAttendance
 from models.user.user_enums import Role
 from services import attendance_services
 from services.attendance_services import (
@@ -330,6 +331,23 @@ def test_late_gm_sign_in_after_sign_out_awards_sign_in_points(session, user):
     assert points_again == 0
     session.refresh(user)
     assert user.points == 7
+
+
+# --- scan_counts ---
+
+def test_scan_counts_does_not_count_a_sign_out_only_row_as_a_sign_in(session, user):
+    event = make_event(session)
+    late = make_user(
+        session,
+        cougarnet_email="late@cougarnet.uh.edu",
+        personal_email="late@gmail.com",
+        psid="6666666",
+    )
+    session.add(EventAttendance(user_id=user.id, event_id=event.id, signed_in_at=utcnow(), signed_out_at=utcnow()))
+    session.add(EventAttendance(user_id=late.id, event_id=event.id, signed_out_at=utcnow()))
+    session.commit()
+
+    assert attendance_services.scan_counts(session, event.id) == (1, 2)
 
 
 # --- host_scoped_events ---
