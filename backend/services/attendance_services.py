@@ -35,7 +35,7 @@ def _qr_special_type(event: Event) -> str | None:
     return None
 
 
-def _is_gm(event: Event) -> bool:
+def is_gm(event: Event) -> bool:
     """The new-member and shirt questions are asked at GMs only."""
     return _qr_special_type(event) == "gm"
 
@@ -129,7 +129,7 @@ def record_sign_in(
     if attendance is not None and attendance.signed_in_at is not None:
         return attendance, 0
 
-    gm = _is_gm(event)
+    gm = is_gm(event)
     brought_new_member = brought_new_member and gm
     points = sign_in_points(
         event.event_type, _qr_special_type(event),

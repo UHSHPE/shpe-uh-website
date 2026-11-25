@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+from pydantic import AwareDatetime, field_validator
 from sqlmodel import SQLModel, Field
 
 
@@ -19,6 +21,18 @@ class Event(SQLModel, table=True):
     is_committee_meeting: bool = Field(default=False)
     # Soft delete preserves FK-linked records; hard deletes would abort the sheet sync batch.
     deleted_at: datetime | None = Field(default=None, index=True)
+
+
+class MeetingCreate(SQLModel):
+    """POST /events/meetings body. The committee comes from the caller's role, never the body."""
+    start_time: AwareDatetime
+
+    @field_validator("start_time")
+    @classmethod
+    def not_in_the_past(cls, value: datetime) -> datetime:
+        if value < datetime.now(timezone.utc):
+            raise ValueError("Meeting can't start in the past")
+        return value
 
 
 class EventOut(SQLModel):

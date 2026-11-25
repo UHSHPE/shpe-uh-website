@@ -1,4 +1,4 @@
-from models.event import Event, EventAllOut, EventChairOut, EventOut
+from models.event import Event, EventAllOut, EventChairOut, EventOut, MeetingCreate
 from models.event_attendance import (
     AttendanceOut,
     AttendRequest,
@@ -46,6 +46,26 @@ def _event_out(event: Event) -> EventOut:
         end_time=event.end_time,
         points_value=sign_in_points,
         event_type=event.event_type,
+    )
+
+
+MEETINGS_FORBIDDEN = "Only committee chairs can manage committee meetings"
+
+
+def _chair_out(event: Event, attendee_count: int) -> EventChairOut:
+    sign_in_points, _ = attendance_services.default_points(event)
+    return EventChairOut(
+        id=event.id,
+        title=event.title,
+        description=event.description,
+        location=event.location,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        points_value=sign_in_points,
+        event_type=event.event_type,
+        sign_in_code=event.sign_in_code,
+        sign_out_code=event.sign_out_code,
+        attendee_count=attendee_count,
     )
 
 
@@ -103,20 +123,26 @@ async def attend_event(
         )
 
     if action == "in":
+        # Only a GM asks the question, so only there is a missing name an error.
+        if (
+            payload.brought_new_member
+            and attendance_services.is_gm(event)
+            and not (payload.new_member_name or "").strip()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Enter the new member's name",
+            )
         attendance, points = attendance_services.record_sign_in(
             session,
             user,
             event,
             brought_new_member=payload.brought_new_member,
             new_member_name=payload.new_member_name,
+            wore_shirt=payload.wore_shirt,
         )
     else:
         attendance, points = attendance_services.record_sign_out(session, user, event)
-        if attendance is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sign in before signing out",
-            )
 
     session.refresh(user)
     return AttendResult(
@@ -147,24 +173,33 @@ async def get_my_hosted_events(
     attendance_services.ensure_event_codes(session, events)
     counts = attendance_services.attendee_counts(session, [e.id for e in events])
 
-    out = []
-    for event in events:
-        sign_in_points, _ = attendance_services.default_points(event)
-        attendee_count = counts.get(event.id, 0)
-        out.append(EventChairOut(
-            id=event.id,
-            title=event.title,
-            description=event.description,
-            location=event.location,
-            start_time=event.start_time,
-            end_time=event.end_time,
-            points_value=sign_in_points,
-            event_type=event.event_type,
-            sign_in_code=event.sign_in_code,
-            sign_out_code=event.sign_out_code,
-            attendee_count=attendee_count,
-        ))
-    return out
+    return [_chair_out(event, counts.get(event.id, 0)) for event in events]
+
+
+@router.post('/meetings', response_model=EventChairOut, status_code=status.HTTP_201_CREATED)
+async def create_committee_meeting(
+    payload: MeetingCreate,
+    user: Annotated[User, Depends(get_current_user)],
+    session: SessionDependencies,
+):
+    """A sign-in-only meeting for the caller's own committee. The service is
+    the only gate: it matches the live role to a real committee."""
+    meeting = attendance_services.create_committee_meeting(session, user, payload.start_time)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MEETINGS_FORBIDDEN)
+    return _chair_out(meeting, 0)
+
+
+@router.get('/meetings', response_model=list[EventChairOut])
+async def list_committee_meetings(
+    user: Annotated[User, Depends(get_current_user)],
+    session: SessionDependencies,
+):
+    meetings = attendance_services.list_committee_meetings(session, user)
+    if meetings is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MEETINGS_FORBIDDEN)
+    counts = attendance_services.attendee_counts(session, [m.id for m in meetings])
+    return [_chair_out(m, counts.get(m.id, 0)) for m in meetings]
 
 
 @router.get('/all', response_model=list[EventAllOut])
@@ -259,6 +294,7 @@ async def get_code_preview(
         event_type=event.event_type,
         points_value=points_value,
         state=state,
+        asks_shirt=action == "in" and attendance_services.is_gm(event),
         signed_in_at=signed_in_at,
         signed_out_at=signed_out_at,
     )
@@ -358,6 +394,7 @@ async def get_event_attendance(
             signed_out_at=att.signed_out_at,
             brought_new_member=att.brought_new_member,
             new_member_name=att.new_member_name,
+            wore_shirt=att.wore_shirt,
             points_awarded=att.points_awarded,
         )
         for att, attendee in rows

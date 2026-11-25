@@ -105,6 +105,7 @@ def test_a_stale_chair_row_without_the_chair_role_cannot_create(session, committ
     {},
     {"start_time": "tomorrow"},
     {"start_time": "2026-12-03"},   # a date with no time
+    {"start_time": (utcnow() - timedelta(hours=1)).replace(tzinfo=timezone.utc).isoformat()},   # in the past
 ])
 def test_bad_start_time_is_rejected(chair_client, session, body):
     resp = chair_client.post("/events/meetings", json=body)
