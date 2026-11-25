@@ -22,6 +22,11 @@ def test_chair_committee_is_none_for_a_role_that_chairs_nothing(session, committ
     assert chair_committee(session, Role.member) is None
 
 
+def test_chair_committee_skips_eboard_positions(session):
+    make_committee(session, name="President", chair_role=Role.president, joinable=False)
+    assert chair_committee(session, Role.president) is None
+
+
 # --- add_event_with_host ---
 
 def test_add_event_with_host_links_the_host_without_committing(session, committee):

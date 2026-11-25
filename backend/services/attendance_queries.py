@@ -11,8 +11,11 @@ from services.event_services import live_events
 
 
 def chair_committee(session, role: Role) -> Committee | None:
-    """Keyed on the live role, so a demoted chair's stale is_chair row grants nothing."""
-    return session.exec(select(Committee).where(Committee.chair_role == role)).first()
+    """Keyed on the live role, so a demoted chair's stale is_chair row grants nothing.
+    Real committees only: E-Board positions (joinable=False) can't hold meetings."""
+    return session.exec(
+        select(Committee).where(Committee.chair_role == role, Committee.joinable == True)  # noqa: E712
+    ).first()
 
 
 def add_event_with_host(session, event: Event, committee_id: int) -> Event:

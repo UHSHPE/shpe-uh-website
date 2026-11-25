@@ -11,6 +11,7 @@ from models.event_attendance import EventAttendance
 from models.event_host import EventHost
 from models.user.user import User
 from models.user.user_enums import EBOARD_ROLES, Role
+from services.attendance_queries import add_event_with_host, chair_committee, committee_meetings
 from services.event_services import live_events
 from services.event_tracker_services import SHEET_TZ, to_utc
 from services.points import POINT_VALUES, sign_in_points
@@ -24,12 +25,19 @@ NEW_MEMBER_BONUS = POINT_VALUES["new_member"]
 def _qr_special_type(event: Event) -> str | None:
     """Stand-in for the points sheet's Special Event Type dropdown, which QR
     events don't have. GM stays case-sensitive: .lower() would also match
-    ordinary words like "Segment"."""
+    ordinary words like "Segment". Meetings first: a flat 2 whatever the title."""
+    if event.is_committee_meeting:
+        return "committee meeting"
     if event.event_type == "eboard" and "GM" in event.title:
         return "gm"
     if "study red" in event.title.lower():
         return "study red"
     return None
+
+
+def _is_gm(event: Event) -> bool:
+    """The new-member and shirt questions are asked at GMs only."""
+    return _qr_special_type(event) == "gm"
 
 
 def default_points(event: Event) -> tuple[int, int]:
@@ -41,7 +49,7 @@ def default_points(event: Event) -> tuple[int, int]:
     """
     return (
         sign_in_points(event.event_type, _qr_special_type(event)),
-        POINT_VALUES["sign_out"],
+        0 if event.is_committee_meeting else POINT_VALUES["sign_out"],
     )
 
 
@@ -64,7 +72,7 @@ def resolve_code(session, code: str) -> tuple[Event, str] | None:
 
 
 def _end_of_local_day(start_time: datetime) -> datetime:
-    """23:59:59.999999 of start_time's Central calendar day, converted back
+    """23:59:59.999999 of the given time's Central calendar day, converted back
     to UTC via the same to_utc() the sheet sync uses. event.start_time is
     naive UTC; plenty of events have no end_time at all, and blank /
     "All Day" / "TBD" sheet times already fell back to local midnight — so
@@ -75,10 +83,11 @@ def _end_of_local_day(start_time: datetime) -> datetime:
 
 
 def is_expired(event: Event, now: datetime | None = None) -> bool:
-    """A code stops working once the event is over — the whole replacement
-    for revocation. No regeneration, no revocation."""
+    """A code stops working at Central midnight of the day the event ends
+    (end_time's day, else start_time's) — the whole replacement for
+    revocation. No regeneration, no revocation."""
     now = now or utcnow()
-    deadline = event.end_time or _end_of_local_day(event.start_time)
+    deadline = _end_of_local_day(event.end_time or event.start_time)
     return now > deadline
 
 
@@ -107,69 +116,80 @@ def record_sign_in(
     event: Event,
     brought_new_member: bool = False,
     new_member_name: str | None = None,
+    wore_shirt: bool = False,
+    _retry: bool = True,
 ) -> tuple[EventAttendance, int]:
-    """Create the EventAttendance row for a sign-in scan and award points.
+    """Stamp signed_in_at -- on a new row, or a sign-out-only one -- and award points.
 
-    Returns (row, points_awarded_by_this_call). points is 0 on a repeat scan
-    (row already existed) — callers should treat that as a success ("already
-    signed in"), not a failure. User.points is a running total, so this must
-    never double-award: the .get() check covers the common case, and the
-    IntegrityError catch covers two simultaneous scans racing past it.
+    Returns (row, points_awarded_by_this_call). points is 0 when already
+    signed in -- a success ("already signed in"), not a failure. GM-only
+    answers are dropped elsewhere: wore_shirt stays NULL, the new-member claim False.
     """
-    existing = session.get(EventAttendance, (user.id, event.id))
-    if existing:
-        return existing, 0
+    attendance = _locked_attendance(session, user, event)
+    if attendance is not None and attendance.signed_in_at is not None:
+        return attendance, 0
 
-    name = (new_member_name or "").strip() or None if brought_new_member else None
-    sign_in_points, _ = default_points(event)
-    points = sign_in_points + (NEW_MEMBER_BONUS if brought_new_member else 0)
-
-    attendance = EventAttendance(
-        user_id=user.id,
-        event_id=event.id,
-        signed_in_at=utcnow(),
-        brought_new_member=brought_new_member,
-        new_member_name=name,
-        points_awarded=points,
+    gm = _is_gm(event)
+    brought_new_member = brought_new_member and gm
+    points = sign_in_points(
+        event.event_type, _qr_special_type(event),
+        brought_new_member=brought_new_member, wore_shirt=wore_shirt,
     )
+
+    if attendance is None:
+        attendance = EventAttendance(user_id=user.id, event_id=event.id)
+    attendance.signed_in_at = utcnow()
+    attendance.brought_new_member = brought_new_member
+    attendance.new_member_name = (new_member_name or "").strip() or None if brought_new_member else None
+    attendance.wore_shirt = wore_shirt if gm else None
+    attendance.points_awarded += points
+    if not _commit_award(session, user, attendance, points):
+        if not _retry:
+            raise RuntimeError("attendance insert conflicted twice")
+        return record_sign_in(
+            session, user, event, brought_new_member, new_member_name, wore_shirt, _retry=False,
+        )
+    return attendance, points
+
+
+def record_sign_out(session, user: User, event: Event, _retry: bool = True) -> tuple[EventAttendance, int]:
+    """Stamp signed_out_at -- on a new row if the member never signed in -- and
+    award sign-out points. points is 0 when they already signed out."""
+    attendance = _locked_attendance(session, user, event)
+    if attendance is not None and attendance.signed_out_at is not None:
+        return attendance, 0
+
+    _, sign_out_points = default_points(event)
+    if attendance is None:
+        attendance = EventAttendance(user_id=user.id, event_id=event.id)
+    attendance.signed_out_at = utcnow()
+    attendance.points_awarded += sign_out_points
+    if not _commit_award(session, user, attendance, sign_out_points):
+        if not _retry:
+            raise RuntimeError("attendance insert conflicted twice")
+        return record_sign_out(session, user, event, _retry=False)
+    return attendance, sign_out_points
+
+
+def _locked_attendance(session, user: User, event: Event) -> EventAttendance | None:
+    # FOR UPDATE: a simultaneous scan waits here until this one commits, then
+    # sees the stamped row -- so the "already recorded" checks can't double-award.
+    return session.get(EventAttendance, (user.id, event.id), with_for_update=True)
+
+
+def _commit_award(session, user: User, attendance: EventAttendance, points: int) -> bool:
+    """Commit the row and the points together. False when a simultaneous first
+    scan inserted the row first (no row existed to lock); the caller retries."""
     session.add(attendance)
     user.points += points
     session.add(user)
     try:
         session.commit()
     except IntegrityError:
-        # Two simultaneous scans raced past the .get() check above — the
-        # loser rolls back and reports the same "already signed in" outcome.
         session.rollback()
-        existing = session.get(EventAttendance, (user.id, event.id))
-        return existing, 0
-
+        return False
     session.refresh(attendance)
-    return attendance, points
-
-
-def record_sign_out(session, user: User, event: Event) -> tuple[EventAttendance | None, int]:
-    """Stamp signed_out_at and award sign-out points.
-
-    Returns (row, points_awarded_by_this_call). Row is None when the member
-    never signed in at all (nothing to stamp) — the route turns that into a
-    400. points is 0 when they already signed out (no-op, no double award).
-    """
-    attendance = session.get(EventAttendance, (user.id, event.id))
-    if attendance is None:
-        return None, 0
-    if attendance.signed_out_at is not None:
-        return attendance, 0
-
-    _, sign_out_points = default_points(event)
-    attendance.signed_out_at = utcnow()
-    attendance.points_awarded += sign_out_points
-    session.add(attendance)
-    user.points += sign_out_points
-    session.add(user)
-    session.commit()
-    session.refresh(attendance)
-    return attendance, sign_out_points
+    return True
 
 
 def scan_counts(session, event_id: int) -> tuple[int, int]:
@@ -239,10 +259,12 @@ def ensure_event_codes(session, events: list[Event]) -> None:
     """
     minted = False
     for event in events:
-        if event.sign_in_code and event.sign_out_code:
+        missing_out = not event.sign_out_code and not event.is_committee_meeting  # meetings are sign-in only
+        if event.sign_in_code and not missing_out:
             continue
         event.sign_in_code = event.sign_in_code or secrets.token_urlsafe(nbytes=16)
-        event.sign_out_code = event.sign_out_code or secrets.token_urlsafe(nbytes=16)
+        if missing_out:
+            event.sign_out_code = secrets.token_urlsafe(nbytes=16)
         session.add(event)
         minted = True
     if minted:
@@ -285,3 +307,31 @@ def code_scoped_events(session, user: User) -> list[Event]:
     if user.role in EBOARD_ROLES:
         return session.exec(live_events().order_by(Event.start_time)).all()
     return host_scoped_events(session, user)
+
+
+def create_committee_meeting(session, user: User, start_time: datetime) -> Event | None:
+    """A sign-in-only meeting for the caller's own committee, or None when they
+    chair no committee (the route's 403). start_time must be timezone-aware."""
+    committee = chair_committee(session, user.role)
+    if committee is None:
+        return None
+    meeting = Event(
+        title=f"{committee.name} Meeting",
+        start_time=start_time.astimezone(timezone.utc).replace(tzinfo=None),
+        # Same host slug the sheet sync stores: social_chair -> "social".
+        event_type=committee.chair_role.name.removesuffix("_chair"),
+        sign_in_code=secrets.token_urlsafe(nbytes=16),
+        is_committee_meeting=True,
+    )
+    add_event_with_host(session, meeting, committee.id)
+    session.commit()
+    session.refresh(meeting)
+    return meeting
+
+
+def list_committee_meetings(session, user: User) -> list[Event] | None:
+    """The caller's committee's live meetings, or None when they chair no committee."""
+    committee = chair_committee(session, user.role)
+    if committee is None:
+        return None
+    return committee_meetings(session, committee.id)

@@ -248,11 +248,11 @@ def test_sign_in_race_falls_back_to_already_signed_in(session, user, monkeypatch
     original_get = session.get
     seen = {"n": 0}
 
-    def fake_get(model, pk):
+    def fake_get(model, pk, **kwargs):
         if model is EventAttendance and seen["n"] == 0:
             seen["n"] += 1
             return None   # the TOCTOU miss
-        return original_get(model, pk)
+        return original_get(model, pk, **kwargs)
 
     monkeypatch.setattr(session, "get", fake_get)
 
@@ -262,6 +262,33 @@ def test_sign_in_race_falls_back_to_already_signed_in(session, user, monkeypatch
     assert attendance is not None
     session.refresh(user)
     assert user.points == 2   # not double-awarded
+
+
+def test_sign_out_race_falls_back_to_already_signed_out(session, user, monkeypatch):
+    # Same race as above, for the new sign-out-only insert.
+    event = make_event(session, title="Resume Workshop", event_type="professional")
+    session.add(EventAttendance(user_id=user.id, event_id=event.id, signed_out_at=utcnow(), points_awarded=2))
+    user.points = 2
+    session.add(user)
+    session.commit()
+
+    original_get = session.get
+    seen = {"n": 0}
+
+    def fake_get(model, pk, **kwargs):
+        if model is EventAttendance and seen["n"] == 0:
+            seen["n"] += 1
+            return None
+        return original_get(model, pk, **kwargs)
+
+    monkeypatch.setattr(session, "get", fake_get)
+
+    attendance, points = record_sign_out(session, user, event)
+
+    assert points == 0
+    assert attendance is not None
+    session.refresh(user)
+    assert user.points == 2
 
 
 def test_record_sign_out_awards_separately(session, user):
@@ -534,6 +561,30 @@ def test_ensure_event_codes_never_mints_a_meeting_sign_out_code(session):
     session.refresh(meeting)
     assert meeting.sign_in_code
     assert meeting.sign_out_code is None
+
+
+def test_create_committee_meeting_for_the_chairs_committee(session, committee):
+    chair = make_chair(session, committee)
+    start = datetime(2026, 12, 3, 19, 0, tzinfo=attendance_services.SHEET_TZ)
+
+    meeting = attendance_services.create_committee_meeting(session, chair, start)
+
+    assert meeting.title == "Social Meeting"
+    assert meeting.event_type == "social"
+    assert meeting.start_time == datetime(2026, 12, 4, 1, 0)
+    assert meeting.is_committee_meeting is True
+    assert meeting.sign_in_code
+    assert meeting.sign_out_code is None
+    assert [m.id for m in attendance_services.list_committee_meetings(session, chair)] == [meeting.id]
+
+
+def test_an_eboard_officer_cannot_create_or_list_meetings(session):
+    make_committee(session, name="Treasurer", chair_role=Role.treasurer, joinable=False)
+    officer = make_user(session, role=Role.treasurer)
+    start = datetime(2026, 12, 3, 19, 0, tzinfo=attendance_services.SHEET_TZ)
+
+    assert attendance_services.create_committee_meeting(session, officer, start) is None
+    assert attendance_services.list_committee_meetings(session, officer) is None
 
 
 # Chair picks 7:00 PM Central on Dec 3 (CST, UTC-6) -> stored as Dec 4 01:00 UTC.
